@@ -13,10 +13,10 @@
 | `src/app/api/…` · `vercel.json` | B | 매일 밤 샘플 데이터로 되돌리는 예약 작업(Vercel Cron)과, 비밀값을 가진 요청만 받는 입구(ADR 0004) |
 | `.env.example` | B | 환경변수 이름 `CRON_SECRET` 을 더한다 — 값은 없다 |
 | `docs/schema.md` · `docs/deploy.md` · `docs/architecture.md` | A · B | 설계도 화면을 가리키는 줄(A), 테이블 다섯, 마이그레이션 적용, 되돌림 비밀값을 넣는 순서, 예약 작업 |
-| `src/lib/areas.ts` · `src/components/sidebar.tsx` | C | 왼쪽 메뉴를 마스터플랜의 모듈 순서로 — 「기준정보」(품목 · 창고 · 거래처)를 맨 위에, 「품질」 · 「시스템 관리」는 준비 중으로 |
+| `src/lib/areas.ts` · `src/components/sidebar.tsx` | C | 왼쪽 메뉴를 마스터플랜의 모듈 순서로 — 「기준정보」(품목 · 거래처)를 맨 위에, 「재고 › 재고 기준정보」(창고), 짓지 않은 모듈 · 메뉴는 준비 중으로 |
 | `src/app/master/items/…` | C | 품목 목록(찾기 · 유형 거르기 · 「사용 안 함 포함」) · 등록 · 수정 |
-| `src/app/master/warehouses/…` · `src/app/master/partners/…` | D | 창고 · 거래처의 목록 · 등록 · 수정 |
-| `src/lib/areas.ts` · `src/app/system/codes/…` | E | 메뉴 「시스템 관리」(공통코드 · 회사 · 조직(준비 중) · 사용자 · 권한(준비 중))와 공통코드 화면 |
+| `src/app/inventory/warehouses/…` · `src/app/master/partners/…` | D | 창고 · 거래처의 목록 · 등록 · 수정 |
+| `src/lib/areas.ts` · `src/app/system/codes/…` | E | 메뉴 「시스템 관리」(공통코드 · 회사 정보(준비 중) · 사용자 · 권한(준비 중))와 공통코드 화면 |
 
 앵커볼트 「업무 용어 · 코드 체계」를 처음 정한다 — 값은 ADR 0003 · 0009 가 든다. 「재고 계산 규칙」은 건드리지 않는다. 부품(예약
 작업)과 흐름(배포 때 마이그레이션)이 바뀌므로 시스템 구조 문서를 PR B 에서 고친다.
