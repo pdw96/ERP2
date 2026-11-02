@@ -27,6 +27,9 @@ jobs:
       DEMO_URL: https://erp-2-eta.vercel.app
       INPUT_URL: ${{ inputs.url }}
       EXPECT_SHA: ${{ github.sha }}
+      # 기다리는 동안 main 이 앞으로 갈 수 있어, 견줄 커밋을 시도마다 GitHub 에서 다시 읽는다(읽지 못하면 EXPECT_SHA).
+      MAIN_API: ${{ github.api_url }}/repos/${{ github.repository }}/commits/main
+      GH_TOKEN: ${{ github.token }}
       # 예약 실행과 main 에서 돌 때만 버전을 견준다 — 다른 가지의 커밋은 데모에 올라가지 않는다.
       # 예약 실행의 이벤트 내용에 기대지 않게 이름으로 적는다(감사 회차 5).
       CHECK_VERSION: ${{ (github.event_name == 'schedule' || github.ref == 'refs/heads/main') && 'yes' || 'no' }}
@@ -40,6 +43,11 @@ jobs:
           set -u
           url="${INPUT_URL:-$DEMO_URL}"
           want="${EXPECT_SHA:0:7}"
+          latest_main() {
+            local sha
+            sha=$(curl -sS --max-time 20 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.sha" "$MAIN_API" 2>/dev/null || true)
+            if printf '%s' "$sha" | grep -q -E '^[0-9a-f]{40}$'; then printf '%s' "${sha:0:7}"; else printf '%s' "${EXPECT_SHA:0:7}"; fi
+          }
           for attempt in $(seq 1 "$ATTEMPTS"); do
             code=$(curl -sS -o body.html -w '%{http_code}' --max-time 60 --retry 2 --retry-delay 20 "$url/health" || echo "000")
             echo "[$attempt] HTTP $code"
@@ -54,6 +62,7 @@ jobs:
               exit 0
             fi
             got=$(grep -o -E '커밋 [0-9a-f]{7}' body.html | head -n 1 | cut -d' ' -f2 || true)
+            want=$(latest_main)
             if [ "$got" = "$want" ]; then
               echo "데모 정상 — 커밋 $got"
               exit 0
