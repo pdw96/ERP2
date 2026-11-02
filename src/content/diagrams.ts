@@ -127,7 +127,117 @@ export const OVERVIEW = `flowchart LR
   MD -. "모든 부서가 씀" .-> INV
 ${CLASSES}`;
 
-// 데이터 모델 — 조각 「기준정보」가 만드는 다섯과, 뒤 조각이 더할 표.
+// 데이터 모델 ① 모듈별 전체 지도 — 모듈(왼쪽 메뉴 순서)마다 테이블 이름과 그것을 만드는 조각.
+// 예정 테이블의 이름과 관계는 그 조각의 착공에서 다시 정한다. 모듈 사이의 선이 많아 그림 대신 카드로 보인다.
+export type MapTable = { id: string; name: string; table?: string; slice: string };
+export type MapModule = { module: string; tables: readonly MapTable[] };
+
+/** 지금 짓는 조각 — 지도에서 이 조각의 테이블을 따로 표시한다. */
+export const CURRENT_SLICE = "기준정보";
+
+export const MODULE_MAP: readonly MapModule[] = [
+  {
+    module: "기준정보",
+    tables: [
+      { id: "items", name: "품목", table: "items", slice: "기준정보" },
+      { id: "partners", name: "거래처", table: "partners", slice: "기준정보" },
+    ],
+  },
+  {
+    module: "영업",
+    tables: [
+      { id: "sprice", name: "판매 단가", slice: "영업" },
+      { id: "so", name: "수주", slice: "영업" },
+      { id: "splan", name: "판매계획", slice: "MPS" },
+      { id: "shipreq", name: "출하요청", slice: "영업" },
+      { id: "ship", name: "출하", slice: "영업" },
+      { id: "sales", name: "매출", slice: "영업" },
+    ],
+  },
+  {
+    module: "구매",
+    tables: [
+      { id: "supplier", name: "공급처 · 구매 단가", slice: "구매" },
+      { id: "po", name: "발주", slice: "구매" },
+      { id: "rcv", name: "입고", slice: "구매" },
+      { id: "purch", name: "매입", slice: "구매" },
+    ],
+  },
+  {
+    module: "재고",
+    tables: [
+      { id: "warehouses", name: "창고", table: "warehouses", slice: "기준정보" },
+      { id: "txn", name: "수불", slice: "재고 수불" },
+      { id: "stock", name: "현재고 — 품목 × 창고 × LOT · 상태", slice: "재고 수불" },
+      { id: "lot", name: "LOT", slice: "재고 수불" },
+      { id: "alloc", name: "할당", slice: "재고 수불" },
+      { id: "count", name: "실사", slice: "재고 수불" },
+    ],
+  },
+  {
+    module: "생산",
+    tables: [
+      { id: "bom", name: "BOM", slice: "BOM" },
+      { id: "route", name: "공정 · 작업장 · 라우팅", slice: "라우팅" },
+      { id: "cal", name: "근무 캘린더 · 작업장 능력", slice: "능력계획(CRP)" },
+      { id: "mps", name: "MPS", slice: "MPS" },
+      { id: "plo", name: "계획오더", slice: "MRP" },
+      { id: "wo", name: "작업지시", slice: "작업지시" },
+      { id: "result", name: "생산실적", slice: "생산실적" },
+    ],
+  },
+  {
+    module: "품질",
+    tables: [
+      { id: "defect", name: "불량 유형", slice: "라우팅" },
+      { id: "insp", name: "검사 항목 · 기준", slice: "품질" },
+      { id: "qrec", name: "검사 기록", slice: "품질" },
+    ],
+  },
+  {
+    module: "회계",
+    tables: [
+      { id: "acct", name: "계정과목", slice: "회계" },
+      { id: "jv", name: "전표", slice: "회계" },
+    ],
+  },
+  {
+    module: "인사",
+    tables: [
+      { id: "dept", name: "부서 · 직급", slice: "인사" },
+      { id: "emp", name: "사원", slice: "인사" },
+    ],
+  },
+  {
+    module: "시스템 관리",
+    tables: [
+      { id: "code_groups", name: "공통코드 묶음", table: "code_groups", slice: "기준정보" },
+      { id: "codes", name: "공통코드 값", table: "codes", slice: "기준정보" },
+      { id: "company", name: "회사 정보", slice: "인사" },
+      { id: "users", name: "사용자 · 권한", slice: "인사" },
+    ],
+  },
+];
+
+/** 모듈 사이의 주요 흐름 — 한 줄이 「앞 테이블의 기록이 뒤 테이블을 만든다」. 품목 · 거래처 · 공통코드는 모두가 써서 뺀다. */
+export const MODULE_FLOWS: readonly (readonly string[])[] = [
+  ["so", "mps", "plo"],
+  ["splan", "mps"],
+  ["bom", "plo"],
+  ["plo", "wo", "result", "txn", "stock"],
+  ["plo", "po", "rcv", "txn"],
+  ["wo", "alloc", "stock"],
+  ["shipreq", "alloc"],
+  ["shipreq", "ship", "txn"],
+  ["count", "txn"],
+  ["rcv", "qrec"],
+  ["result", "qrec"],
+  ["rcv", "purch", "jv"],
+  ["ship", "sales", "jv"],
+  ["dept", "emp", "users"],
+];
+
+// 데이터 모델 ② 이 조각의 테이블 — 조각 「기준정보」가 만드는 다섯과 그 칸.
 export const DATA_MODEL = `erDiagram
   ITEMS["품목 items"] {
     text code UK "RM-0001 · SF-0001 · FG-0001"
@@ -163,33 +273,14 @@ export const DATA_MODEL = `erDiagram
     boolean is_system "시스템 코드 — 화면에서 못 고침"
   }
   CODES["공통코드 값 codes (Minor)"] {
-    text group_code FK "묶음"
-    text code "RM · BUY · EA …"
+    text group_code PK, FK "묶음 — 묶음 + 코드가 겹치지 않음"
+    text code PK "RM · BUY · EA …"
     text name "이름"
     int sort_order "정렬 순서"
     boolean active "사용 여부"
   }
-  STOCK["재고 수불 (예정)"] { }
-  BOM["BOM (예정)"] { }
-  PO["발주 (예정)"] { }
-  QI["검사 기록 (예정 · 품질)"] { }
-  PLAN["MPS · 계획오더 (예정 · MPS · MRP)"] { }
-  ROUTE["라우팅 · 공정 · 작업장 (예정 · 라우팅)"] { }
-  LOT["LOT (예정 · 재고 수불 · LOT 추적)"] { }
-  SO["수주 (예정)"] { }
   CODE_GROUPS ||--o{ CODES : "묶음의 값"
-  CODES ||--o{ ITEMS : "유형 · 조달구분 · 단위"
-  ITEMS ||--o{ STOCK : "어떤 품목"
-  WAREHOUSES ||--o{ STOCK : "어느 창고"
-  ITEMS ||--o{ BOM : "모품목 · 자품목"
-  PARTNERS ||--o{ PO : "매입처"
-  PARTNERS ||--o{ SO : "매출처"
-  ITEMS ||--o{ PO : "발주 품목"
-  ITEMS ||--o{ SO : "수주 품목"
-  ITEMS ||--o{ QI : "검사 품목"
-  ITEMS ||--o{ PLAN : "계획 품목"
-  ITEMS ||--o{ ROUTE : "공정 순서"
-  ITEMS ||--o{ LOT : "LOT"`;
+  CODES ||--o{ ITEMS : "유형 · 조달구분 · 단위"`;
 
 // 시스템 구성 — 화면 · 서버 · DB · 자동 검사 · 알림.
 export const SYSTEM = `flowchart LR
