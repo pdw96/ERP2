@@ -11,7 +11,11 @@
 2. 대시보드에서 **Add New…** → **Project** 를 누른다.
 3. **Import Git Repository** 목록에 `ERP2` 가 없으면 **Adjust GitHub App Permissions** 에서 `pdw96/ERP2` 를 허용한다.
 4. `ERP2` 옆 **Import** → 설정은 그대로 두고(Framework 는 Next.js 로 저절로 잡힌다) **Deploy** 를 누른다.
-5. 1 ~ 2분 뒤 데모 주소(`erp2-….vercel.app`)가 나온다. 이 주소가 채용 담당자에게 줄 데모 주소다.
+5. 1 ~ 2분 뒤 데모 주소가 나온다(프로젝트 첫 화면의 **Production Deployment** → **Domains**). 이 주소가 채용 담당자에게
+   줄 데모 주소다 — **<https://erp-2-eta.vercel.app>**.
+6. **Settings** → **Deployment Protection** 에서 **Vercel Authentication** 을 끈다. 켜 두면 PR 미리보기 주소를 Vercel 에
+   로그인한 사람만 볼 수 있어 Claude 가 머지 전에 화면을 찍어 보일 수 없다. 미리보기도 샘플 데이터만 쓰는 공개 데모와
+   같은 내용이라 감출 것이 없다(저자가 정함, 2026-11-02).
 
 이때부터 `main` 에 머지하면 데모가 저절로 바뀌고, PR 마다 Vercel 이 미리보기 주소를 PR 댓글로 단다.
 
