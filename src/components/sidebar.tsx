@@ -55,7 +55,12 @@ export function Sidebar() {
           );
         })}
       </ul>
-      <p className="mt-auto hidden px-6 pb-6 text-sm md:block">샘플 데이터로 움직이는 포트폴리오 데모입니다.</p>
+      <div className="mt-auto hidden px-6 pb-6 text-sm md:block">
+        <Link href="/health" className="underline underline-offset-4 hover:text-white focus-visible:outline-safety">
+          시스템 상태
+        </Link>
+        <p className="mt-2">샘플 데이터로 움직이는 포트폴리오 데모입니다.</p>
+      </div>
     </nav>
   );
 }

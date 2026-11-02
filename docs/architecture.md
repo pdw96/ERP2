@@ -12,17 +12,21 @@
 | 색 · 글꼴 | 색 이름(`machine` · `safety` · `floor` 등)과 IBM Plex Sans KR | `src/app/globals.css` |
 | 업무 영역 목록 | 메뉴와 영역 화면이 함께 읽는 영역 여섯(재고 · 생산 · 구매 · 영업 · 회계 · 인사)과 영역마다 한 줄 설명 | `src/lib/areas.ts` |
 | 영역 화면 | 영역마다 한 주소(`/inventory` · `/production` · `/purchasing` · `/sales` · `/accounting` · `/hr`) | `src/app/<영역>/` |
+| 상태 화면 | 요청마다 DB 에 닿는지 묻고 「연결됨」(DB 시각) 또는 「연결 안 됨」을 보인다 | `src/app/health/` · `src/db/status.ts` |
+| DB 접속 | 환경변수 `DATABASE_URL` 하나로 PostgreSQL 에 닿는다 — Drizzle ORM · postgres 드라이버 | `src/db/client.ts` |
 | 자동 검사 | PR 과 `main` 에서 형식 · 린트 · 타입 · 시험 · 문서 모양을 본다 | `.github/workflows/ci.yml` |
 
 ## 흐름
 
 ```
-브라우저 ── 웹 앱(Vercel)
-PR ── 자동 검사(GitHub Actions) · 미리보기 배포(Vercel)
+브라우저 ── 웹 앱(Vercel) ── PostgreSQL(Neon 운영 DB)
+PR ── 자동 검사(GitHub Actions)
+   └─ 미리보기 배포(Vercel) ── Neon 미리보기 분기 DB
 main 머지 ── 운영 배포(Vercel)
 ```
 
-DB(PostgreSQL · Neon)와 배포는 조각 「기반」 설계 ⑥ 의 PR B 가 이 문서에 더한다. 스택과 배포처를 고른 까닭은 ADR 0001 · 0002.
+고정 화면(첫 화면 · 영역 화면)은 빌드 때 만들어 Vercel 이 가까운 곳에서 내보내고, 상태 화면의 DB 확인만 요청마다 돈다.
+스택과 배포처를 고른 까닭은 ADR 0001 · 0002, 테이블과 마이그레이션은 `docs/schema.md`, 배포와 되돌리기는 `docs/deploy.md`.
 
 ## 시험
 
