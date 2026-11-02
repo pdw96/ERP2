@@ -22,6 +22,8 @@
 - 접속 정보는 환경변수 `DATABASE_URL` 하나로만 받는다. 값은 레포에 두지 않는다 — 데모는 Vercel 환경변수, 레포에는
   이름만 든 `.env.example`.
 - 접속 코드는 `src/db/client.ts` 한 곳에 둔다(Drizzle ORM · postgres 드라이버).
+- 접속은 암호화하고 서버 인증서를 확인한다(`verify-full`) — URL 의 `sslmode` 에 기대지 않는다. 내 컴퓨터의 DB(`localhost` ·
+  `127.0.0.1`)만 예외다.
 
 ## 마이그레이션
 
