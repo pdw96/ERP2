@@ -21,7 +21,8 @@
 2. **Region** 은 **Washington, D.C., USA (East)** 를 고른다 — Vercel 서버의 기본 위치와 같은 곳이라 화면과 DB 사이가 짧다.
 3. **Auth** 는 끈다 — 로그인은 이 단계에서 만들지 않는다(조각 「인사」가 정한다). **Realtime** 도 끈 채로 둔다.
 4. **Installation Plans** 는 **Free** 를 고르고 **Continue** 를 누른다.
-5. 이을 환경은 **Production** 과 **Preview** 를 둘 다 켠다. 미리보기 배포마다 DB 분기를 만드는 선택지가 보이면 켠다 —
+5. **Create** 뒤 프로젝트에 잇는 화면에서 **Custom Prefix** 는 비워 둔다 — 값을 넣으면 환경변수 이름이 `DATABASE_URL`
+   에서 바뀌어 앱이 접속 정보를 찾지 못한다. 이을 환경은 **Production** 과 **Preview** 를 둘 다 켠다. 미리보기 배포마다 DB 분기를 만드는 선택지가 보이면 켠다 —
    PR 미리보기가 데모 DB 를 건드리지 않게 하는 장치다.
 6. 다 만들면 Vercel 프로젝트의 환경변수에 `DATABASE_URL` 이 저절로 들어간다(**Settings** → **Environment Variables**
    에서 이름만 확인하면 된다).
