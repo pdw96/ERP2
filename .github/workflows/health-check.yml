@@ -1,34 +1,62 @@
 name: 데모 상태 확인
 
-# 하루 4번 데모의 상태 화면을 열어 「연결됨」인지 본다. 아니면 이 작업이 실패하고,
-# GitHub 가 예약 실행 실패를 메일로 알린다(받는 사람: 이 파일의 예약을 마지막으로 바꿔 머지한 계정).
-# 응답 코드가 아니라 글자를 본다 — 상태 화면은 DB 가 끊겨도 200 을 돌려준다.
+# 하루 4번 데모의 상태 화면을 열어 두 가지를 본다. 하나라도 아니면 이 작업이 실패하고,
+# GitHub 가 실패를 메일로 알린다(예약 실행은 이 파일의 예약을 마지막으로 바꿔 머지한 계정, 손으로 돌린 실행은 돌린 계정).
+# 1. 「연결됨」 글자 — 응답 코드가 아니라 글자를 본다. 상태 화면은 DB 가 끊겨도 200 을 돌려준다.
+# 2. 화면의 「커밋」이 main 의 최신 커밋과 같은가 — 머지 뒤 빌드가 실패했거나, 되돌린 뒤 Undo Rollback 을
+#    잊으면 데모는 옛 버전인 채 「연결됨」이다. 빌드가 끝나기를 최대 10분 기다린다.
 on:
   schedule:
     - cron: "17 */6 * * *"
   workflow_dispatch:
+    inputs:
+      url:
+        description: "확인할 주소(비우면 데모). 실패 메일이 오는지 보려면 없는 주소를 넣는다"
+        required: false
+        default: ""
 
 permissions:
   contents: read
 
 jobs:
   health:
-    name: 데모 /health 가 「연결됨」인가
+    name: 데모 /health 가 「연결됨」이고 최신 커밋인가
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     env:
       DEMO_URL: https://erp-2-eta.vercel.app
+      INPUT_URL: ${{ inputs.url }}
+      EXPECT_SHA: ${{ github.sha }}
+      # 기본 가지에서 돌 때만 버전을 견준다 — 다른 가지의 커밋은 데모에 올라가지 않는다.
+      CHECK_VERSION: ${{ github.ref_name == github.event.repository.default_branch && 'yes' || 'no' }}
+      ATTEMPTS: "10"
+      WAIT_SECONDS: "60"
     steps:
       - name: 상태 화면 확인
         run: |
           set -u
-          code=$(curl -sS -o body.html -w '%{http_code}' --max-time 60 --retry 2 --retry-delay 20 "$DEMO_URL/health" || echo "000")
-          echo "HTTP $code"
-          # 실패한 날의 화면 글자를 이 실행 기록에 남긴다(GitHub 가 90일 보관).
-          grep -o -E '연결됨|연결 안 됨|DB에 닿지 못했습니다|설정되지 않았습니다|커밋 [0-9a-f]{7}' body.html | sort -u || true
-          if [ "$code" = "200" ] && grep -q '연결됨' body.html; then
-            echo "데모 정상"
-          else
-            echo "::error::데모 상태 화면이 「연결됨」이 아니다 — $DEMO_URL/health 를 열고 docs/deploy.md 「확인하기」를 본다"
-            exit 1
-          fi
+          url="${INPUT_URL:-$DEMO_URL}"
+          want="${EXPECT_SHA:0:7}"
+          for attempt in $(seq 1 "$ATTEMPTS"); do
+            code=$(curl -sS -o body.html -w '%{http_code}' --max-time 60 --retry 2 --retry-delay 20 "$url/health" || echo "000")
+            echo "[$attempt] HTTP $code"
+            # 실패한 날의 화면 글자를 이 실행 기록에 남긴다(GitHub 가 90일 보관).
+            grep -o -E '연결됨|연결 안 됨|DB에 닿지 못했습니다|설정되지 않았습니다|커밋 [0-9a-f]{7}' body.html | sort -u || true
+            if [ "$code" != "200" ] || ! grep -q '연결됨' body.html; then
+              echo "::error::상태 화면이 「연결됨」이 아니다 — $url/health 를 열고 docs/deploy.md 「확인하기」를 본다"
+              exit 1
+            fi
+            if [ "$CHECK_VERSION" != "yes" ]; then
+              echo "데모 정상(버전은 기본 가지에서만 견준다)"
+              exit 0
+            fi
+            got=$(grep -o -E '커밋 [0-9a-f]{7}' body.html | head -n 1 | cut -d' ' -f2 || true)
+            if [ "$got" = "$want" ]; then
+              echo "데모 정상 — 커밋 $got"
+              exit 0
+            fi
+            echo "데모의 커밋 ${got:-없음}, main 의 최신 $want — 배포를 기다린다"
+            if [ "$attempt" -lt "$ATTEMPTS" ]; then sleep "$WAIT_SECONDS"; fi
+          done
+          echo "::error::데모가 옛 버전이다(커밋 ${got:-없음}, main 의 최신 $want) — 머지 뒤 빌드가 실패했거나 되돌린 뒤 Undo Rollback 을 하지 않았다. docs/deploy.md 「되돌리기」를 본다"
+          exit 1

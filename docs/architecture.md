@@ -14,7 +14,7 @@
 | 영역 화면 | 영역마다 한 주소(`/inventory` · `/production` · `/purchasing` · `/sales` · `/accounting` · `/hr`) | `src/app/<영역>/` |
 | 상태 화면 | DB 에 닿는지 묻고 「연결됨」(DB 시각) 또는 「연결 안 됨」을 보인다. 결과를 1분 재사용하고 검색 로봇을 막는다. 떠 있는 배포의 커밋도 보인다 | `src/app/health/` · `src/db/status.ts` |
 | DB 접속 | 환경변수 `DATABASE_URL` 하나로 PostgreSQL 에 닿는다 — Drizzle ORM · postgres 드라이버. 내 컴퓨터의 DB 말고는 암호화하고 인증서를 확인한다 | `src/db/client.ts` |
-| 정기 확인 | 하루 4번 데모의 `/health` 가 「연결됨」인지 보고, 아니면 GitHub 가 메일로 알린다 | `.github/workflows/health-check.yml` |
+| 정기 확인 | 하루 4번 데모의 `/health` 가 「연결됨」이고 `main` 의 최신 커밋인지 보고, 아니면 GitHub 가 메일로 알린다 | `.github/workflows/health-check.yml` |
 | 자동 검사 | PR 과 `main` 에서 형식 · 린트 · 타입 · 시험 · 문서 모양을 본다 | `.github/workflows/ci.yml` |
 
 ## 흐름
