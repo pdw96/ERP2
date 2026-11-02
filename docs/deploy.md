@@ -81,6 +81,8 @@ GitHub Actions 의 「데모 상태 확인」(`.github/workflows/health-check.ym
 3. 데모의 `/health` 를 열어 「배포 버전」의 커밋이 되돌린 배포의 것인지 본다.
 4. **되돌린 동안에는 새로 머지해도 데모가 바뀌지 않는다.** 고친 코드를 머지한 뒤 Deployments 탭 위쪽의 **Undo Rollback**
    (또는 최신 배포의 **⋯** → **Promote to Production**)을 눌러야 새 배포가 데모로 나간다. 누른 뒤 3 처럼 커밋을 본다.
+   되돌린 동안에는 데모가 `main` 의 최신과 달라 정기 확인(「알림」)이 하루 4번 「옛 버전이다」 실패 메일을 보낸다 — 예상된
+   메일이고, Undo Rollback 을 누르면 멈춘다.
 
 두 단계 이상 앞으로 가야 하면 Instant Rollback 으로는 안 된다 — 잘못 들어온 PR 들을 되돌리는 PR 을 만들어 머지한다(Claude 에게
 「PR #○ 를 되돌려 줘」라고 하면 된다).
