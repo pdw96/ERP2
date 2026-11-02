@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    name: 형식 · 린트 · 타입 · 시험
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 형식
+        run: npm run format:check
+      - name: 린트
+        run: npm run lint
+      - name: 타입
+        run: npm run typecheck
+      - name: 시험
+        run: npm test
+
+  docs:
+    name: 문서 모양
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 문서 검사와 그 원천인 틀은 claude-kit 의 vibe-slice 스킬에 있다 — 커밋을 고정해 받는다.
+      - uses: actions/checkout@v4
+        with:
+          repository: pdw96/claude-kit
+          ref: 2e60e97b7d58a1f24410000dc620de2780979273
+          path: .claude-kit
+          sparse-checkout: vibe-slice/skills/slice-docs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 문서 모양
+        run: python3 .claude-kit/vibe-slice/skills/slice-docs/scripts/verify-docs.py --repo .
