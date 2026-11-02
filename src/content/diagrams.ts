@@ -31,7 +31,7 @@ export const SWIMLANE: Swimlane = {
     { id: "b3", lane: "구매", row: 9, kind: "step", text: "매입 확정" },
     { id: "a1", lane: "회계", row: 9, kind: "step", text: "매입 전표" },
     { id: "q2", lane: "품질", row: 10, kind: "step", text: "불량 유형 기록 · 격리\n처분: 반품" },
-    { id: "b2", lane: "구매", row: 10, kind: "step", text: "반품 · 재발주" },
+    { id: "b2", lane: "구매", row: 10, kind: "step", text: "구매 반품 · 재발주\n매입 차감" },
     { id: "pt", lane: "생산", row: 10, kind: "ends", text: "신규 품목 시생산" },
     { id: "pm", lane: "생산", row: 11, kind: "step", text: "수동 작업지시 입력\n긴급 · 시생산" },
     { id: "p3", lane: "생산", row: 12, kind: "step", text: "작업지시 확정\n라우팅으로 공정 분할" },
@@ -46,8 +46,15 @@ export const SWIMLANE: Swimlane = {
     { id: "i5", lane: "재고", row: 21, kind: "step", text: "제품 출고" },
     { id: "s4", lane: "영업", row: 22, kind: "step", text: "매출 확정" },
     { id: "a2", lane: "회계", row: 22, kind: "step", text: "매출 전표" },
-    { id: "a3", lane: "회계", row: 23, kind: "step", text: "월 마감" },
-    { id: "a4", lane: "회계", row: 24, kind: "ends", text: "끝" },
+    { id: "s5", lane: "영업", row: 23, kind: "ends", text: "고객 반품 요청" },
+    { id: "s6", lane: "영업", row: 24, kind: "step", text: "반품 접수\n매출 차감" },
+    { id: "a5", lane: "회계", row: 24, kind: "step", text: "매출 차감 전표" },
+    { id: "i6", lane: "재고", row: 25, kind: "step", text: "반품 입고\n검사대기" },
+    { id: "q6", lane: "품질", row: 26, kind: "ask", text: "반품 판정\n합격?" },
+    { id: "i7", lane: "재고", row: 27, kind: "step", text: "가용 재고로" },
+    { id: "q7", lane: "품질", row: 27, kind: "step", text: "불량 격리\n처분: 재작업 · 폐기" },
+    { id: "a3", lane: "회계", row: 28, kind: "step", text: "월 마감" },
+    { id: "a4", lane: "회계", row: 29, kind: "ends", text: "끝" },
   ],
   edges: [
     { from: "h0", to: "h1" },
@@ -87,6 +94,13 @@ export const SWIMLANE: Swimlane = {
     { from: "i5", to: "s4" },
     { from: "s4", to: "a2" },
     { from: "a2", to: "a3" },
+    { from: "s5", to: "s6" },
+    { from: "s6", to: "a5" },
+    { from: "s6", to: "i6" },
+    { from: "i6", to: "q6" },
+    { from: "q6", to: "i7", label: "예" },
+    { from: "q6", to: "q7", label: "아니오" },
+    { from: "a5", to: "a3" },
     { from: "a3", to: "a4" },
   ],
 };
@@ -119,7 +133,7 @@ export const OVERVIEW = `flowchart LR
   QC -- "반품" --> PUR
   PRD -- "생산품" --> QC
   QC -- "재작업" --> PRD
-  SAL -- "출하 요청" --> QC
+  SAL -- "출하 요청 · 고객 반품" --> QC
   INV -- "출고" --> SAL
   PUR -- "매입" --> ACC
   SAL -- "매출" --> ACC
@@ -152,6 +166,7 @@ export const MODULE_MAP: readonly MapModule[] = [
       { id: "shipreq", name: "출하요청", slice: "영업" },
       { id: "ship", name: "출하", slice: "영업" },
       { id: "sales", name: "매출", slice: "영업" },
+      { id: "sret", name: "반품(고객)", slice: "영업" },
     ],
   },
   {
@@ -161,6 +176,7 @@ export const MODULE_MAP: readonly MapModule[] = [
       { id: "po", name: "발주", slice: "구매" },
       { id: "rcv", name: "입고", slice: "구매" },
       { id: "purch", name: "매입", slice: "구매" },
+      { id: "pret", name: "구매 반품", slice: "구매" },
     ],
   },
   {
@@ -234,6 +250,11 @@ export const MODULE_FLOWS: readonly (readonly string[])[] = [
   ["result", "qrec"],
   ["rcv", "purch", "jv"],
   ["ship", "sales", "jv"],
+  ["qrec", "pret", "txn"],
+  ["pret", "purch"],
+  ["sret", "txn"],
+  ["sret", "qrec"],
+  ["sret", "sales"],
   ["dept", "emp", "users"],
 ];
 
