@@ -27,3 +27,17 @@ body {
   outline: 2px solid var(--color-ink);
   outline-offset: 2px;
 }
+
+/* 설계도의 Mermaid 그림 — 글자 크기와, 짙은 상자 안의 글자색. */
+.mermaid-diagram .nodeLabel {
+  font-size: 15px;
+}
+.mermaid-diagram .edgeLabel {
+  font-size: 13px;
+  color: var(--color-machine-line);
+}
+.mermaid-diagram :is(.dept, .done) .nodeLabel,
+.mermaid-diagram :is(.dept, .done) .nodeLabel * {
+  color: #ffffff !important;
+  fill: #ffffff !important;
+}

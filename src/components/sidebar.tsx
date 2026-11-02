@@ -25,7 +25,7 @@ export function Sidebar() {
           type="button"
           className="rounded border border-machine-line px-3 py-1.5 text-sm font-semibold text-white focus-visible:outline-safety md:hidden"
           aria-expanded={open}
-          aria-controls="area-menu"
+          aria-controls="area-menu area-menu-foot"
           onClick={() => setOpen((v) => !v)}
         >
           메뉴
@@ -55,14 +55,32 @@ export function Sidebar() {
           );
         })}
       </ul>
-      <div className="mt-auto hidden px-6 pb-6 text-sm md:block">
-        <Link
-          href="/health"
-          prefetch={false}
-          className="underline underline-offset-4 hover:text-white focus-visible:outline-safety"
-        >
-          시스템 상태
-        </Link>
+      <div
+        id="area-menu-foot"
+        className={`${open ? "block" : "hidden"} mt-auto border-t border-machine-line px-5 py-4 text-sm md:block md:border-t-0 md:px-6 md:pt-0 md:pb-6`}
+      >
+        <ul className="flex gap-5">
+          <li>
+            <Link
+              href="/design"
+              onClick={() => setOpen(false)}
+              aria-current={pathname === "/design" || pathname.startsWith("/design/") ? "page" : undefined}
+              className="underline underline-offset-4 hover:text-white focus-visible:outline-safety aria-[current=page]:text-white"
+            >
+              설계도
+            </Link>
+          </li>
+          <li>
+            <Link
+              href="/health"
+              prefetch={false}
+              onClick={() => setOpen(false)}
+              className="underline underline-offset-4 hover:text-white focus-visible:outline-safety"
+            >
+              시스템 상태
+            </Link>
+          </li>
+        </ul>
         <p className="mt-2">샘플 데이터로 움직이는 포트폴리오 데모입니다.</p>
       </div>
     </nav>
