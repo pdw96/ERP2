@@ -1,12 +1,29 @@
 @import "tailwindcss";
 
+/* 공장 현장에서 가져온 색 — 기계 도장의 녹색, 바닥 안전 표시의 노랑, 콘크리트 바탕. */
+@theme {
+  --color-machine: #2f4a40;
+  --color-machine-deep: #253b33;
+  --color-machine-line: #456356;
+  --color-machine-text: #c9d6cf;
+  --color-safety: #f2c230;
+  --color-floor: #f4f5f2;
+  --color-ink: #1c2321;
+  --color-muted: #66706b;
+  --color-rule: #d3d8d3;
+  --font-sans: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+
 body {
-  background: #ffffff;
-  color: #171717;
-  font-family:
-    system-ui,
-    -apple-system,
-    "Apple SD Gothic Neo",
-    "Malgun Gothic",
-    sans-serif;
+  background: var(--color-floor);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  word-break: keep-all;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
 }

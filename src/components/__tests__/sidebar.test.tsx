@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "@/components/sidebar";
 
@@ -12,7 +12,7 @@ describe("Sidebar", () => {
 
   it("업무 영역 여섯을 순서대로 보인다", () => {
     render(<Sidebar />);
-    const links = screen.getAllByRole("link");
+    const links = within(document.getElementById("area-menu")!).getAllByRole("link");
     expect(links.map((l) => l.textContent)).toEqual(["재고", "생산", "구매", "영업", "회계", "인사"]);
     expect(links.map((l) => l.getAttribute("href"))).toEqual([
       "/inventory",
