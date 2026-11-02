@@ -75,3 +75,16 @@
 |---|---|---|
 | A | 앱 뼈대 · 화면 틀(메뉴 여섯 영역) · 자동 검사 · `docs/architecture.md` | 성공 기준 4 의 자동 검사, 1 의 화면(로컬) |
 | B | DB 연결 · 상태 화면과 시험 · `.env.example` · `docs/schema.md` · `docs/deploy.md` · 저자의 Vercel · Neon 연결 | 성공 기준 1(데모 주소) · 2 · 3 · 4 의 미리보기 · 5 · 6 |
+
+## 2026-11-02 — PR A 를 열기 전에 정한 것
+
+④ 의 열어 둔 것 가운데 PR A 몫이다. 업무에 영향이 없는 기술 결정이라 Claude 가 정했다(작업 규칙).
+
+- **패키지 관리자** — npm. Node 에 따라오고 Vercel 이 그대로 읽는다. pnpm 은 설치가 하나 더 든다.
+- **화면 구성 요소** — Tailwind CSS 만 쓴다. 표 · 입력 칸 같은 구성 요소가 필요한 업무 조각에서 그 조각이 라이브러리를 고른다.
+- **시험 도구** — Vitest 와 Testing Library. Next.js 문서가 안내하는 조합이다.
+- **형식** — Prettier. 문서(`*.md`)는 형식 검사에서 뺀다 — 손으로 맞춘 한국어 표를 다시 쓰지 않게.
+- **문서 검사의 출처** — 자동 검사는 claude-kit 커밋 `2e60e97` 의 `vibe-slice/skills/slice-docs/` 를 받아 `verify-docs.py --repo .`
+  를 돌린다. 이 커밋의 검사와 틀 여섯은 착공 때 돌린 것과 같다.
+- **① 에 더하는 것** — Next.js 뼈대가 `AGENTS.md` 를 함께 만든다(Next.js 가 쓰고 고치는 안내). PR A 는 그것을 싣고, `CLAUDE.md`
+  작업 방식에 그것을 가리키는 줄을 더한다.
