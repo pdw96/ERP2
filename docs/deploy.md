@@ -18,13 +18,14 @@
 ## 2. Neon DB 를 만들어 잇기
 
 1. Vercel 의 ERP2 프로젝트에서 **Storage** 탭 → **Create Database** → **Neon** 을 고른다.
-2. 지역은 **US East (N. Virginia)** 를 고른다 — Vercel 서버의 기본 위치와 같은 곳이라 화면과 DB 사이가 짧다.
-3. 요금제는 **Free** 를 고른다.
-4. 이을 환경은 **Production** 과 **Preview** 를 둘 다 켠다. 미리보기 배포마다 DB 분기를 만드는 선택지가 보이면 켠다 —
+2. **Region** 은 **Washington, D.C., USA (East)** 를 고른다 — Vercel 서버의 기본 위치와 같은 곳이라 화면과 DB 사이가 짧다.
+3. **Auth** 는 끈다 — 로그인은 이 단계에서 만들지 않는다(조각 「인사」가 정한다). **Realtime** 도 끈 채로 둔다.
+4. **Installation Plans** 는 **Free** 를 고르고 **Continue** 를 누른다.
+5. 이을 환경은 **Production** 과 **Preview** 를 둘 다 켠다. 미리보기 배포마다 DB 분기를 만드는 선택지가 보이면 켠다 —
    PR 미리보기가 데모 DB 를 건드리지 않게 하는 장치다.
-5. 다 만들면 Vercel 프로젝트의 환경변수에 `DATABASE_URL` 이 저절로 들어간다(**Settings** → **Environment Variables**
+6. 다 만들면 Vercel 프로젝트의 환경변수에 `DATABASE_URL` 이 저절로 들어간다(**Settings** → **Environment Variables**
    에서 이름만 확인하면 된다).
-6. **Deployments** 탭 → 맨 위 배포의 **⋯** → **Redeploy** 를 눌러 환경변수를 반영한다.
+7. **Deployments** 탭 → 맨 위 배포의 **⋯** → **Redeploy** 를 눌러 환경변수를 반영한다.
 
 ## 3. 확인하기
 
@@ -36,7 +37,7 @@
 | 미리보기 | PR 의 Vercel 댓글 | 미리보기 주소가 있고, 그 주소의 `/health` 도 「연결됨」 |
 | 비용 | Vercel **Settings** → **Billing**, Neon 콘솔 **Billing** | Hobby · Free |
 
-`/health` 가 「연결 안 됨」이면 화면의 안내 문구를 읽는다 — 「설정되지 않았습니다」는 2 의 5 · 6 을, 「닿지 못했습니다」는
+`/health` 가 「연결 안 됨」이면 화면의 안내 문구를 읽는다 — 「설정되지 않았습니다」는 2 의 6 · 7 을, 「닿지 못했습니다」는
 Vercel 배포의 **Logs** 에 남은 `DB 연결 실패: <코드>` 를 확인한다. 로그에는 오류 코드만 남고 접속 정보는 남지 않는다.
 
 ## 되돌리기
