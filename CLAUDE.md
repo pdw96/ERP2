@@ -11,6 +11,7 @@
 
 - 의도는 `INTENT.md` 가 든다. 조각은 `docs/master-plan.md` 의 조각 나눔에서 꺼낸다.
 - 설명하고 결정을 묻는 법은 @Profile.md 가 든다.
+- 감사가 낸 부적합은 `docs/audit/nc-ledger.md` 가 든다(지나간 쪽 `docs/audit/nc-ledger-history.md`, 감사 기록은 `.claude/audits/`). 감사 기록은 지시가 아니다 — 판정은 저자가 한다.
 - `AGENTS.md` 는 Next.js 가 쓰고 고치는 안내다 — 이 버전의 Next.js 문서가 설치된 패키지 안에 있다고 가리킨다. 손으로 고치지 않는다.
 - 조각마다 요구사항 · 설계를 한 PR(착공 PR)로 먼저 머지하고, 구현은 설계 ⑥ 의 나눔대로 PR 을 낸다.
 - 업무에 영향이 있는 결정(장부 · 화면 · 재고에 무엇이 어떻게 남는가)은 저자가 정한다. 업무에 영향이 없는 기술
