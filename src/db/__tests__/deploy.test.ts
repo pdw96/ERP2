@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { isPooled, prepareDatabase } from "@/db/deploy";
+import { describeFailure } from "@/db/status";
 import { codeGroups, items, warehouses } from "@/db/schema";
 import { emptyDb } from "./pglite";
 
@@ -67,9 +68,13 @@ describe("마이그레이션과 첫 샘플 데이터", () => {
     journal.entries.push({ idx: 1, version: "7", when: Date.now(), tag: "0001_broken", breakpoints: true });
     writeFileSync(journalPath, JSON.stringify(journal));
 
-    await expect(
-      prepareDatabase(h.db, { migrate: () => h.migrate(folder), lock: true, log: () => {} }),
-    ).rejects.toThrow();
+    const failure = await prepareDatabase(h.db, { migrate: () => h.migrate(folder), lock: true, log: () => {} }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeDefined();
+    // 빌드 기록에 남는 줄 — 코드 · 등급만, DB 의 메시지는 남기지 않는다(대장 NC-6).
+    expect(describeFailure(failure, "code-only")).toBe("DB 질의 실패: 42704 ERROR");
     const columns = await h.client.query(
       "select 1 from information_schema.columns where table_name = 'items' and column_name = 'x'",
     );

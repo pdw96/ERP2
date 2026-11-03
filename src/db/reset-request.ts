@@ -25,7 +25,7 @@ export async function handleResetRequest(
     console.log(`되돌림 완료: ${describeCounts(counts)}`);
     return Response.json({ ok: true, counts });
   } catch (error) {
-    console.error(`되돌림 실패: ${describeFailure(error)}`);
+    console.error(`되돌림 실패: ${describeFailure(error, "code-only")}`);
     return Response.json({ ok: false, error: "reset-failed" }, { status: 500 });
   }
 }

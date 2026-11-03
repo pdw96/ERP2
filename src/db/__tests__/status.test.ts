@@ -73,3 +73,41 @@ describe("describeFailure", () => {
     expect(describeFailure(undefined)).toBe("DB 질의 실패: unknown");
   });
 });
+
+describe("describeFailure — 코드만(방문자 데이터에 닿는 경로, 대장 NC-6)", () => {
+  const visitor = "방문자가넣은글자";
+  const server = Object.assign(new Error(`invalid input syntax for type integer: "${visitor}"`), {
+    name: "PostgresError",
+    code: "22P02",
+    severity: "ERROR",
+    table_name: "items",
+    column_name: "lead_time_days",
+  });
+
+  it("서버 오류는 코드 · 등급과 스키마의 이름만 남기고 메시지(행의 값)는 남기지 않는다", () => {
+    const line = describeFailure(Object.assign(new Error("Failed query"), { cause: server }), "code-only");
+    expect(line).toBe("DB 질의 실패: 22P02 ERROR table=items column=lead_time_days");
+    expect(line).not.toContain(visitor);
+  });
+
+  it("PGlite 꼴의 이름(table · constraint)도 읽는다", () => {
+    const pg = {
+      code: "23514",
+      severity: "ERROR",
+      message: `failing row contains (${visitor})`,
+      table: "items",
+      constraint: "items_name_length",
+    };
+    expect(describeFailure(pg, "code-only")).toBe("DB 질의 실패: 23514 ERROR table=items constraint=items_name_length");
+  });
+
+  it("코드가 없는 오류는 이름만 남긴다", () => {
+    expect(describeFailure(new TypeError(`bad ${visitor}`), "code-only")).toBe("DB 질의 실패: TypeError");
+  });
+
+  it("네트워크 오류는 그대로 코드만", () => {
+    expect(describeFailure(Object.assign(new Error("x"), { code: "ECONNREFUSED" }), "code-only")).toBe(
+      "DB 연결 실패: ECONNREFUSED",
+    );
+  });
+});

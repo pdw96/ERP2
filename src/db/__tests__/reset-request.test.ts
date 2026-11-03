@@ -38,7 +38,22 @@ describe("되돌림의 입구 — 비밀값을 가진 요청만", () => {
     expect(res.status).toBe(503);
   });
 
-  it("실패하면 500 — 로그에는 오류 코드만, 접속 정보 · 비밀값은 남기지 않는다", async () => {
+  it("DB 서버가 거절해도 로그에 서버의 메시지(행의 값)는 남지 않는다 — 코드 · 등급 · 스키마의 이름만", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const server = Object.assign(new Error('value too long: "방문자가넣은글자"'), {
+      code: "23514",
+      severity: "ERROR",
+      table_name: "items",
+      constraint_name: "items_name_length",
+    });
+    const wrapped = Object.assign(new Error("Failed query"), { cause: server });
+    const res = await handleResetRequest("Bearer s3cret-value", env, vi.fn().mockRejectedValue(wrapped));
+    expect(res.status).toBe(500);
+    expect(log).toHaveBeenCalledWith("되돌림 실패: DB 질의 실패: 23514 ERROR table=items constraint=items_name_length");
+    expect(JSON.stringify(log.mock.calls)).not.toContain("방문자가넣은글자");
+  });
+
+  it("연결이 실패하면 500 — 로그에는 오류 코드만, 접속 정보 · 비밀값은 남기지 않는다", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const failure = Object.assign(new Error("connect ECONNREFUSED postgres://u:p@db.example/erp"), {
       code: "ECONNREFUSED",

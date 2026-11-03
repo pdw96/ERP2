@@ -26,8 +26,8 @@ async function main(): Promise<number> {
     });
     return 0;
   } catch (error) {
-    // 접속 정보는 남기지 않는다 — 실패 줄의 꼴은 상태 화면과 같다(docs/deploy.md).
-    console.error(`DB 준비 실패: ${describeFailure(error)}`);
+    // 접속 정보도, 행의 값이 실릴 수 있는 서버의 메시지도 남기지 않는다 — 코드 · 등급 · 스키마의 이름만(docs/deploy.md).
+    console.error(`DB 준비 실패: ${describeFailure(error, "code-only")}`);
     return 1;
   } finally {
     await close();
