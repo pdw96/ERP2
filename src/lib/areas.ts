@@ -188,6 +188,21 @@ export const AREAS: readonly Area[] = [
       { menus: [{ label: "사원", slice: "인사" }] },
     ],
   },
+  {
+    href: "/system",
+    label: "시스템 관리",
+    summary: "공통코드, 회사 정보, 사용자와 권한",
+    groups: [
+      {
+        menus: [
+          { label: "공통코드", slice: "기준정보", href: "/system/codes" },
+          { label: "회사 정보", slice: "인사" },
+          { label: "사용자", slice: "인사" },
+          { label: "권한", slice: "인사" },
+        ],
+      },
+    ],
+  },
 ];
 
 export function areaByHref(href: string): Area {

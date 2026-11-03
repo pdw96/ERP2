@@ -27,6 +27,7 @@ describe("Sidebar", () => {
       "품질",
       "회계",
       "인사",
+      "시스템 관리",
     ]);
     expect(links.map((l) => l.getAttribute("href"))).toEqual([
       "/master",
@@ -37,6 +38,7 @@ describe("Sidebar", () => {
       "/quality",
       "/accounting",
       "/hr",
+      "/system",
     ]);
   });
 
@@ -66,6 +68,17 @@ describe("Sidebar", () => {
     expect(menu.getByRole("link", { name: "창고" })).toHaveAttribute("aria-current", "page");
     expect(menu.getByText("수불 등록").parentElement).toHaveTextContent("수불 등록준비 중");
     expect(screen.getByRole("link", { name: /^재고/ })).not.toHaveTextContent("준비 중");
+  });
+
+  it("시스템 관리를 열면 공통코드는 링크, 회사 정보 · 사용자 · 권한은 준비 중으로 보인다", () => {
+    nav.pathname = "/system/codes/UNIT/EA";
+    render(<Sidebar />);
+    const menu = within(screen.getByRole("list", { name: "시스템 관리 메뉴" }));
+    expect(menu.getByRole("link", { name: "공통코드" })).toHaveAttribute("href", "/system/codes");
+    expect(menu.getByRole("link", { name: "공통코드" })).toHaveAttribute("aria-current", "page");
+    for (const soon of ["회사 정보", "사용자", "권한"])
+      expect(menu.getByText(soon).parentElement).toHaveTextContent(`${soon}준비 중`);
+    expect(screen.getByRole("link", { name: /^시스템 관리/ })).not.toHaveTextContent("준비 중");
   });
 
   it("주소를 모를 때(빌드 때의 모양)는 어느 모듈도 펼치지 않는다", () => {
