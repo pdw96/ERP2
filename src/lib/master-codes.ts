@@ -21,3 +21,14 @@ export const SYSTEM_CODE_GROUPS = {
   ITEM_TYPE: ITEM_TYPES,
   PROC_TYPE: PROC_TYPES,
 } as const;
+
+/** 유형을 고르면 붙는 기본값(ADR 0003) — 원자재 → 구매 · 수입검사, 반제품 → 생산, 완제품 → 생산 · 출하검사. 등록 화면에서 바꿀 수 있다. */
+export const ITEM_TYPE_DEFAULTS: Record<ItemType, { procurement: ProcType; inspectIn: boolean; inspectOut: boolean }> =
+  {
+    RM: { procurement: "BUY", inspectIn: true, inspectOut: false },
+    SF: { procurement: "MAKE", inspectIn: false, inspectOut: false },
+    FG: { procurement: "MAKE", inspectIn: false, inspectOut: true },
+  };
+
+export const itemTypeName = (code: string) => ITEM_TYPES.find((t) => t.code === code)?.name ?? code;
+export const procTypeName = (code: string) => PROC_TYPES.find((t) => t.code === code)?.name ?? code;
