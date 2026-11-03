@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, or, type SQL } from "drizzle-orm";
+import { and, asc, eq, ilike, ne, or, type SQL } from "drizzle-orm";
 import {
   parseNewPartner,
   parsePartnerUpdate,
@@ -80,6 +80,18 @@ export async function getPartner(db: Db, code: string): Promise<Partner | undefi
   if (!PARTNER_CODE.test(code)) return undefined;
   const [row] = await db.select().from(partners).where(eq(partners.code, code));
   return row;
+}
+
+/** 같은 사업자등록번호를 쓰는 다른 거래처(「사용 안 함」 포함) — 막지 않고 경고만 한다(저자 판정 2026-11-03). */
+export type SharedBizNo = Pick<Partner, "code" | "name" | "active">;
+
+export async function partnersSharingBizNo(db: Db, partner: Pick<Partner, "code" | "bizNo">): Promise<SharedBizNo[]> {
+  if (!partner.bizNo) return [];
+  return db
+    .select({ code: partners.code, name: partners.name, active: partners.active })
+    .from(partners)
+    .where(and(eq(partners.bizNo, partner.bizNo), ne(partners.code, partner.code)))
+    .orderBy(asc(partners.code));
 }
 
 /** 지금 등록하면 붙을 코드 — 화면의 안내용이고, 저장할 때 다시 센다. */

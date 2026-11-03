@@ -1,7 +1,15 @@
 import Form from "next/form";
 import Link from "next/link";
 import { SavedNotice as Notice } from "@/components/saved-notice";
-import { PARTNER_ROLES, roleNames, type Partner, type PartnerFilter, type PartnerFilterNotice } from "@/db/partners";
+import {
+  PARTNER_ROLES,
+  roleNames,
+  type Partner,
+  type PartnerFilter,
+  type PartnerFilterNotice,
+  type SharedBizNo,
+} from "@/db/partners";
+import { BizNoWarning } from "./biz-no-warning";
 
 // 거래처 목록 화면의 부품 — 찾기 · 거르기, 표, 저장 뒤의 알림.
 
@@ -73,9 +81,19 @@ export function PartnerSearch({ filter, notices }: { filter: PartnerFilter; noti
   );
 }
 
-export function SavedNotice({ partner, shown }: { partner: Partner; shown: boolean }) {
+export function SavedNotice({
+  partner,
+  shown,
+  sharedBizNo = [],
+}: {
+  partner: Partner;
+  shown: boolean;
+  sharedBizNo?: SharedBizNo[];
+}) {
   return (
-    <Notice code={partner.code} name={partner.name} active={partner.active} shown={shown} listHref="/master/partners" />
+    <Notice code={partner.code} name={partner.name} active={partner.active} shown={shown} listHref="/master/partners">
+      {partner.bizNo && <BizNoWarning bizNo={partner.bizNo} shared={sharedBizNo} />}
+    </Notice>
   );
 }
 

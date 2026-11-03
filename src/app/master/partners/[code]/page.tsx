@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
-import { getPartner, type Partner } from "@/db/partners";
+import { getPartner, partnersSharingBizNo, type Partner } from "@/db/partners";
 import { withDb } from "@/db/request";
 import type { PartnerValues } from "@/lib/partner-fields";
 import { updatePartnerAction } from "../actions";
@@ -44,13 +44,17 @@ const asValues = (p: Partner): PartnerValues => ({
 async function EditPartner({ params }: Pick<PageProps<"/master/partners/[code]">, "params">) {
   const { code } = await params;
   await connection();
-  let partner;
+  let data;
   try {
-    partner = await withDb((db) => getPartner(db, decodeURIComponent(code)));
+    data = await withDb(async (db) => {
+      const partner = await getPartner(db, decodeURIComponent(code));
+      return partner && { partner, sharedBizNo: await partnersSharingBizNo(db, partner) };
+    });
   } catch (error) {
     return <LoadFailed what="거래처" error={error} />;
   }
-  if (!partner) notFound();
+  if (!data) notFound();
+  const { partner, sharedBizNo } = data;
   return (
     <>
       <h1 className="mt-1 text-3xl leading-tight font-semibold wrap-anywhere">
@@ -61,6 +65,7 @@ async function EditPartner({ params }: Pick<PageProps<"/master/partners/[code]">
         code={partner.code}
         action={updatePartnerAction.bind(null, partner.code)}
         initial={asValues(partner)}
+        sharedBizNo={sharedBizNo}
       />
     </>
   );

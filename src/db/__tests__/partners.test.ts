@@ -6,6 +6,7 @@ import {
   listPartners,
   PARTNER_LIMIT,
   parsePartnerFilter,
+  partnersSharingBizNo,
   previewPartnerCode,
   roleNames,
   updatePartner,
@@ -236,6 +237,30 @@ describe("수정", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe("같은 사업자등록번호 — 막지 않고 경고만", () => {
+  it("겹쳐도 저장된다", async () => {
+    const r = await createPartner(db, { ...newSupplier, bizNo: "000-00-00005" });
+    expect(r).toEqual({ ok: true, code: "BP-0006" });
+  });
+
+  it("같은 번호를 쓰는 다른 거래처를 코드 순으로 찾는다 — 자기 자신은 빼고, 「사용 안 함」도 넣는다", async () => {
+    await createPartner(db, { ...newSupplier, bizNo: "000-00-00005" });
+    await updatePartner(db, "BP-0005", editOf({ name: "(가상) 마루반도체", bizNo: "000-00-00005", active: "N" }));
+    expect(await partnersSharingBizNo(db, { code: "BP-0006", bizNo: "000-00-00005" })).toEqual([
+      { code: "BP-0005", name: "(가상) 마루반도체", active: false },
+    ]);
+    expect(await partnersSharingBizNo(db, { code: "BP-0005", bizNo: "000-00-00005" })).toEqual([
+      { code: "BP-0006", name: "(가상) 바다솔더", active: true },
+    ]);
+  });
+
+  it("겹치지 않거나 번호가 없으면 빈 목록", async () => {
+    expect(await partnersSharingBizNo(db, { code: "BP-0001", bizNo: "000-00-00001" })).toEqual([]);
+    await createPartner(db, { ...newSupplier, bizNo: "" });
+    expect(await partnersSharingBizNo(db, { code: "BP-0006", bizNo: null })).toEqual([]);
   });
 });
 

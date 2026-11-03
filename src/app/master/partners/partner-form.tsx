@@ -12,7 +12,9 @@ import {
   Section,
 } from "@/components/form-parts";
 import { PARTNER_ERROR_KEYS, type PartnerErrorKey, type PartnerErrors, type PartnerValues } from "@/lib/partner-fields";
+import type { SharedBizNo } from "@/db/partners";
 import type { PartnerFormState } from "./actions";
+import { BizNoWarning } from "./biz-no-warning";
 
 // 거래처 등록 · 수정 화면의 입력 칸. 검사는 서버가 하고(설계 ②), 화면은 거절된 칸과 까닭을 칸 옆에 보인다.
 // 한 거래처가 매입처 · 매출처 둘 다일 수 있다 — 하나 이상 골라야 저장된다(ADR 0003).
@@ -20,7 +22,15 @@ import type { PartnerFormState } from "./actions";
 type Props = {
   action: (state: PartnerFormState, form: FormData) => Promise<PartnerFormState>;
   initial: PartnerValues;
-} & ({ mode: "create"; previewCode: string } | { mode: "edit"; code: string });
+} & (
+  | { mode: "create"; previewCode: string }
+  | {
+      mode: "edit";
+      code: string;
+      /** 지금 저장된 사업자등록번호를 같이 쓰는 다른 거래처 — 경고만 한다. */
+      sharedBizNo?: SharedBizNo[];
+    }
+);
 
 const LABEL: Record<PartnerErrorKey, string> = {
   name: "거래처명",
@@ -84,6 +94,9 @@ export function PartnerForm(props: Props) {
                 invalid={!!errors.bizNo}
               />
             </div>
+            {props.mode === "edit" && props.initial.bizNo && (
+              <BizNoWarning bizNo={props.initial.bizNo} shared={props.sharedBizNo ?? []} />
+            )}
           </Field>
         </Section>
         {props.mode === "edit" && <ActiveSection what="거래처" initial={v.active} error={errors.active} />}

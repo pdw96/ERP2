@@ -3,7 +3,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
-import { getPartner, listPartners, parsePartnerFilter, PARTNER_CODE } from "@/db/partners";
+import { getPartner, listPartners, parsePartnerFilter, partnersSharingBizNo, PARTNER_CODE } from "@/db/partners";
 import { withDb } from "@/db/request";
 import { PartnerList, PartnerSearch, SavedNotice } from "./partner-list";
 
@@ -46,17 +46,27 @@ async function Results({ searchParams }: Pick<PageProps<"/master/partners">, "se
 
   let data;
   try {
-    data = await withDb(async (db) => ({
-      rows: await listPartners(db, filter),
-      saved: savedCode ? await getPartner(db, savedCode) : undefined,
-    }));
+    data = await withDb(async (db) => {
+      const saved = savedCode ? await getPartner(db, savedCode) : undefined;
+      return {
+        rows: await listPartners(db, filter),
+        saved,
+        sharedBizNo: saved ? await partnersSharingBizNo(db, saved) : [],
+      };
+    });
   } catch (error) {
     return <LoadFailed error={error} what="거래처 목록" />;
   }
 
   return (
     <>
-      {data.saved && <SavedNotice partner={data.saved} shown={data.rows.some((r) => r.id === data.saved!.id)} />}
+      {data.saved && (
+        <SavedNotice
+          partner={data.saved}
+          shown={data.rows.some((r) => r.id === data.saved!.id)}
+          sharedBizNo={data.sharedBizNo}
+        />
+      )}
       <PartnerSearch filter={filter} notices={notices} />
       <PartnerList rows={data.rows} filter={filter} savedCode={data.saved?.code} />
     </>

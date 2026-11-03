@@ -75,6 +75,25 @@ describe("거래처 목록", () => {
     render(<SavedNotice partner={partner({})} shown />);
     expect(screen.getByRole("status")).toHaveTextContent("BP-0005 (가상) 마루반도체를 저장했습니다.");
   });
+
+  it("같은 사업자등록번호를 쓰는 거래처가 있으면 저장 알림에 경고를 붙인다", () => {
+    render(
+      <SavedNotice
+        partner={partner({ code: "BP-0006", name: "(가상) 바다솔더" })}
+        shown
+        sharedBizNo={[{ code: "BP-0005", name: "(가상) 마루반도체", active: false }]}
+      />,
+    );
+    const note = within(screen.getByRole("note"));
+    expect(note.getByText(/같은 사업자등록번호/)).toHaveTextContent("000-00-00005");
+    expect(note.getByRole("link", { name: "BP-0005" })).toHaveAttribute("href", "/master/partners/BP-0005");
+    expect(note.getByText("(사용 안 함)")).toBeInTheDocument();
+  });
+
+  it("겹치지 않으면 경고가 없다", () => {
+    render(<SavedNotice partner={partner({})} shown sharedBizNo={[]} />);
+    expect(screen.queryByRole("note")).toBeNull();
+  });
 });
 
 describe("거래처 등록 화면", () => {
@@ -119,6 +138,20 @@ describe("거래처 등록 화면", () => {
 });
 
 describe("거래처 수정 화면", () => {
+  it("저장된 사업자등록번호를 다른 거래처도 쓰면 그 칸 아래에 경고한다 — 저장은 막지 않는다", () => {
+    render(
+      <PartnerForm
+        mode="edit"
+        code="BP-0006"
+        action={vi.fn()}
+        initial={{ name: "(가상) 바다솔더", isSupplier: "on", bizNo: "000-00-00005", active: "Y" }}
+        sharedBizNo={[{ code: "BP-0005", name: "(가상) 마루반도체", active: true }]}
+      />,
+    );
+    expect(screen.getByRole("note")).toHaveTextContent("BP-0005 (가상) 마루반도체");
+    expect(screen.getByRole("button", { name: "저장" })).toBeEnabled();
+  });
+
   const initial = { name: "(가상) 마루반도체", isSupplier: "on", isCustomer: "on", bizNo: "000-00-00005", active: "Y" };
 
   it("코드는 보이기만 하고 보내지 않는다. 지금의 구분이 켜져 있다", async () => {
