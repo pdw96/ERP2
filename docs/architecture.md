@@ -15,8 +15,12 @@
 | 설계도 화면 | 업무 흐름(스윔레인 · Overview) · 데이터 모델(모듈별 전체 지도 · 이 조각의 테이블) · 시스템 구성 그림. 메뉴 판 아래 「설계도」. 그림의 글과 스윔레인 데이터는 한 파일에 있고, 테이블 · 부품 · 흐름을 바꾸는 PR 이 함께 고친다(ADR 0006). 스윔레인은 서버에서 SVG 로, 모듈별 지도는 서버에서 카드로, 나머지는 브라우저의 Mermaid 가 그린다 | `src/app/design/` · `src/content/diagrams.ts` · `src/lib/swimlane.ts` · `src/components/swimlane.tsx` · `src/components/module-map.tsx` · `src/components/mermaid-diagram.tsx` |
 | 상태 화면 | DB 에 닿는지 묻고 「연결됨」(DB 시각) 또는 「연결 안 됨」을 보인다. 결과를 1분 재사용하고 검색 로봇을 막는다. 떠 있는 배포의 커밋도 보인다 | `src/app/health/` · `src/db/status.ts` |
 | DB 접속 | 환경변수 `DATABASE_URL` 하나로 PostgreSQL 에 닿는다 — Drizzle ORM · postgres 드라이버. 내 컴퓨터의 DB 말고는 암호화하고 인증서를 확인한다 | `src/db/client.ts` |
+| 테이블 | 기준정보 다섯(품목 · 창고 · 거래처 · 공통코드 묶음 · 값)과 코드의 꼴 · 참조 제약, 마이그레이션 SQL(`docs/schema.md`) | `src/db/schema.ts` · `drizzle/` |
+| DB 준비(배포 빌드) | 빌드의 첫 단계 — 마이그레이션을 적용하고, 빈 DB 면 샘플 데이터를 넣는다. 실패하면 빌드가 멈춰 배포가 나가지 않는다(ADR 0005) | `scripts/migrate.ts` · `src/db/deploy.ts` |
+| 샘플 데이터 · 되돌림 | 가상 반도체 후공정 회사의 샘플과, 테이블을 비우고 샘플로 다시 채우는 되돌림. 매일 밤 Vercel Cron 이 `CRON_SECRET` 을 붙여 입구를 부른다 — 비밀값이 틀리면 DB 에 닿지 않는다(ADR 0004) | `src/db/sample.ts` · `src/db/reset.ts` · `src/db/reset-request.ts` · `src/app/api/cron/reset/` · `vercel.json` |
+| 코드 번호 | 같은 머리의 가장 큰 번호 + 1 | `src/db/numbering.ts` · 공통코드의 시스템 값 `src/lib/master-codes.ts` |
 | 정기 확인 | 하루 4번 데모의 `/health` 가 「연결됨」이고 `main` 의 최신 커밋인지 보고, 아니면 GitHub 가 메일로 알린다 | `.github/workflows/health-check.yml` |
-| 자동 검사 | PR 과 `main` 에서 형식 · 린트 · 타입 · 시험 · 문서 모양을 본다 | `.github/workflows/ci.yml` |
+| 자동 검사 | PR 과 `main` 에서 형식 · 린트 · 타입 · 시험 · 문서 모양과, 데모에 실리는 의존성의 알려진 약점(높음 이상)을 본다 | `.github/workflows/ci.yml` |
 
 ## 흐름
 
@@ -24,13 +28,17 @@
 브라우저 ── 웹 앱(Vercel) ── PostgreSQL(Neon 운영 DB)
 PR ── 자동 검사(GitHub Actions)
    └─ 미리보기 배포(Vercel) ── Neon 미리보기 분기 DB
-main 머지 ── 운영 배포(Vercel)
+   └─ 빌드: 마이그레이션 · 빈 DB 면 샘플 ── 미리보기 분기 DB
+main 머지 ── 빌드: 마이그레이션 · 빈 DB 면 샘플 ── 운영 DB
+         └─ 운영 배포(Vercel)
 예약(하루 4번) ── 정기 확인(GitHub Actions) ── 데모 /health
+예약(하루 1번, 한국 04시대) ── Vercel Cron ── 데모 /api/cron/reset ── 운영 DB 를 샘플로
 ```
 
-고정 화면(첫 화면 · 영역 화면 · 설계도)은 빌드 때 만들어 Vercel 이 가까운 곳에서 내보내고, 상태 화면의 DB 확인만 요청이 올 때 돈다(1분 재사용).
+고정 화면(첫 화면 · 영역 화면 · 설계도)은 빌드 때 만들어 Vercel 이 가까운 곳에서 내보내고, 상태 화면의 DB 확인과 되돌림 입구만 요청이 올 때 돈다(상태 확인은 1분 재사용).
 스택과 배포처를 고른 까닭은 ADR 0001 · 0002, 테이블과 마이그레이션은 `docs/schema.md`, 배포와 되돌리기는 `docs/deploy.md`.
 
 ## 시험
 
-화면 부품의 시험은 Vitest 와 Testing Library 로, 부품 옆 `__tests__/` 에 둔다.
+화면 부품의 시험은 Vitest 와 Testing Library 로, 부품 옆 `__tests__/` 에 둔다. DB 시험은 PGlite(내 컴퓨터의 메모리에서 도는
+PostgreSQL)에 레포의 마이그레이션을 그대로 적용해 실제 SQL 을 돌린다 — 키 · 접속 정보가 필요 없다(`src/db/__tests__/pglite.ts`).
