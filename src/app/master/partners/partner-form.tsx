@@ -89,7 +89,6 @@ export function PartnerForm(props: Props) {
                 field="bizNo"
                 defaultValue={v.bizNo}
                 maxLength={12}
-                inputMode="numeric"
                 placeholder="000-00-00000"
                 invalid={!!errors.bizNo}
               />

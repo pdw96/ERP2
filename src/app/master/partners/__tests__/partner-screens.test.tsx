@@ -97,6 +97,11 @@ describe("거래처 목록", () => {
 });
 
 describe("거래처 등록 화면", () => {
+  it("사업자등록번호 칸은 숫자 키패드를 띄우지 않는다 — iOS 의 숫자 키패드에는 붙임표(-)가 없어 꼴을 넣을 수 없다", () => {
+    render(<PartnerForm mode="create" action={vi.fn()} previewCode="BP-0006" initial={{ name: "", bizNo: "" }} />);
+    expect(screen.getByLabelText(/사업자등록번호/)).not.toHaveAttribute("inputmode");
+  });
+
   it("붙을 코드를 보이고, 매입처 · 매출처를 둘 다 고를 수 있다", () => {
     render(<PartnerForm mode="create" action={vi.fn()} previewCode="BP-0006" initial={{ name: "", bizNo: "" }} />);
     expect(screen.getByText("BP-0006")).toBeInTheDocument();
