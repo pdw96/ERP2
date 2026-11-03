@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import "@fontsource/ibm-plex-sans-kr/400.css";
 import "@fontsource/ibm-plex-sans-kr/600.css";
-import { Sidebar } from "@/components/sidebar";
+import { Suspense } from "react";
+import { Sidebar, SidebarView } from "@/components/sidebar";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,7 +14,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="ko" className="h-full">
       <body className="min-h-full md:flex">
-        <Sidebar />
+        <Suspense fallback={<SidebarView pathname="" />}>
+          <Sidebar />
+        </Suspense>
         <main className="min-w-0 flex-1 px-5 py-8 md:px-12 md:py-12">{children}</main>
       </body>
     </html>

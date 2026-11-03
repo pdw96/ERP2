@@ -1,5 +1,5 @@
-import { ComingSoon } from "@/components/coming-soon";
+import { ModuleHome } from "@/components/module-home";
 
 export default function Page() {
-  return <ComingSoon href="/inventory" />;
+  return <ModuleHome href="/inventory" />;
 }
