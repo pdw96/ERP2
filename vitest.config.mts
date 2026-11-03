@@ -7,5 +7,8 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./vitest.setup.ts"],
+    // DB 시험은 PGlite 를 처음 띄울 때 몇 초가 걸린다.
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
   },
 });

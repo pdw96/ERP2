@@ -298,13 +298,13 @@ export const DATA_MODEL = `erDiagram
     boolean active "사용 여부"
   }
   CODE_GROUPS["공통코드 묶음 code_groups (Major)"] {
-    text code PK "ITEM_TYPE · PROC_TYPE · UNIT"
+    text code UK "ITEM_TYPE · PROC_TYPE · UNIT"
     text name "이름"
     boolean is_system "시스템 코드 — 화면에서 못 고침"
   }
   CODES["공통코드 값 codes (Minor)"] {
-    text group_code PK, FK "묶음 — 묶음 + 코드가 겹치지 않음"
-    text code PK "RM · BUY · EA …"
+    text group_code FK "묶음 — 묶음 + 코드가 겹치지 않음(UK)"
+    text code "RM · BUY · EA …"
     text name "이름"
     int sort_order "정렬 순서"
     boolean active "사용 여부"
@@ -324,7 +324,7 @@ export const SYSTEM = `flowchart LR
   subgraph V["Vercel — 앱"]
     PREV["PR 미리보기 배포"]:::done
     APP["데모 — Next.js 앱<br/>화면 + 서버"]:::done
-    CRON["매일 밤 되돌림<br/>(기준정보에서)"]:::doing
+    CRON["매일 밤 되돌림 — 한국 04시대<br/>Vercel Cron · 비밀값"]:::done
   end
   subgraph N["Neon — PostgreSQL"]
     DBP[("미리보기 DB<br/>PR 마다 분기")]:::done
@@ -334,10 +334,11 @@ export const SYSTEM = `flowchart LR
   PR --> CI
   PR -- "올리면" --> PREV
   PR -- "머지하면" --> APP
-  PREV --> DBP
+  PREV -- "읽고 쓰기 · 빌드 때 마이그레이션" --> DBP
   U --> APP
-  APP --> DBM
+  APP -- "읽고 쓰기 · 빌드 때 마이그레이션" --> DBM
   HC -- "/health" --> APP
   HC -. "실패하면 메일" .-> AUTHOR
-  CRON -. "샘플로 되돌림" .-> DBM
+  CRON -- "/api/cron/reset" --> APP
+  APP -. "샘플로 되돌림" .-> DBM
 ${CLASSES}`;
