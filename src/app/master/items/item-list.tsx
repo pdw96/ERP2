@@ -1,7 +1,7 @@
 import Form from "next/form";
 import Link from "next/link";
 import type { FilterNotice, Item, ItemFilter } from "@/db/items";
-import { eul } from "@/lib/josa";
+import { SavedNotice as Notice } from "@/components/saved-notice";
 import { ITEM_TYPES, PROC_TYPES, itemTypeName, procTypeName } from "@/lib/master-codes";
 
 // 품목 목록 화면의 부품 — 찾기 · 거르기, 표, 저장 뒤의 알림.
@@ -92,22 +92,7 @@ export function ItemSearch({ filter, notices }: { filter: ItemFilter; notices: F
 }
 
 export function SavedNotice({ item, shown }: { item: Item; shown: boolean }) {
-  return (
-    <div role="status" className="mt-6 border-l-4 border-safety bg-white px-5 py-3 wrap-anywhere">
-      <p>
-        <span className="font-semibold">{item.code}</span> {eul(item.name)} 저장했습니다.
-      </p>
-      {!shown && !item.active && (
-        <p className="mt-1 text-sm text-muted">
-          「사용 안 함」이라 목록에서 빠졌습니다 —{" "}
-          <Link href="/master/items?inactive=1" className="underline underline-offset-4">
-            사용 안 함 포함
-          </Link>
-          을 켜면 보입니다.
-        </p>
-      )}
-    </div>
-  );
+  return <Notice code={item.code} name={item.name} active={item.active} shown={shown} listHref="/master/items" />;
 }
 
 export function ItemList({ rows, filter, savedCode }: { rows: Item[]; filter: ItemFilter; savedCode?: string }) {

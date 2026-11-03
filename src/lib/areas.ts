@@ -29,7 +29,7 @@ export const AREAS: readonly Area[] = [
       {
         menus: [
           { label: "품목", slice: "기준정보", href: "/master/items" },
-          { label: "거래처", slice: "기준정보" },
+          { label: "거래처", slice: "기준정보", href: "/master/partners" },
         ],
       },
     ],
@@ -79,7 +79,7 @@ export const AREAS: readonly Area[] = [
     label: "재고",
     summary: "창고, 수불, 품목별 · 창고별 · LOT별 재고",
     groups: [
-      { label: "재고 기준정보", menus: [{ label: "창고", slice: "기준정보" }] },
+      { label: "재고 기준정보", menus: [{ label: "창고", slice: "기준정보", href: "/inventory/warehouses" }] },
       {
         label: "수불관리",
         menus: [
