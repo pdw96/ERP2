@@ -246,6 +246,22 @@ describe("등록", () => {
     expect(r).toMatchObject({ ok: false, formError: expect.stringContaining("2,000개까지") });
     expect(await db.select().from(items)).toHaveLength(ITEM_LIMIT);
   });
+  it(`동시에 등록해도 상한 ${ITEM_LIMIT}개를 넘지 않는다 — 세기 · 번호 · 넣기가 잠금 안에서 차례로`, async () => {
+    const filler = Array.from({ length: ITEM_LIMIT - 11 }, (_, i) => ({
+      code: `RM-${String(i + 100).padStart(4, "0")}`,
+      name: "채움",
+      itemType: "RM",
+      procurement: "BUY",
+      unit: "EA",
+    }));
+    await db.insert(items).values(filler);
+    const types = ["RM", "SF", "FG"] as const;
+    const results = await Promise.all(
+      types.flatMap((t) => [0, 1].map(() => createItem(db, { ...newRm, itemType: t, procurement: "BUY" }))),
+    );
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(await db.select().from(items)).toHaveLength(ITEM_LIMIT);
+  });
 });
 
 describe("수정", () => {

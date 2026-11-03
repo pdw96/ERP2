@@ -51,6 +51,11 @@ describe("품목 목록", () => {
     expect(screen.getByText("1개 · 사용 안 함 포함")).toBeInTheDocument();
   });
 
+  it("쉼 없이 긴 품명 · 규격도 칸 안에서 접힌다 — 휴대폰 폭에서 표가 넓어지지 않게", () => {
+    render(<ItemList rows={[item({ name: "A".repeat(100), spec: "B".repeat(100) })]} filter={none} />);
+    expect(screen.getByText("A".repeat(100)).closest("td")).toHaveClass("wrap-anywhere");
+  });
+
   it("찾은 것이 없으면 그렇게 말한다", () => {
     render(<ItemList rows={[]} filter={{ ...none, q: "없음" }} />);
     expect(screen.getByText("찾는 품목이 없습니다.")).toBeInTheDocument();

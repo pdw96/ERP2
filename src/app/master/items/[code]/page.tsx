@@ -63,7 +63,7 @@ async function EditItem({ params }: Pick<PageProps<"/master/items/[code]">, "par
   const { item, units } = data;
   return (
     <>
-      <h1 className="mt-1 text-3xl leading-tight font-semibold">
+      <h1 className="mt-1 text-3xl leading-tight font-semibold wrap-anywhere">
         <span className="font-mono">{item.code}</span> {item.name}
       </h1>
       <ItemForm

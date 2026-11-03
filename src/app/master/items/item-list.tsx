@@ -93,7 +93,7 @@ export function ItemSearch({ filter, notices }: { filter: ItemFilter; notices: F
 
 export function SavedNotice({ item, shown }: { item: Item; shown: boolean }) {
   return (
-    <div role="status" className="mt-6 border-l-4 border-safety bg-white px-5 py-3">
+    <div role="status" className="mt-6 border-l-4 border-safety bg-white px-5 py-3 wrap-anywhere">
       <p>
         <span className="font-semibold">{item.code}</span> {eul(item.name)} 저장했습니다.
       </p>
@@ -169,7 +169,7 @@ export function ItemList({ rows, filter, savedCode }: { rows: Item[]; filter: It
                   {item.code}
                 </Link>
               </td>
-              <td className="px-3 py-2.5">
+              <td className="px-3 py-2.5 wrap-anywhere">
                 <span className="font-semibold">{item.name}</span>
                 {!item.active && (
                   <span className="ml-2 rounded border border-rule px-1.5 py-0.5 text-xs whitespace-nowrap">

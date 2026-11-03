@@ -1,4 +1,4 @@
-import { and, asc, count, eq, ilike, or, type SQL } from "drizzle-orm";
+import { and, asc, count, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { ITEM_TYPES, PROC_TYPES, type ItemType } from "@/lib/master-codes";
 import { parseItemUpdate, parseNewItem, type ItemErrors, type ItemField, type ItemValues } from "@/lib/item-input";
 import { nextCode } from "./numbering";
@@ -10,6 +10,9 @@ import type { Db } from "./types";
 
 /** 품목의 등록 상한(설계 「PR B 를 열기 전에 정한 것」) — 매일 밤 되돌림이 샘플 수로 줄인다. */
 export const ITEM_LIMIT = 2000;
+
+/** 등록의 차례를 지키는 DB 잠금 번호 — 테이블마다 하나(배포 빌드의 잠금 20261102 와 겹치지 않게). */
+export const REGISTER_LOCK = { items: 2026110301 } as const;
 
 export type Item = typeof items.$inferSelect;
 
@@ -150,30 +153,35 @@ export async function createItem(db: Db, values: ItemValues): Promise<SaveResult
   }
   if (!parsed.ok || Object.keys(errors).length) return { ok: false, errors, values };
 
-  const [{ n }] = await db.select({ n: count() }).from(items);
-  if (n >= ITEM_LIMIT) {
-    return {
-      ok: false,
-      errors: {},
-      formError: `품목은 ${ITEM_LIMIT.toLocaleString("ko-KR")}개까지 등록됩니다 — 매일 밤 샘플 데이터로 돌아간 뒤 다시 등록하세요`,
-      values,
-    };
-  }
+  const limitReached: SaveResult = {
+    ok: false,
+    errors: {},
+    formError: `품목은 ${ITEM_LIMIT.toLocaleString("ko-KR")}개까지 등록됩니다 — 매일 밤 샘플 데이터로 돌아간 뒤 다시 등록하세요`,
+    values,
+  };
+  const collided: SaveResult = {
+    ok: false,
+    errors: {},
+    formError: "같은 때 등록한 사람이 있어 저장하지 못했습니다 — 다시 저장하세요",
+    values,
+  };
 
+  // 세기 · 번호 받기 · 넣기를 한 트랜잭션에서 잠금을 쥐고 한다 — 동시에 등록해도 상한을 넘지 않고 번호가 겹치지 않는다.
+  // 잠금은 트랜잭션이 끝나면 저절로 풀린다(연결 풀을 거쳐도 남지 않는다).
   for (let attempt = 0; ; attempt++) {
-    const code = await nextCode(db, parsed.value.itemType);
     try {
-      await db.insert(items).values({ ...parsed.value, code });
-      return { ok: true, code };
+      return await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(${REGISTER_LOCK.items})`);
+        const [{ n }] = await tx.select({ n: count() }).from(items);
+        if (n >= ITEM_LIMIT) return limitReached;
+        const code = await nextCode(tx, parsed.value.itemType);
+        await tx.insert(items).values({ ...parsed.value, code });
+        return { ok: true, code } as const;
+      });
     } catch (error) {
       if (constraintOf(error) === "items_code_unique") {
         if (attempt === 0) continue;
-        return {
-          ok: false,
-          errors: {},
-          formError: "같은 때 등록한 사람이 있어 저장하지 못했습니다 — 다시 저장하세요",
-          values,
-        };
+        return collided;
       }
       return asRejection(error, values);
     }
