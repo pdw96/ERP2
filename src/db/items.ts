@@ -1,6 +1,18 @@
-import { and, asc, count, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, ilike, or, type SQL } from "drizzle-orm";
 import { ITEM_TYPES, PROC_TYPES, type ItemType } from "@/lib/master-codes";
 import { parseItemUpdate, parseNewItem, type ItemErrors, type ItemField, type ItemValues } from "@/lib/item-input";
+import {
+  COLLIDED,
+  REGISTER_LOCK,
+  constraintOf,
+  first,
+  likeLiteral,
+  limitMessage,
+  pgError,
+  registerWithCode,
+  searchText,
+  type Params,
+} from "./master-shared";
 import { nextCode } from "./numbering";
 import { codes, items } from "./schema";
 import type { Db } from "./types";
@@ -10,9 +22,6 @@ import type { Db } from "./types";
 
 /** 품목의 등록 상한(설계 「PR B 를 열기 전에 정한 것」) — 매일 밤 되돌림이 샘플 수로 줄인다. */
 export const ITEM_LIMIT = 2000;
-
-/** 등록의 차례를 지키는 DB 잠금 번호 — 테이블마다 하나(배포 빌드의 잠금 20261102 와 겹치지 않게). */
-export const REGISTER_LOCK = { items: 2026110301 } as const;
 
 export type Item = typeof items.$inferSelect;
 
@@ -27,18 +36,14 @@ export type ItemFilter = {
 
 export type FilterNotice = { field: "q" | "itemType" | "procurement"; message: string };
 
-type Params = Record<string, string | string[] | undefined>;
-
-const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
-
 /** 주소의 거르기 값을 읽는다. 닫힌 목록 밖의 값은 거르지 않고 알린다. */
 export function parseItemFilter(params: Params): { filter: ItemFilter; notices: FilterNotice[] } {
   const notices: FilterNotice[] = [];
   const filter: ItemFilter = { q: "", includeInactive: first(params.inactive) === "1" };
 
-  const q = (first(params.q) ?? "").trim();
-  if (Array.from(q).length > 50) notices.push({ field: "q", message: "찾을 글자는 50자까지입니다 — 찾지 않았습니다" });
-  else filter.q = q;
+  const search = searchText(params);
+  if (search.notice) notices.push({ field: "q", message: search.notice });
+  filter.q = search.q;
 
   const type = first(params.type) ?? "";
   if (ITEM_TYPES.some((t) => t.code === type)) filter.itemType = type as ItemType;
@@ -50,9 +55,6 @@ export function parseItemFilter(params: Params): { filter: ItemFilter; notices: 
 
   return { filter, notices };
 }
-
-// LIKE 의 특수 글자(% _ \)를 글자 그대로 찾게 한다.
-const likeLiteral = (s: string) => `%${s.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
 /** 코드 순으로. 찾기는 코드 · 품명에 글자가 들어 있는지만 본다(대소문자 무시). */
 export async function listItems(db: Db, filter: ItemFilter): Promise<Item[]> {
@@ -122,16 +124,6 @@ const CONSTRAINT_FIELD: Record<string, ItemField> = {
   items_item_type_fk: "itemType",
 };
 
-type PgError = { code?: string; constraint?: string; constraint_name?: string };
-function pgError(error: unknown): PgError {
-  const e = (error ?? {}) as PgError & { cause?: unknown };
-  return (e.cause && typeof e.cause === "object" ? e.cause : e) as PgError;
-}
-const constraintOf = (error: unknown) => {
-  const e = pgError(error);
-  return e.constraint ?? e.constraint_name;
-};
-
 /** 제약 위반이면 칸의 거절로 바꾸고, 아니면 그대로 던진다(부르는 쪽이 코드만 남기고 알린다). */
 function asRejection(error: unknown, values: ItemValues): SaveResult {
   const field = CONSTRAINT_FIELD[constraintOf(error) ?? ""];
@@ -141,7 +133,7 @@ function asRejection(error: unknown, values: ItemValues): SaveResult {
   throw error;
 }
 
-/** 등록 — 유형 머리의 다음 번호를 붙인다. 두 사람이 같은 번호를 받으면 한 번 더 받아 넣는다. */
+/** 등록 — 유형 머리의 다음 번호를 붙인다. 등록 상한 · 번호는 잠금 안에서 센다(src/db/master-shared.ts). */
 export async function createItem(db: Db, values: ItemValues): Promise<SaveResult> {
   const parsed = parseNewItem(values);
   const errors: ItemErrors = parsed.ok ? {} : { ...parsed.errors };
@@ -153,38 +145,24 @@ export async function createItem(db: Db, values: ItemValues): Promise<SaveResult
   }
   if (!parsed.ok || Object.keys(errors).length) return { ok: false, errors, values };
 
-  const limitReached: SaveResult = {
-    ok: false,
-    errors: {},
-    formError: `품목은 ${ITEM_LIMIT.toLocaleString("ko-KR")}개까지 등록됩니다 — 매일 밤 샘플 데이터로 돌아간 뒤 다시 등록하세요`,
-    values,
-  };
-  const collided: SaveResult = {
-    ok: false,
-    errors: {},
-    formError: "같은 때 등록한 사람이 있어 저장하지 못했습니다 — 다시 저장하세요",
-    values,
-  };
-
-  // 세기 · 번호 받기 · 넣기를 한 트랜잭션에서 잠금을 쥐고 한다 — 동시에 등록해도 상한을 넘지 않고 번호가 겹치지 않는다.
-  // 잠금은 트랜잭션이 끝나면 저절로 풀린다(연결 풀을 거쳐도 남지 않는다).
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await db.transaction(async (tx) => {
-        await tx.execute(sql`select pg_advisory_xact_lock(${REGISTER_LOCK.items})`);
-        const [{ n }] = await tx.select({ n: count() }).from(items);
-        if (n >= ITEM_LIMIT) return limitReached;
-        const code = await nextCode(tx, parsed.value.itemType);
-        await tx.insert(items).values({ ...parsed.value, code });
-        return { ok: true, code } as const;
-      });
-    } catch (error) {
-      if (constraintOf(error) === "items_code_unique") {
-        if (attempt === 0) continue;
-        return collided;
-      }
-      return asRejection(error, values);
-    }
+  try {
+    const r = await registerWithCode(db, {
+      table: items,
+      lock: REGISTER_LOCK.items,
+      limit: ITEM_LIMIT,
+      prefix: parsed.value.itemType,
+      uniqueConstraint: "items_code_unique",
+      insert: (tx, code) => tx.insert(items).values({ ...parsed.value, code }),
+    });
+    if (r.ok) return r;
+    return {
+      ok: false,
+      errors: {},
+      formError: r.reason === "limit" ? limitMessage("품목", ITEM_LIMIT) : COLLIDED,
+      values,
+    };
+  } catch (error) {
+    return asRejection(error, values);
   }
 }
 

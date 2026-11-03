@@ -1,0 +1,67 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { connection } from "next/server";
+import { Suspense } from "react";
+import { LoadFailed } from "@/components/load-failed";
+import { getPartner, type Partner } from "@/db/partners";
+import { withDb } from "@/db/request";
+import type { PartnerValues } from "@/lib/partner-fields";
+import { updatePartnerAction } from "../actions";
+import { PartnerForm } from "../partner-form";
+
+export const metadata: Metadata = { title: "거래처 수정 — ERP2" };
+
+// 기준정보 › 거래처 › 한 거래처의 수정. 주소는 거래처 코드다 — 코드는 바뀌지 않는다.
+export default function EditPartnerPage({ params }: PageProps<"/master/partners/[code]">) {
+  return (
+    <section>
+      <p className="text-sm text-muted">
+        <Link href="/master" className="underline-offset-4 hover:underline">
+          기준정보
+        </Link>{" "}
+        ›{" "}
+        <Link href="/master/partners" className="underline-offset-4 hover:underline">
+          거래처
+        </Link>{" "}
+        › 수정
+      </p>
+      <Suspense fallback={<p className="mt-8 text-muted">불러오는 중입니다.</p>}>
+        <EditPartner params={params} />
+      </Suspense>
+    </section>
+  );
+}
+
+const asValues = (p: Partner): PartnerValues => ({
+  name: p.name,
+  isSupplier: p.isSupplier ? "on" : "off",
+  isCustomer: p.isCustomer ? "on" : "off",
+  bizNo: p.bizNo ?? "",
+  active: p.active ? "Y" : "N",
+});
+
+async function EditPartner({ params }: Pick<PageProps<"/master/partners/[code]">, "params">) {
+  const { code } = await params;
+  await connection();
+  let partner;
+  try {
+    partner = await withDb((db) => getPartner(db, decodeURIComponent(code)));
+  } catch (error) {
+    return <LoadFailed what="거래처" error={error} />;
+  }
+  if (!partner) notFound();
+  return (
+    <>
+      <h1 className="mt-1 text-3xl leading-tight font-semibold wrap-anywhere">
+        <span className="font-mono">{partner.code}</span> {partner.name}
+      </h1>
+      <PartnerForm
+        mode="edit"
+        code={partner.code}
+        action={updatePartnerAction.bind(null, partner.code)}
+        initial={asValues(partner)}
+      />
+    </>
+  );
+}

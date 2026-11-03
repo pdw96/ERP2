@@ -1,0 +1,64 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { connection } from "next/server";
+import { Suspense } from "react";
+import { LoadFailed } from "@/components/load-failed";
+import { getPartner, listPartners, parsePartnerFilter, PARTNER_CODE } from "@/db/partners";
+import { withDb } from "@/db/request";
+import { PartnerList, PartnerSearch, SavedNotice } from "./partner-list";
+
+export const metadata: Metadata = { title: "거래처 — ERP2" };
+
+// 기준정보 › 거래처 — 목록. 찾기 · 거르기는 주소에 남아 그대로 링크로 건넬 수 있다.
+export default function PartnersPage({ searchParams }: PageProps<"/master/partners">) {
+  return (
+    <section className="max-w-5xl">
+      <p className="text-sm text-muted">
+        <Link href="/master" className="underline-offset-4 hover:underline">
+          기준정보
+        </Link>{" "}
+        › 거래처
+      </p>
+      <div className="mt-1 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl leading-tight font-semibold">거래처</h1>
+          <p className="mt-1 text-muted">매입처 · 매출처. 한 거래처가 둘 다일 수 있습니다.</p>
+        </div>
+        <Link
+          href="/master/partners/new"
+          className="rounded bg-machine px-5 py-2.5 font-semibold text-white hover:bg-machine-deep"
+        >
+          새 거래처 등록
+        </Link>
+      </div>
+      <Suspense fallback={<p className="mt-8 text-muted">불러오는 중입니다.</p>}>
+        <Results searchParams={searchParams} />
+      </Suspense>
+    </section>
+  );
+}
+
+async function Results({ searchParams }: Pick<PageProps<"/master/partners">, "searchParams">) {
+  const params = await searchParams;
+  await connection();
+  const { filter, notices } = parsePartnerFilter(params);
+  const savedCode = typeof params.saved === "string" && PARTNER_CODE.test(params.saved) ? params.saved : undefined;
+
+  let data;
+  try {
+    data = await withDb(async (db) => ({
+      rows: await listPartners(db, filter),
+      saved: savedCode ? await getPartner(db, savedCode) : undefined,
+    }));
+  } catch (error) {
+    return <LoadFailed error={error} what="거래처 목록" />;
+  }
+
+  return (
+    <>
+      {data.saved && <SavedNotice partner={data.saved} shown={data.rows.some((r) => r.id === data.saved!.id)} />}
+      <PartnerSearch filter={filter} notices={notices} />
+      <PartnerList rows={data.rows} filter={filter} savedCode={data.saved?.code} />
+    </>
+  );
+}

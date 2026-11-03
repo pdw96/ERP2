@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { activeFlag, firstErrors as firstOf, formValues, text, toggle } from "./input-common";
 import { eul, eun } from "./josa";
 import { ITEM_FIELDS, type ItemErrors, type ItemField, type ItemValues } from "./item-fields";
 import { ITEM_TYPES, PROC_TYPES } from "./master-codes";
@@ -22,23 +23,6 @@ export type ItemInput = {
 };
 export type NewItemInput = ItemInput & { itemType: "RM" | "SF" | "FG" };
 export type ItemUpdateInput = ItemInput & { active: boolean };
-
-// DB 의 char_length 와 같게 글자(코드 포인트)로 센다.
-const length = (s: string) => Array.from(s).length;
-
-const text = (label: string, min: number, max: number) =>
-  z
-    .string()
-    .trim()
-    .check((ctx) => {
-      if (length(ctx.value) < min)
-        ctx.issues.push({ code: "custom", input: ctx.value, message: `${eul(label)} 넣으세요` });
-      else if (length(ctx.value) > max)
-        ctx.issues.push({ code: "custom", input: ctx.value, message: `${eun(label)} ${max}자까지입니다` });
-    });
-
-// 켬 · 끔 — 체크 상자는 켜면 "on" 을 보내고 끄면 아무것도 보내지 않는다.
-const toggle = z.enum(["on", "off"], { error: "켬 · 끔 가운데 하나여야 합니다" }).transform((v) => v === "on");
 
 // 수량 — 품목의 단위로 0 이상, 소수 셋째 자리까지. 천 단위 쉼표는 지우고 읽는다.
 // 위로는 DB 칸(numeric(12,3))이 담는 999,999,999.999 까지.
@@ -89,19 +73,14 @@ const createSchema = z.object({
 
 const updateSchema = z.object({
   ...common,
-  active: z.enum(["Y", "N"], { error: "사용 여부를 고르세요" }).transform((v) => v === "Y"),
+  active: activeFlag,
 });
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; errors: ItemErrors };
 
 /** 화면이 보낸 칸을 글자 그대로 모은다 — 아는 칸만, 글자가 아닌 값(파일 등)은 버린다. */
 export function itemValues(form: FormData): ItemValues {
-  const values: ItemValues = {};
-  for (const field of ITEM_FIELDS) {
-    const v = form.get(field);
-    if (typeof v === "string") values[field] = v;
-  }
-  return values;
+  return formValues(form, ITEM_FIELDS);
 }
 
 function raw(values: ItemValues) {
@@ -114,14 +93,7 @@ function raw(values: ItemValues) {
   };
 }
 
-function firstErrors(error: z.ZodError): ItemErrors {
-  const errors: ItemErrors = {};
-  for (const issue of error.issues) {
-    const field = issue.path[0] as ItemField;
-    if (field && !errors[field]) errors[field] = issue.message;
-  }
-  return errors;
-}
+const firstErrors = (error: z.ZodError): ItemErrors => firstOf<ItemField>(error);
 
 /** 등록 — 유형을 받는다. 코드는 받지 않는다(서버가 붙인다). */
 export function parseNewItem(values: ItemValues): Parsed<NewItemInput> {
