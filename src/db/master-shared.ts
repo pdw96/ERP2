@@ -95,6 +95,8 @@ export type RegisteredRow =
  * 코드는 줄 차례로 붙고, 상한에 닿은 뒤의 줄은 「limit」으로 남는다(동시에 등록해도 넘지 않는다 — PR C 1회차의 경계).
  * 줄마다 저장점(savepoint) 안에서 넣어, DB 제약에 걸린 줄은 「rejected」로 남고 앞뒤 줄은 그대로 저장된다.
  * 제약 위반(23xxx)이 아닌 실패는 던진다 — 트랜잭션이 통째로 되돌아가 아무것도 저장되지 않는다.
+ * 저장한 뒤 읽을 것(거래처의 같은 사업자번호 따위)은 afterAll 로 같은 트랜잭션 안에서 읽는다 — 저장이 끝난 뒤 바깥에서 읽다
+ * 실패하면 저장한 줄을 「저장하지 못함」으로 알리게 된다(리뷰 1회차). afterAll 이 실패하면 아무것도 저장되지 않는다.
  */
 export async function registerRowsWithCode(
   db: Db,
@@ -104,6 +106,7 @@ export async function registerRowsWithCode(
     limit: number;
     uniqueConstraint: string;
     rows: readonly { prefix: CodePrefix; insert: (tx: Db, code: string) => Promise<unknown> }[];
+    afterAll?: (tx: Db, results: readonly RegisteredRow[]) => Promise<void>;
   },
 ): Promise<RegisteredRow[]> {
   return db.transaction(async (tx) => {
@@ -126,6 +129,7 @@ export async function registerRowsWithCode(
         else throw error;
       }
     }
+    await spec.afterAll?.(tx, results);
     return results;
   });
 }

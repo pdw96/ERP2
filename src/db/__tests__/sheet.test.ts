@@ -276,3 +276,50 @@ describe("여러 줄의 등록 — 줄마다 저장점", () => {
     expect(await itemCount()).toBe(10);
   });
 });
+
+describe("저장한 뒤의 실패 — 리뷰 1회차", () => {
+  it("저장이 끝난 뒤 DB 가 끊겨도 저장한 줄은 저장한 줄로 돌려준다 — 같은 번호 확인은 저장과 한 트랜잭션에서", async () => {
+    // 트랜잭션이 끝난 뒤 바깥에서 부르는 select 는 끊긴 것처럼 던진다.
+    let committed = false;
+    const flaky = new Proxy(db, {
+      get(target, prop, receiver) {
+        if (prop === "transaction")
+          return async (...args: Parameters<Db["transaction"]>) => {
+            const r = await target.transaction(...args);
+            committed = true;
+            return r;
+          };
+        if (prop === "select" && committed) return () => Promise.reject(new Error("끊김"));
+        return Reflect.get(target, prop, receiver);
+      },
+    }) as Db;
+    const r = await createPartnerRows(flaky, [partner({ name: "(가상) 가람 3공장", bizNo: "000-00-00001" })]);
+    expect(r.saved).toEqual([
+      {
+        code: "BP-0008",
+        name: "(가상) 가람 3공장",
+        sharedBizNo: [{ code: "BP-0001", name: "(가상) 가람리드프레임", active: true }],
+      },
+    ]);
+  });
+
+  it("저장 뒤 확인(afterAll)이 실패하면 아무것도 저장하지 않는다", async () => {
+    await expect(
+      registerRowsWithCode(db, {
+        table: items,
+        lock: REGISTER_LOCK.items,
+        limit: ITEM_LIMIT,
+        uniqueConstraint: "items_code_unique",
+        rows: [
+          {
+            prefix: "RM",
+            insert: (tx, code) =>
+              tx.insert(items).values({ code, name: "가", itemType: "RM", procurement: "BUY", unit: "EA" }),
+          },
+        ],
+        afterAll: () => Promise.reject(new Error("끊김")),
+      }),
+    ).rejects.toThrow("끊김");
+    expect(await itemCount()).toBe(10);
+  });
+});

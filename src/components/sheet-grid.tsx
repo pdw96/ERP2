@@ -8,7 +8,7 @@ import {
   blankRow,
   headerLine,
   isBlankRow,
-  isMultiCell,
+  takesPaste,
   pasteInto,
   type SheetColumn,
   type SheetErrors,
@@ -81,7 +81,7 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref }:
 
   function paste(event: ClipboardEvent<HTMLInputElement>, index: number, col: number) {
     const text = event.clipboardData.getData("text/plain");
-    if (!isMultiCell(text)) return; // 한 칸짜리 글은 브라우저가 그대로 붙인다.
+    if (!takesPaste(text)) return; // 한 칸짜리 글은 브라우저가 그대로 붙인다.
     event.preventDefault();
     const r = pasteInto(
       lines.map((l) => l.values),
@@ -90,13 +90,12 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref }:
       col,
       text,
     );
-    const filled = r.rows.length - index;
     setLines((prev) =>
       r.rows.map((values, i) => {
         const old = prev[i];
         if (!old) return line(values);
         // 붙여넣은 줄은 거절 표시를 지운다.
-        return i >= index && i < index + filled ? { ...old, values, errors: {} } : old;
+        return i >= index && i < index + r.pastedRows ? { ...old, values, errors: {} } : old;
       }),
     );
     setPasteNotice(
@@ -197,105 +196,108 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref }:
         <p role="status" className="min-h-5 text-sm font-semibold text-machine-deep">
           {pasteNotice}
         </p>
-        {/* relative — 화면 읽기 전용 글(sr-only)이 상자 밖으로 나가 휴대폰 폭에서 화면이 옆으로 밀리지 않게. */}
-        <div className="relative mt-1 overflow-x-auto border border-rule bg-white">
-          <table className="border-collapse text-left text-sm">
-            <caption className="sr-only">{what} 시트</caption>
-            <thead className="border-b-2 border-machine bg-floor">
-              <tr>
-                <th scope="col" className="sticky left-0 bg-floor px-2 py-2 text-right">
-                  <span className="sr-only">줄</span>
-                </th>
-                {columns.map((c) => (
-                  <th key={c.key} scope="col" className="px-1 py-2 font-semibold whitespace-nowrap">
-                    {c.label}
+        {/* 저장하는 동안에는 시트를 잠근다 — 결과가 그 사이 고친 것을 덮지 않게(리뷰 1회차). */}
+        <fieldset disabled={pending} className="min-w-0 disabled:opacity-70">
+          {/* relative — 화면 읽기 전용 글(sr-only)이 상자 밖으로 나가 휴대폰 폭에서 화면이 옆으로 밀리지 않게. */}
+          <div className="relative mt-1 overflow-x-auto border border-rule bg-white">
+            <table className="border-collapse text-left text-sm">
+              <caption className="sr-only">{what} 시트</caption>
+              <thead className="border-b-2 border-machine bg-floor">
+                <tr>
+                  <th scope="col" className="sticky left-0 bg-floor px-2 py-2 text-right">
+                    <span className="sr-only">줄</span>
                   </th>
-                ))}
-                <th scope="col">
-                  <span className="sr-only">지우기</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((l, i) => {
-                const errs = errorsOf(l.errors);
-                const describedBy = errs.length ? `r-${i}-errors` : undefined;
-                return [
-                  <tr key={i} className={errs.length ? "bg-red-50" : "border-b border-rule"}>
-                    <th scope="row" className="sticky left-0 bg-inherit px-2 text-right font-mono text-xs text-muted">
-                      {i + 1}
+                  {columns.map((c) => (
+                    <th key={c.key} scope="col" className="px-1 py-2 font-semibold whitespace-nowrap">
+                      {c.label}
                     </th>
-                    {columns.map((c, col) => {
-                      const invalid = !!(l.errors[c.errorKey ?? c.key] || l.errors[ROW_ERROR]);
-                      return (
-                        <td key={c.key} className="p-0.5">
-                          <input
-                            id={`c-${i}-${c.key}`}
-                            value={l.values[c.key] ?? ""}
-                            onChange={(e) => edit(i, c, e.target.value)}
-                            onPaste={(e) => paste(e, i, col)}
-                            aria-label={`${i + 1}줄 ${c.label}`}
-                            aria-invalid={invalid || undefined}
-                            aria-describedby={describedBy}
-                            autoComplete="off"
-                            style={{ width: `${(c.width ?? 8) + 1}em` }}
-                            className={`rounded-sm border px-1.5 py-1 ${
-                              invalid ? "border-red-700 bg-white" : "border-transparent hover:border-rule"
-                            } focus-visible:outline-machine`}
-                          />
-                        </td>
-                      );
-                    })}
-                    <td className="px-1">
-                      <button
-                        type="button"
-                        onClick={() => removeRow(i)}
-                        aria-label={`${i + 1}줄 지우기`}
-                        className="rounded px-2 py-1 text-muted hover:bg-floor hover:text-ink"
-                      >
-                        ×
-                      </button>
-                    </td>
-                  </tr>,
-                  errs.length > 0 && (
-                    <tr key={`${i}-errors`} className="border-b border-rule bg-red-50">
-                      <td />
-                      <td colSpan={columns.length + 1} className="px-2 pb-2">
-                        <ul id={describedBy} className="text-xs font-semibold text-red-700">
-                          {errs.map(([key, label, message]) => (
-                            <li key={key}>
-                              {label} — {message}
-                            </li>
-                          ))}
-                        </ul>
+                  ))}
+                  <th scope="col">
+                    <span className="sr-only">지우기</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((l, i) => {
+                  const errs = errorsOf(l.errors);
+                  const describedBy = errs.length ? `r-${i}-errors` : undefined;
+                  return [
+                    <tr key={i} className={errs.length ? "bg-red-50" : "border-b border-rule"}>
+                      <th scope="row" className="sticky left-0 bg-inherit px-2 text-right font-mono text-xs text-muted">
+                        {i + 1}
+                      </th>
+                      {columns.map((c, col) => {
+                        const invalid = !!(l.errors[c.errorKey ?? c.key] || l.errors[ROW_ERROR]);
+                        return (
+                          <td key={c.key} className="p-0.5">
+                            <input
+                              id={`c-${i}-${c.key}`}
+                              value={l.values[c.key] ?? ""}
+                              onChange={(e) => edit(i, c, e.target.value)}
+                              onPaste={(e) => paste(e, i, col)}
+                              aria-label={`${i + 1}줄 ${c.label}`}
+                              aria-invalid={invalid || undefined}
+                              aria-describedby={describedBy}
+                              autoComplete="off"
+                              style={{ width: `${(c.width ?? 8) + 1}em` }}
+                              className={`rounded-sm border px-1.5 py-1 ${
+                                invalid ? "border-red-700 bg-white" : "border-transparent hover:border-rule"
+                              } focus-visible:outline-machine`}
+                            />
+                          </td>
+                        );
+                      })}
+                      <td className="px-1">
+                        <button
+                          type="button"
+                          onClick={() => removeRow(i)}
+                          aria-label={`${i + 1}줄 지우기`}
+                          className="rounded px-2 py-1 text-muted hover:bg-floor hover:text-ink"
+                        >
+                          ×
+                        </button>
                       </td>
-                    </tr>
-                  ),
-                ];
-              })}
-            </tbody>
-          </table>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={addRows}
-            disabled={lines.length >= SHEET_MAX_ROWS}
-            className="rounded border border-rule bg-white px-4 py-2 text-sm hover:border-machine disabled:opacity-60"
-          >
-            줄 더하기
-          </button>
-          <button
-            type="button"
-            onClick={clearAll}
-            className="px-2 py-2 text-sm text-muted underline underline-offset-4 hover:text-ink"
-          >
-            모두 비우기
-          </button>
-          <span className="text-sm text-muted">
-            넣은 줄 {filled} · 시트 {lines.length} / {SHEET_MAX_ROWS}줄
-          </span>
-        </div>
+                    </tr>,
+                    errs.length > 0 && (
+                      <tr key={`${i}-errors`} className="border-b border-rule bg-red-50">
+                        <td />
+                        <td colSpan={columns.length + 1} className="px-2 pb-2">
+                          <ul id={describedBy} className="text-xs font-semibold text-red-700">
+                            {errs.map(([key, label, message]) => (
+                              <li key={key}>
+                                {label} — {message}
+                              </li>
+                            ))}
+                          </ul>
+                        </td>
+                      </tr>
+                    ),
+                  ];
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={addRows}
+              disabled={lines.length >= SHEET_MAX_ROWS}
+              className="rounded border border-rule bg-white px-4 py-2 text-sm hover:border-machine disabled:opacity-60"
+            >
+              줄 더하기
+            </button>
+            <button
+              type="button"
+              onClick={clearAll}
+              className="px-2 py-2 text-sm text-muted underline underline-offset-4 hover:text-ink"
+            >
+              모두 비우기
+            </button>
+            <span className="text-sm text-muted">
+              넣은 줄 {filled} · 시트 {lines.length} / {SHEET_MAX_ROWS}줄
+            </span>
+          </div>
+        </fieldset>
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <button
             type="submit"

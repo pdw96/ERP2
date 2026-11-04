@@ -9,6 +9,7 @@ import {
   parseClipboard,
   pasteInto,
   readSheetPayload,
+  takesPaste,
   type SheetColumn,
 } from "../sheet";
 import { itemSheetColumns, partnerSheetColumns } from "../sheet-columns";
@@ -164,5 +165,23 @@ describe("서버가 받은 시트", () => {
 
   it("칸이 오지 않으면 거절한다", () => {
     expect(readSheetPayload(null, cols)).toMatchObject({ ok: false });
+  });
+});
+
+describe("리뷰 1회차", () => {
+  it("붙여넣은 줄 수 — 머리글 · 100줄을 넘는 줄은 세지 않는다", () => {
+    const rows = Array.from({ length: 5 }, () => blankRow(cols));
+    expect(pasteInto(rows, cols, 0, 0, "a\nb").pastedRows).toBe(2);
+    expect(pasteInto(rows, cols, 0, 0, "유형\t품명\na").pastedRows).toBe(1);
+    expect(pasteInto(rows, cols, 98, 0, "a\nb\nc\nd").pastedRows).toBe(2);
+  });
+
+  it("시트가 가로챌 글 — 여러 칸 · 여러 줄, 또는 따옴표로 감싸 풀면 달라지는 한 칸", () => {
+    expect(takesPaste("a\tb")).toBe(true);
+    expect(takesPaste('"12"" 웨이퍼"\r\n')).toBe(true);
+    expect(takesPaste('"줄\n바꿈"')).toBe(true);
+    expect(takesPaste("솔더 볼")).toBe(false);
+    expect(takesPaste("솔더 볼\r\n")).toBe(false);
+    expect(takesPaste('12" 웨이퍼')).toBe(false);
   });
 });

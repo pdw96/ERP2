@@ -244,7 +244,7 @@ const SHEET_PLACE: Partial<Record<PartnerErrorKey, string>> = { foreignBizNo: "b
 /**
  * 시트형 등록 — 맞는 줄만 저장하고 코드를 줄 차례로 붙인다. 틀린 줄은 넣은 글자 그대로 까닭과 함께 돌려준다(성공 기준 11).
  * 빈 줄은 건너뛴다. 등록 상한(1,000)을 넘는 줄은 저장되지 않고 남는다. 저장한 줄마다 같은 사업자번호를 쓰는 다른 거래처를
- * 함께 돌려준다 — 막지 않고 경고만 한다(한 건 등록과 같다, 같은 시트의 줄끼리도).
+ * 함께 돌려준다 — 막지 않고 경고만 한다(한 건 등록과 같다, 같은 시트의 줄끼리도). 그 확인은 저장과 한 트랜잭션에서 한다.
  */
 export async function createPartnerRows(db: Db, rows: readonly SheetRow[]): Promise<SheetResult> {
   const countries = await allCountries(db);
@@ -252,6 +252,8 @@ export async function createPartnerRows(db: Db, rows: readonly SheetRow[]): Prom
   const read = filled.map((row) => ({ row, ...readPartnerRow(row, countries) }));
   const valid = read.flatMap((r) => (r.ok ? [r] : []));
 
+  // 같은 번호 확인은 저장과 같은 트랜잭션에서 — 같은 시트의 줄끼리도 보이고, 실패하면 아무것도 저장되지 않는다.
+  const shared = new Map<string, SharedBizNo[]>();
   const results = await registerRowsWithCode(db, {
     table: partners,
     lock: REGISTER_LOCK.partners,
@@ -261,6 +263,10 @@ export async function createPartnerRows(db: Db, rows: readonly SheetRow[]): Prom
       prefix: "BP" as const,
       insert: (tx: Db, code: string) => tx.insert(partners).values({ ...r.value, code }),
     })),
+    afterAll: async (tx, saved) => {
+      for (const [i, s] of saved.entries())
+        if (s.ok) shared.set(s.code, await partnersSharingBizNo(tx, { code: s.code, ...valid[i].value }));
+    },
   });
 
   const result: SheetResult = { saved: [], rejected: [] };
@@ -272,7 +278,7 @@ export async function createPartnerRows(db: Db, rows: readonly SheetRow[]): Prom
     }
     const saved = byRow.get(r)!;
     if (saved.ok) {
-      const sharedBizNo = await partnersSharingBizNo(db, { code: saved.code, ...r.value });
+      const sharedBizNo = shared.get(saved.code) ?? [];
       result.saved.push({ code: saved.code, name: r.value.name, ...(sharedBizNo.length ? { sharedBizNo } : {}) });
     } else if (saved.reason === "limit")
       result.rejected.push({ row: r.row, errors: { [ROW_ERROR]: limitMessage("거래처", PARTNER_LIMIT) } });

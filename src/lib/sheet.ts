@@ -107,8 +107,18 @@ export function parseClipboard(text: string): string[][] {
   return rows;
 }
 
-/** 붙여넣은 글이 여러 칸 · 여러 줄인가 — 한 칸짜리 글은 칸에 그대로 붙인다(브라우저의 붙여넣기). */
+/** 붙여넣은 글이 여러 칸 · 여러 줄인가. */
 export const isMultiCell = (text: string) => /[\t\n]/.test(text.replace(/\r?\n$/, ""));
+
+/**
+ * 시트가 붙여넣기를 가로챌 글인가 — 여러 칸 · 여러 줄이거나, 엑셀이 따옴표로 감싼 한 칸(풀면 글이 달라진다, 리뷰 1회차).
+ * 그 밖의 한 칸짜리 글은 브라우저가 그 칸에 그대로 붙인다.
+ */
+export function takesPaste(text: string): boolean {
+  if (isMultiCell(text)) return true;
+  const grid = parseClipboard(text);
+  return grid.length === 1 && grid[0].length === 1 && grid[0][0] !== text.replace(/\r?\n$/, "");
+}
 
 const bare = (s: string) => s.replace(/\s/g, "");
 
@@ -128,6 +138,8 @@ export function isHeaderRow(cells: readonly string[], columns: readonly SheetCol
 export type Pasted = {
   rows: SheetRow[];
   skippedHeader: boolean;
+  /** 붙여넣은 줄 수 — 머리글과 100줄을 넘어 버린 줄은 세지 않는다. */
+  pastedRows: number;
   /** 100줄을 넘어 받지 않은 줄 수. */
   droppedRows: number;
   /** 시트의 칸보다 많아 버린 칸이 있었나. */
@@ -164,7 +176,7 @@ export function pasteInto(
       else if (value.trim()) droppedColumns = true;
     });
   });
-  return { rows: next, skippedHeader, droppedRows, droppedColumns };
+  return { rows: next, skippedHeader, pastedRows: grid.length, droppedRows, droppedColumns };
 }
 
 /** 줄 하나의 칸 하나에 받는 글자의 위 — 칸의 검사(100자 따위)보다 넉넉하다. 넘으면 그 줄을 거절한다. */

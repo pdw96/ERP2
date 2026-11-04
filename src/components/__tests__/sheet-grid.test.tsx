@@ -239,3 +239,38 @@ describe("거래처 시트", () => {
     expect(cell(1, "거래처명")).not.toHaveAttribute("aria-invalid");
   });
 });
+
+describe("리뷰 1회차", () => {
+  it("짧은 범위를 붙여넣으면 붙여넣은 줄의 빨간 표시만 지운다 — 아래의 틀린 줄은 그대로", async () => {
+    const action = renderItems();
+    const bad = { row: { name: "", unit: "BOX" }, errors: { unit: "없는 단위" } };
+    action.mockResolvedValue({ saved: [], rejected: [bad, bad, bad, bad, bad] });
+    await save();
+    await waitFor(() => expect(cell(5, "단위")).toHaveAttribute("aria-invalid", "true"));
+    paste(cell(1, "단위"), "EA\nEA");
+    expect(cell(1, "단위")).not.toHaveAttribute("aria-invalid");
+    expect(cell(2, "단위")).not.toHaveAttribute("aria-invalid");
+    expect(cell(3, "단위")).toHaveAttribute("aria-invalid", "true");
+    expect(cell(5, "단위")).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("따옴표로 감싼 한 칸짜리 글(엑셀이 따옴표가 든 칸을 복사한 꼴)은 풀어서 붙인다", () => {
+    renderItems();
+    expect(paste(cell(1, "규격"), '"12"" 웨이퍼"\r\n')).toBe(false);
+    expect(cell(1, "규격")).toHaveValue('12" 웨이퍼');
+  });
+
+  it("저장하는 동안에는 시트를 고칠 수 없다 — 결과가 고친 것을 덮지 않게", async () => {
+    let finish: (r: SheetResult) => void = () => {};
+    const action = renderItems();
+    action.mockImplementation(() => new Promise<SheetResult>((resolve) => (finish = resolve)));
+    fireEvent.change(cell(1, "품명"), { target: { value: "솔더 볼" } });
+    await save();
+    expect(cell(1, "품명")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "줄 더하기" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "모두 비우기" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "1줄 지우기" })).toBeDisabled();
+    await act(async () => finish({ saved: [{ code: "RM-0007", name: "솔더 볼" }], rejected: [] }));
+    await waitFor(() => expect(cell(1, "품명")).toBeEnabled());
+  });
+});
