@@ -3,7 +3,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
-import { previewPartnerCode } from "@/db/partners";
+import { countryOptions, previewPartnerCode } from "@/db/partners";
 import { withDb } from "@/db/request";
 import { createPartnerAction } from "../actions";
 import { PartnerForm } from "../partner-form";
@@ -33,9 +33,12 @@ export default function NewPartnerPage() {
 
 async function NewPartnerForm() {
   await connection();
-  let previewCode;
+  let data;
   try {
-    previewCode = await withDb(previewPartnerCode);
+    data = await withDb(async (db) => ({
+      previewCode: await previewPartnerCode(db),
+      countries: await countryOptions(db),
+    }));
   } catch (error) {
     return <LoadFailed what="입력 화면" error={error} />;
   }
@@ -43,8 +46,9 @@ async function NewPartnerForm() {
     <PartnerForm
       mode="create"
       action={createPartnerAction}
-      previewCode={previewCode}
-      initial={{ name: "", bizNo: "" }}
+      previewCode={data.previewCode}
+      countries={data.countries}
+      initial={{ name: "", country: "KR", bizNo: "", foreignBizNo: "" }}
     />
   );
 }

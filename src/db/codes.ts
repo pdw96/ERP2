@@ -1,6 +1,7 @@
 import { and, asc, count, eq, max, sql } from "drizzle-orm";
 import { GROUP_CODE, MINOR_CODE } from "@/lib/code-fields";
 import { parseCodeUpdate, parseNewCode, type CodeErrors, type CodeField, type CodeValues } from "@/lib/code-input";
+import { isAlwaysActive } from "@/lib/master-codes";
 import { REGISTER_LOCK, constraintOf, limitMessage } from "./master-shared";
 import { codeGroups, codes } from "./schema";
 import type { Db } from "./types";
@@ -65,6 +66,7 @@ export type CodeNotFound = { ok: false; notFound: true };
 
 export const SYSTEM_LOCKED = "시스템 코드라 화면에서 바꿀 수 없습니다 — 프로그램이 이 값에 기댑니다";
 const DUPLICATE = "이 묶음에 이미 있는 코드입니다";
+export const ALWAYS_ACTIVE_MESSAGE = "프로그램이 기대는 값이라 「사용 안 함」으로 바꿀 수 없습니다";
 const UNIQUE = "codes_group_code_code_unique";
 const DUPLICATE_INACTIVE = "이 묶음에 「사용 안 함」으로 있는 코드입니다 — 목록에서 그 값을 「사용」으로 바꾸세요";
 
@@ -112,7 +114,10 @@ export async function createCode(db: Db, group: string, values: CodeValues): Pro
   }
 }
 
-/** 수정 — 사용자 코드 묶음의 값만. 이름 · 정렬 순서 · 사용 여부를 바꾸고, 코드는 바꾸지 않는다. */
+/**
+ * 수정 — 사용자 코드 묶음의 값만. 이름 · 정렬 순서 · 사용 여부를 바꾸고, 코드는 바꾸지 않는다.
+ * 프로그램이 기대는 값(국가 KR — src/lib/master-codes.ts)은 「사용 안 함」으로 바꾸지 못한다.
+ */
 export async function updateCode(
   db: Db,
   group: string,
@@ -124,7 +129,10 @@ export async function updateCode(
   if (!g || !current) return { ok: false, notFound: true };
   if (g.isSystem) return { ok: false, errors: {}, formError: SYSTEM_LOCKED, values };
   const parsed = parseCodeUpdate(values);
-  if (!parsed.ok) return { ok: false, errors: parsed.errors, values };
+  const errors: CodeErrors = parsed.ok ? {} : { ...parsed.errors };
+  if (!errors.active && values.active === "N" && isAlwaysActive(g.code, current.code))
+    errors.active = ALWAYS_ACTIVE_MESSAGE;
+  if (!parsed.ok || Object.keys(errors).length) return { ok: false, errors, values };
   try {
     await db.update(codes).set(parsed.value).where(eq(codes.id, current.id));
     return { ok: true, code };

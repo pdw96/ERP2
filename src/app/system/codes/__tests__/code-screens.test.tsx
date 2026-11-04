@@ -129,6 +129,26 @@ describe("값 추가 화면", () => {
 });
 
 describe("값 수정 화면", () => {
+  it("프로그램이 기대는 값(국가 KR)은 「사용 안 함」 칸이 없고, 늘 「사용」으로 보낸다", async () => {
+    const action = vi.fn().mockResolvedValue(null);
+    render(
+      <CodeForm
+        mode="edit"
+        group={{ code: "COUNTRY", name: "국가" }}
+        code="KR"
+        alwaysActive
+        action={action}
+        initial={{ name: "한국", sortOrder: "10", active: "Y" }}
+      />,
+    );
+    expect(screen.queryByRole("radio", { name: "사용 안 함" })).toBeNull();
+    expect(screen.getByText(/늘 「사용」입니다/)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    });
+    expect((action.mock.calls[0][1] as FormData).get("active")).toBe("Y");
+  });
+
   it("코드는 보이기만 하고 보내지 않는다. 사용 여부를 「사용 안 함」으로 바꿔 보낸다", async () => {
     const action = vi.fn().mockResolvedValue(null);
     render(

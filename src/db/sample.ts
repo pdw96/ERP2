@@ -3,7 +3,8 @@ import type { codeGroups, codes, items, partners, warehouses } from "./schema";
 
 // 샘플 데이터 — 가상 반도체 후공정(패키징) 회사. 매일 밤 되돌림(ADR 0004)과 첫 배포가 이 값으로 테이블을 채운다.
 // 실제 회사명 · 실제 사람의 정보를 쓰지 않는다(CLAUDE.md). 거래처 이름은 「(가상)」으로 시작하고,
-// 사업자등록번호는 실제로 발급되지 않는 「000-00-」 꼴만 쓴다.
+// 사업자등록번호는 실제로 발급되지 않는 「000-00-」 꼴만 쓴다. 해외 거래처의 번호도 실제로 쓰이지 않는 꼴이다 —
+// 일본 법인번호(13자리)는 0 으로 채우고, 미국 EIN 은 발급되지 않는 머리 00 을 쓴다.
 
 type New<T extends { $inferInsert: unknown }> = T["$inferInsert"];
 
@@ -11,6 +12,7 @@ export const SAMPLE_CODE_GROUPS: New<typeof codeGroups>[] = [
   { code: "ITEM_TYPE", name: "품목 유형", isSystem: true },
   { code: "PROC_TYPE", name: "조달구분", isSystem: true },
   { code: "UNIT", name: "단위", isSystem: false },
+  { code: "COUNTRY", name: "국가", isSystem: false },
 ];
 
 export const SAMPLE_CODES: New<typeof codes>[] = [
@@ -20,6 +22,12 @@ export const SAMPLE_CODES: New<typeof codes>[] = [
   { groupCode: "UNIT", code: "M", name: "미터", sortOrder: 20 },
   { groupCode: "UNIT", code: "KG", name: "킬로그램", sortOrder: 30 },
   { groupCode: "UNIT", code: "G", name: "그램", sortOrder: 40 },
+  // 국가 — 국제 표준 두 글자(ADR 0011). 마이그레이션 0001(손으로 쓴 것)이 데이터가 있는 DB 에 같은 값을 넣는다(시험이 견준다).
+  { groupCode: "COUNTRY", code: "KR", name: "한국", sortOrder: 10 },
+  { groupCode: "COUNTRY", code: "US", name: "미국", sortOrder: 20 },
+  { groupCode: "COUNTRY", code: "JP", name: "일본", sortOrder: 30 },
+  { groupCode: "COUNTRY", code: "CN", name: "중국", sortOrder: 40 },
+  { groupCode: "COUNTRY", code: "TW", name: "대만", sortOrder: 50 },
 ];
 
 export const SAMPLE_WAREHOUSES: New<typeof warehouses>[] = [
@@ -35,6 +43,15 @@ export const SAMPLE_PARTNERS: New<typeof partners>[] = [
   { code: "BP-0003", name: "(가상) 다온케미칼", isSupplier: true, bizNo: "000-00-00003" },
   { code: "BP-0004", name: "(가상) 라온전자", isCustomer: true, bizNo: "000-00-00004" },
   { code: "BP-0005", name: "(가상) 마루반도체", isSupplier: true, isCustomer: true, bizNo: "000-00-00005" },
+  // 해외 — 일본의 몰딩 재료(EMC) 매입처, 미국의 IC 고객 매출처(저자 인터뷰 2026-11-03).
+  {
+    code: "BP-0006",
+    name: "(가상) 소라몰드머티리얼",
+    isSupplier: true,
+    country: "JP",
+    foreignBizNo: "0000000000006",
+  },
+  { code: "BP-0007", name: "(가상) 노스필드디바이스", isCustomer: true, country: "US", foreignBizNo: "00-0000007" },
 ];
 
 // 원자재 → 구매 · 수입검사, 반제품 · 완제품 → 생산, 완제품 → 출하검사(ADR 0003 의 기본값).

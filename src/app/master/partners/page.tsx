@@ -3,7 +3,14 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
-import { getPartner, listPartners, parsePartnerFilter, partnersSharingBizNo, PARTNER_CODE } from "@/db/partners";
+import {
+  countryNames,
+  getPartner,
+  listPartners,
+  parsePartnerFilter,
+  partnersSharingBizNo,
+  PARTNER_CODE,
+} from "@/db/partners";
 import { withDb } from "@/db/request";
 import { PartnerList, PartnerSearch, SavedNotice } from "./partner-list";
 
@@ -50,6 +57,7 @@ async function Results({ searchParams }: Pick<PageProps<"/master/partners">, "se
       const saved = savedCode ? await getPartner(db, savedCode) : undefined;
       return {
         rows: await listPartners(db, filter),
+        countries: await countryNames(db),
         saved,
         sharedBizNo: saved ? await partnersSharingBizNo(db, saved) : [],
       };
@@ -68,7 +76,7 @@ async function Results({ searchParams }: Pick<PageProps<"/master/partners">, "se
         />
       )}
       <PartnerSearch filter={filter} notices={notices} />
-      <PartnerList rows={data.rows} filter={filter} savedCode={data.saved?.code} />
+      <PartnerList countries={data.countries} rows={data.rows} filter={filter} savedCode={data.saved?.code} />
     </>
   );
 }

@@ -294,23 +294,26 @@ export const DATA_MODEL = `erDiagram
     text name "거래처명"
     boolean is_supplier "매입처"
     boolean is_customer "매출처"
-    text biz_no "사업자등록번호"
+    text country "공통코드 COUNTRY — KR · US · JP …"
+    text biz_no "사업자등록번호 — 한국"
+    text foreign_biz_no "해외 사업자번호 — 한국 밖"
     boolean active "사용 여부"
   }
   CODE_GROUPS["공통코드 묶음 code_groups (Major)"] {
-    text code UK "ITEM_TYPE · PROC_TYPE · UNIT"
+    text code UK "ITEM_TYPE · PROC_TYPE · UNIT · COUNTRY"
     text name "이름"
     boolean is_system "시스템 코드 — 화면에서 못 고침"
   }
   CODES["공통코드 값 codes (Minor)"] {
     text group_code FK "묶음 — 묶음 + 코드가 겹치지 않음(UK)"
-    text code "RM · BUY · EA …"
+    text code "RM · BUY · EA · KR …"
     text name "이름"
     int sort_order "정렬 순서"
     boolean active "사용 여부"
   }
   CODE_GROUPS ||--o{ CODES : "묶음의 값"
-  CODES ||--o{ ITEMS : "유형 · 조달구분 · 단위"`;
+  CODES ||--o{ ITEMS : "유형 · 조달구분 · 단위"
+  CODES ||--o{ PARTNERS : "국가"`;
 
 // 시스템 구성 — 화면 · 서버 · DB · 자동 검사 · 알림.
 export const SYSTEM = `flowchart LR

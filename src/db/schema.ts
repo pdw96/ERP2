@@ -123,7 +123,11 @@ export const warehouses = pgTable(
   ],
 );
 
-/** 거래처. 한 거래처에 매입처 · 매출처 표시 — 하나 이상(ADR 0003). */
+/**
+ * 거래처. 한 거래처에 매입처 · 매출처 표시 — 하나 이상(ADR 0003).
+ * 국가는 공통코드 COUNTRY 의 값이다(ADR 0011). 한국(KR)이면 사업자등록번호(000-00-00000)를, 아니면 해외 사업자번호(글자 그대로)를 둔다 —
+ * 다른 쪽 칸은 비어 있다.
+ */
 export const partners = pgTable(
   "partners",
   {
@@ -132,14 +136,31 @@ export const partners = pgTable(
     name: text("name").notNull(),
     isSupplier: boolean("is_supplier").notNull().default(false),
     isCustomer: boolean("is_customer").notNull().default(false),
+    countryGroup: text("country_group").notNull().default("COUNTRY"),
+    country: text("country").notNull().default("KR"),
     bizNo: text("biz_no"),
+    foreignBizNo: text("foreign_biz_no"),
     active: boolean("active").notNull().default(true),
     ...timestamps(),
   },
   (t) => [
+    foreignKey({
+      name: "partners_country_fk",
+      columns: [t.countryGroup, t.country],
+      foreignColumns: [codes.groupCode, codes.code],
+    }),
+    check("partners_country_group_fixed", sql`${t.countryGroup} = 'COUNTRY'`),
     check("partners_code_format", sql`${t.code} ~ '^BP-[0-9]{4,}$'`),
     check("partners_name_length", sql`char_length(${t.name}) between 1 and 100`),
     check("partners_role_required", sql`${t.isSupplier} or ${t.isCustomer}`),
     check("partners_biz_no_format", sql`${t.bizNo} is null or ${t.bizNo} ~ '^[0-9]{3}-[0-9]{2}-[0-9]{5}$'`),
+    check(
+      "partners_foreign_biz_no_length",
+      sql`${t.foreignBizNo} is null or char_length(${t.foreignBizNo}) between 1 and 30`,
+    ),
+    check(
+      "partners_biz_no_by_country",
+      sql`(${t.country} = 'KR' and ${t.foreignBizNo} is null) or (${t.country} <> 'KR' and ${t.bizNo} is null)`,
+    ),
   ],
 );

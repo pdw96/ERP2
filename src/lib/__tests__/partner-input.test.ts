@@ -12,7 +12,14 @@ describe("거래처 등록의 입력", () => {
   it("맞는 꼴 — 값이 그대로 읽히고, 끈 체크 상자는 끔이다", () => {
     expect(parseNewPartner(good)).toEqual({
       ok: true,
-      value: { name: "(가상) 바다솔더", isSupplier: true, isCustomer: false, bizNo: "000-00-00006" },
+      value: {
+        name: "(가상) 바다솔더",
+        isSupplier: true,
+        isCustomer: false,
+        country: "KR",
+        bizNo: "000-00-00006",
+        foreignBizNo: null,
+      },
     });
   });
 
@@ -64,12 +71,63 @@ describe("거래처 수정의 입력", () => {
   it("맞는 꼴 — 사용 여부를 받는다", () => {
     expect(parsePartnerUpdate({ ...good, active: "N" })).toEqual({
       ok: true,
-      value: { name: "(가상) 바다솔더", isSupplier: true, isCustomer: false, bizNo: "000-00-00006", active: false },
+      value: {
+        name: "(가상) 바다솔더",
+        isSupplier: true,
+        isCustomer: false,
+        country: "KR",
+        bizNo: "000-00-00006",
+        foreignBizNo: null,
+        active: false,
+      },
     });
   });
 
   it("사용 여부가 없으면 거절", () => {
     expect(parsePartnerUpdate(good)).toEqual({ ok: false, errors: { active: "사용 여부를 고르세요" } });
+  });
+});
+
+describe("국가와 해외 사업자번호(PR G)", () => {
+  const us: PartnerValues = { name: "(가상) 노스필드디바이스", isCustomer: "on", country: "US" };
+
+  it("국가 칸이 오지 않으면 한국이다", () => {
+    expect(parseNewPartner(good)).toMatchObject({ ok: true, value: { country: "KR" } });
+  });
+
+  it("해외 — 해외 사업자번호를 글자 그대로 받고(앞뒤 빈칸만 지움), 사업자등록번호는 보지 않는다", () => {
+    const r = parseNewPartner({ ...us, foreignBizNo: "  EIN 12-3456789 ", bizNo: "틀린 꼴" });
+    expect(r).toEqual({
+      ok: true,
+      value: {
+        name: "(가상) 노스필드디바이스",
+        isSupplier: false,
+        isCustomer: true,
+        country: "US",
+        bizNo: null,
+        foreignBizNo: "EIN 12-3456789",
+      },
+    });
+  });
+
+  it("한국 — 해외 사업자번호는 보지 않고 없음으로 남긴다", () => {
+    expect(parseNewPartner({ ...good, foreignBizNo: "x".repeat(99) })).toMatchObject({
+      ok: true,
+      value: { country: "KR", bizNo: "000-00-00006", foreignBizNo: null },
+    });
+  });
+
+  it("해외 사업자번호 — 비우면 없음, 30자는 받고 31자는 거절", () => {
+    expect(parseNewPartner({ ...us, foreignBizNo: "" })).toMatchObject({ ok: true, value: { foreignBizNo: null } });
+    expect(parseNewPartner({ ...us, foreignBizNo: "가".repeat(30) })).toMatchObject({ ok: true });
+    expect(parseNewPartner({ ...us, foreignBizNo: "가".repeat(31) })).toEqual({
+      ok: false,
+      errors: { foreignBizNo: "해외 사업자번호는 30자까지입니다" },
+    });
+  });
+
+  it.each(["", "kr", "한국", "K-R"])("국가 「%s」는 거절", (country) => {
+    expect(parseNewPartner({ ...good, country })).toEqual({ ok: false, errors: { country: "국가를 고르세요" } });
   });
 });
 

@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
-import { getPartner, partnersSharingBizNo, type Partner } from "@/db/partners";
+import { countryOptions, getPartner, partnersSharingBizNo, type Partner } from "@/db/partners";
 import { withDb } from "@/db/request";
 import type { PartnerValues } from "@/lib/partner-fields";
 import { updatePartnerAction } from "../actions";
@@ -37,7 +37,9 @@ const asValues = (p: Partner): PartnerValues => ({
   name: p.name,
   isSupplier: p.isSupplier ? "on" : "off",
   isCustomer: p.isCustomer ? "on" : "off",
+  country: p.country,
   bizNo: p.bizNo ?? "",
+  foreignBizNo: p.foreignBizNo ?? "",
   active: p.active ? "Y" : "N",
 });
 
@@ -48,13 +50,19 @@ async function EditPartner({ params }: Pick<PageProps<"/master/partners/[code]">
   try {
     data = await withDb(async (db) => {
       const partner = await getPartner(db, decodeURIComponent(code));
-      return partner && { partner, sharedBizNo: await partnersSharingBizNo(db, partner) };
+      return (
+        partner && {
+          partner,
+          sharedBizNo: await partnersSharingBizNo(db, partner),
+          countries: await countryOptions(db, partner.country),
+        }
+      );
     });
   } catch (error) {
     return <LoadFailed what="거래처" error={error} />;
   }
   if (!data) notFound();
-  const { partner, sharedBizNo } = data;
+  const { partner, sharedBizNo, countries } = data;
   return (
     <>
       <h1 className="mt-1 text-3xl leading-tight font-semibold wrap-anywhere">
@@ -66,6 +74,7 @@ async function EditPartner({ params }: Pick<PageProps<"/master/partners/[code]">
         action={updatePartnerAction.bind(null, partner.code)}
         initial={asValues(partner)}
         sharedBizNo={sharedBizNo}
+        countries={countries}
       />
     </>
   );

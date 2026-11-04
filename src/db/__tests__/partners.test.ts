@@ -13,6 +13,8 @@ import {
   type PartnerFilter,
 } from "@/db/partners";
 import { resetToSample } from "@/db/reset";
+import { countryNames, countryOptions } from "@/db/partners";
+import { updateCode } from "@/db/codes";
 import { partners } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { PartnerValues } from "@/lib/partner-input";
@@ -32,6 +34,8 @@ beforeEach(() => resetToSample(db));
 const all: PartnerFilter = { q: "", includeInactive: false };
 const codesOf = (rows: { code: string }[]) => rows.map((r) => r.code);
 const count = async () => (await db.select().from(partners)).length;
+// 한국 거래처의 번호 — 같은 번호 찾기에 넘기는 꼴.
+const kr = (bizNo: string | null) => ({ country: "KR", bizNo, foreignBizNo: null });
 
 const newSupplier: PartnerValues = { name: "(가상) 바다솔더", isSupplier: "on", bizNo: "000-00-00006" };
 // 샘플 BP-0001 의 값 그대로 — 고칠 칸만 덮어쓴다.
@@ -45,7 +49,15 @@ const editOf = (over: PartnerValues = {}): PartnerValues => ({
 
 describe("목록", () => {
   it("기본 보기 — 사용 중인 거래처를 코드 순으로", async () => {
-    expect(codesOf(await listPartners(db, all))).toEqual(["BP-0001", "BP-0002", "BP-0003", "BP-0004", "BP-0005"]);
+    expect(codesOf(await listPartners(db, all))).toEqual([
+      "BP-0001",
+      "BP-0002",
+      "BP-0003",
+      "BP-0004",
+      "BP-0005",
+      "BP-0006",
+      "BP-0007",
+    ]);
   });
 
   it("코드나 거래처명에 든 글자로 찾는다 — 대소문자를 가리지 않는다", async () => {
@@ -64,8 +76,9 @@ describe("목록", () => {
       "BP-0002",
       "BP-0003",
       "BP-0005",
+      "BP-0006",
     ]);
-    expect(codesOf(await listPartners(db, { ...all, role: "customer" }))).toEqual(["BP-0004", "BP-0005"]);
+    expect(codesOf(await listPartners(db, { ...all, role: "customer" }))).toEqual(["BP-0004", "BP-0005", "BP-0007"]);
   });
 
   it("「사용 안 함」은 기본 보기에서 빠지고, 「사용 안 함 포함」이면 보인다", async () => {
@@ -98,9 +111,9 @@ describe("목록의 거르기 값", () => {
 });
 
 describe("등록", () => {
-  it("샘플의 다음 번호 BP-0006 이 붙고, 넣은 값이 그대로 남는다", async () => {
-    expect(await createPartner(db, newSupplier)).toEqual({ ok: true, code: "BP-0006" });
-    expect(await getPartner(db, "BP-0006")).toMatchObject({
+  it("샘플의 다음 번호 BP-0008 이 붙고, 넣은 값이 그대로 남는다", async () => {
+    expect(await createPartner(db, newSupplier)).toEqual({ ok: true, code: "BP-0008" });
+    expect(await getPartner(db, "BP-0008")).toMatchObject({
       name: "(가상) 바다솔더",
       isSupplier: true,
       isCustomer: false,
@@ -116,13 +129,13 @@ describe("등록", () => {
 
   it("매입처 · 매출처 둘 다, 사업자등록번호 없이 등록한다", async () => {
     const r = await createPartner(db, { name: "(가상) 사랑전자", isSupplier: "on", isCustomer: "on", bizNo: "" });
-    expect(r).toEqual({ ok: true, code: "BP-0006" });
-    expect(await getPartner(db, "BP-0006")).toMatchObject({ isSupplier: true, isCustomer: true, bizNo: null });
+    expect(r).toEqual({ ok: true, code: "BP-0008" });
+    expect(await getPartner(db, "BP-0008")).toMatchObject({ isSupplier: true, isCustomer: true, bizNo: null });
   });
 
   it("보낸 코드는 쓰지 않는다 — 서버가 붙인다", async () => {
     const r = await createPartner(db, { ...newSupplier, code: "BP-9999" } as PartnerValues);
-    expect(r).toEqual({ ok: true, code: "BP-0006" });
+    expect(r).toEqual({ ok: true, code: "BP-0008" });
     expect(await getPartner(db, "BP-9999")).toBeUndefined();
   });
 
@@ -137,14 +150,14 @@ describe("등록", () => {
       },
       values: { name: "", bizNo: "12345" },
     });
-    expect(await count()).toBe(5);
+    expect(await count()).toBe(7);
   });
 
   it("두 사람이 같은 번호를 받으면 다음 번호로 한 번 더 넣는다", async () => {
     const numbering = await import("@/db/numbering");
-    const spy = vi.spyOn(numbering, "nextCode").mockResolvedValueOnce("BP-0005");
+    const spy = vi.spyOn(numbering, "nextCode").mockResolvedValueOnce("BP-0007");
     try {
-      expect(await createPartner(db, newSupplier)).toEqual({ ok: true, code: "BP-0006" });
+      expect(await createPartner(db, newSupplier)).toEqual({ ok: true, code: "BP-0008" });
       expect(spy).toHaveBeenCalledTimes(2);
     } finally {
       spy.mockRestore();
@@ -161,14 +174,14 @@ describe("등록", () => {
     );
 
   it(`등록 상한 ${PARTNER_LIMIT}개에 닿으면 저장하지 않는다`, async () => {
-    await fill(PARTNER_LIMIT - 5);
+    await fill(PARTNER_LIMIT - 7);
     const r = await createPartner(db, newSupplier);
     expect(r).toMatchObject({ ok: false, formError: expect.stringContaining("거래처는 1,000개까지") });
     expect(await count()).toBe(PARTNER_LIMIT);
   });
 
   it(`동시에 등록해도 상한 ${PARTNER_LIMIT}개를 넘지 않는다`, async () => {
-    await fill(PARTNER_LIMIT - 6);
+    await fill(PARTNER_LIMIT - 8);
     const results = await Promise.all(Array.from({ length: 5 }, () => createPartner(db, newSupplier)));
     expect(results.filter((r) => r.ok)).toHaveLength(1);
     expect(await count()).toBe(PARTNER_LIMIT);
@@ -219,14 +232,22 @@ describe("수정", () => {
     expect(await getPartner(db, "BP-0001")).toMatchObject({ active: false });
     await updatePartner(db, "BP-0001", editOf({ active: "Y" }));
     expect(await getPartner(db, "BP-0001")).toMatchObject({ active: true });
-    expect(await count()).toBe(5);
+    expect(await count()).toBe(7);
   });
 
   it("DB 의 제약에 걸리면(서버의 검사를 빠뜨렸을 때) 그 칸을 알린다", async () => {
     const input = await import("@/lib/partner-input");
     const spy = vi.spyOn(input, "parsePartnerUpdate").mockReturnValue({
       ok: true,
-      value: { name: "x", isSupplier: false, isCustomer: false, bizNo: "123", active: true },
+      value: {
+        name: "x",
+        isSupplier: false,
+        isCustomer: false,
+        country: "KR",
+        bizNo: "123",
+        foreignBizNo: null,
+        active: true,
+      },
     });
     try {
       const r = await updatePartner(db, "BP-0001", editOf());
@@ -243,30 +264,117 @@ describe("수정", () => {
 describe("같은 사업자등록번호 — 막지 않고 경고만", () => {
   it("겹쳐도 저장된다", async () => {
     const r = await createPartner(db, { ...newSupplier, bizNo: "000-00-00005" });
-    expect(r).toEqual({ ok: true, code: "BP-0006" });
+    expect(r).toEqual({ ok: true, code: "BP-0008" });
   });
 
   it("같은 번호를 쓰는 다른 거래처를 코드 순으로 찾는다 — 자기 자신은 빼고, 「사용 안 함」도 넣는다", async () => {
     await createPartner(db, { ...newSupplier, bizNo: "000-00-00005" });
     await updatePartner(db, "BP-0005", editOf({ name: "(가상) 마루반도체", bizNo: "000-00-00005", active: "N" }));
-    expect(await partnersSharingBizNo(db, { code: "BP-0006", bizNo: "000-00-00005" })).toEqual([
+    expect(await partnersSharingBizNo(db, { code: "BP-0008", ...kr("000-00-00005") })).toEqual([
       { code: "BP-0005", name: "(가상) 마루반도체", active: false },
     ]);
-    expect(await partnersSharingBizNo(db, { code: "BP-0005", bizNo: "000-00-00005" })).toEqual([
-      { code: "BP-0006", name: "(가상) 바다솔더", active: true },
+    expect(await partnersSharingBizNo(db, { code: "BP-0005", ...kr("000-00-00005") })).toEqual([
+      { code: "BP-0008", name: "(가상) 바다솔더", active: true },
     ]);
   });
 
   it("겹치지 않거나 번호가 없으면 빈 목록", async () => {
-    expect(await partnersSharingBizNo(db, { code: "BP-0001", bizNo: "000-00-00001" })).toEqual([]);
+    expect(await partnersSharingBizNo(db, { code: "BP-0001", ...kr("000-00-00001") })).toEqual([]);
     await createPartner(db, { ...newSupplier, bizNo: "" });
-    expect(await partnersSharingBizNo(db, { code: "BP-0006", bizNo: null })).toEqual([]);
+    expect(await partnersSharingBizNo(db, { code: "BP-0008", ...kr(null) })).toEqual([]);
+  });
+});
+
+describe("국가와 해외 사업자번호(PR G · 성공 기준 12)", () => {
+  const usCustomer: PartnerValues = {
+    name: "(가상) 하버라인칩스",
+    isCustomer: "on",
+    country: "US",
+    foreignBizNo: "00-0000099",
+  };
+  const deactivate = (code: string, name: string, sortOrder: string) =>
+    updateCode(db, "COUNTRY", code, { name, sortOrder, active: "N" });
+
+  it("샘플의 해외 거래처 — 일본 매입처 · 미국 매출처, 해외 사업자번호를 두고 사업자등록번호는 없다", async () => {
+    expect(await getPartner(db, "BP-0006")).toMatchObject({
+      country: "JP",
+      bizNo: null,
+      foreignBizNo: "0000000000006",
+    });
+    expect(await getPartner(db, "BP-0007")).toMatchObject({ country: "US", bizNo: null, foreignBizNo: "00-0000007" });
+    expect(await getPartner(db, "BP-0001")).toMatchObject({ country: "KR", foreignBizNo: null });
+  });
+
+  it("해외 거래처를 등록한다 — 국가와 해외 사업자번호가 남는다", async () => {
+    expect(await createPartner(db, usCustomer)).toEqual({ ok: true, code: "BP-0008" });
+    expect(await getPartner(db, "BP-0008")).toMatchObject({ country: "US", bizNo: null, foreignBizNo: "00-0000099" });
+  });
+
+  it("국가를 보내지 않으면 한국으로 등록된다", async () => {
+    await createPartner(db, newSupplier);
+    expect(await getPartner(db, "BP-0008")).toMatchObject({ country: "KR", bizNo: "000-00-00006" });
+  });
+
+  it("공통코드에 없는 국가는 거절한다", async () => {
+    const r = await createPartner(db, { ...usCustomer, country: "XX" });
+    expect(r).toMatchObject({ ok: false, errors: { country: "국가를 고르세요" } });
+    expect(await count()).toBe(7);
+  });
+
+  it("「사용 안 함」 국가 — 새 거래처에서는 거절하고 목록에서 빠지며, 이미 쓴 거래처에는 남아 그대로 저장된다", async () => {
+    await deactivate("JP", "일본", "30");
+    expect((await countryOptions(db)).map((c) => c.code)).toEqual(["KR", "US", "CN", "TW"]);
+    expect(await countryOptions(db, "JP")).toContainEqual({ code: "JP", name: "일본", active: false });
+    const r = await createPartner(db, { ...usCustomer, country: "JP" });
+    expect(r).toMatchObject({ ok: false, errors: { country: expect.stringContaining("「사용 안 함」") } });
+    const kept = await updatePartner(db, "BP-0006", {
+      name: "(가상) 소라몰드머티리얼",
+      isSupplier: "on",
+      country: "JP",
+      foreignBizNo: "0000000000006",
+      active: "Y",
+    });
+    expect(kept).toEqual({ ok: true, code: "BP-0006" });
+  });
+
+  it("한국 거래처를 해외로 바꾸면 사업자등록번호는 비고 해외 사업자번호가 남는다 — 그 반대도", async () => {
+    await updatePartner(db, "BP-0001", editOf({ country: "CN", foreignBizNo: "91110000000000000X" }));
+    expect(await getPartner(db, "BP-0001")).toMatchObject({
+      country: "CN",
+      bizNo: null,
+      foreignBizNo: "91110000000000000X",
+    });
+    await updatePartner(db, "BP-0001", editOf({ country: "KR" }));
+    expect(await getPartner(db, "BP-0001")).toMatchObject({ country: "KR", bizNo: "000-00-00001", foreignBizNo: null });
+  });
+
+  it("같은 해외 사업자번호 — 같은 나라면 경고하고, 나라가 다르면 다른 번호다", async () => {
+    await createPartner(db, { ...usCustomer, foreignBizNo: "00-0000007" });
+    const shared = await partnersSharingBizNo(db, {
+      code: "BP-0008",
+      country: "US",
+      bizNo: null,
+      foreignBizNo: "00-0000007",
+    });
+    expect(shared).toEqual([{ code: "BP-0007", name: "(가상) 노스필드디바이스", active: true }]);
+    const other = await partnersSharingBizNo(db, {
+      code: "BP-0008",
+      country: "JP",
+      bizNo: null,
+      foreignBizNo: "00-0000007",
+    });
+    expect(other).toEqual([]);
+  });
+
+  it("목록은 국가를 이름으로 보인다 — 「사용 안 함」 국가도", async () => {
+    await deactivate("TW", "대만", "50");
+    expect(await countryNames(db)).toEqual({ KR: "한국", US: "미국", JP: "일본", CN: "중국", TW: "대만" });
   });
 });
 
 describe("입력 화면 · 표시", () => {
   it("등록하면 붙을 코드", async () => {
-    expect(await previewPartnerCode(db)).toBe("BP-0006");
+    expect(await previewPartnerCode(db)).toBe("BP-0008");
   });
 
   it("구분을 한 줄로", () => {

@@ -38,6 +38,18 @@ describe("샘플 데이터 — 성공 기준 1", () => {
     }
   });
 
+  it("해외 거래처 — 일본 매입처 하나 · 미국 매출처 하나, 번호는 실제로 쓰이지 않는 꼴(성공 기준 12)", () => {
+    const abroad = SAMPLE_PARTNERS.filter((p) => (p.country ?? "KR") !== "KR");
+    expect(abroad.map((p) => [p.country, !!p.isSupplier, !!p.isCustomer])).toEqual([
+      ["JP", true, false],
+      ["US", false, true],
+    ]);
+    for (const p of abroad) {
+      expect(p.bizNo ?? null).toBeNull();
+      expect(p.foreignBizNo).toMatch(/^0+-?0*[0-9]$/);
+    }
+  });
+
   it("품목의 조달구분 · 검사 대상은 유형의 기본값이다(ADR 0003)", () => {
     for (const i of SAMPLE_ITEMS) {
       expect(i.procurement, i.code).toBe(i.itemType === "RM" ? "BUY" : "MAKE");
@@ -46,11 +58,12 @@ describe("샘플 데이터 — 성공 기준 1", () => {
     }
   });
 
-  it("공통코드 묶음은 ITEM_TYPE · PROC_TYPE(시스템) · UNIT(사용자) 셋, 단위는 EA · M · KG · G 로 시작한다", () => {
+  it("공통코드 묶음은 ITEM_TYPE · PROC_TYPE(시스템) · UNIT · COUNTRY(사용자) 넷, 단위는 EA · M · KG · G 로 시작한다", () => {
     expect(SAMPLE_CODE_GROUPS.map((g) => [g.code, g.isSystem])).toEqual([
       ["ITEM_TYPE", true],
       ["PROC_TYPE", true],
       ["UNIT", false],
+      ["COUNTRY", false],
     ]);
     expect(SAMPLE_CODES.filter((c) => c.groupCode === "UNIT").map((c) => c.code)).toEqual(["EA", "M", "KG", "G"]);
   });
