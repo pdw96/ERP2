@@ -150,11 +150,22 @@ export function Input({
 }
 
 /** 사용 여부 — 수정 화면에만 있다. 지우는 길은 없다. */
-export function ActiveSection({ what, initial, error }: { what: string; initial?: string; error?: string }) {
+export function ActiveSection({
+  what,
+  initial,
+  error,
+  note,
+}: {
+  what: string;
+  initial?: string;
+  error?: string;
+  /** 기본 안내를 바꿀 때 — 예: 공통코드의 값 표는 「사용 안 함」까지 늘 보인다. */
+  note?: string;
+}) {
   return (
     <Section
       title="사용 여부"
-      note={`「사용 안 함」인 ${eun(what)} 목록의 기본 보기와 새 입력에서 빠집니다. 지우는 길은 없습니다.`}
+      note={note ?? `「사용 안 함」인 ${eun(what)} 목록의 기본 보기와 새 입력에서 빠집니다. 지우는 길은 없습니다.`}
     >
       <Field field="active" label="사용 여부" error={error} as="fieldset" hideLabel>
         <div className="flex flex-wrap gap-2">

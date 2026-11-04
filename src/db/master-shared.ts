@@ -4,10 +4,15 @@ import { eun } from "@/lib/josa";
 import { nextCode, type CodePrefix } from "./numbering";
 import type { Db } from "./types";
 
-// 기준정보 화면(품목 · 창고 · 거래처)이 같이 쓰는 것 — 주소의 거르기 값 읽기, 찾기, DB 거절 읽기, 잠금 안의 등록.
+// 기준정보 화면(품목 · 창고 · 거래처 · 공통코드)이 같이 쓰는 것 — 주소의 거르기 값 읽기, 찾기, DB 거절 읽기, 잠금 안의 등록.
 
 /** 등록의 차례를 지키는 DB 잠금 번호 — 테이블마다 하나(배포 빌드의 잠금 20261102 와 겹치지 않게). */
-export const REGISTER_LOCK = { items: 2026110301, warehouses: 2026110302, partners: 2026110303 } as const;
+export const REGISTER_LOCK = {
+  items: 2026110301,
+  warehouses: 2026110302,
+  partners: 2026110303,
+  codes: 2026110304,
+} as const;
 
 export type Params = Record<string, string | string[] | undefined>;
 
