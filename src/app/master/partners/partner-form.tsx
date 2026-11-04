@@ -137,8 +137,15 @@ function Fields(props: Props & { v: PartnerValues; errors: PartnerErrors }) {
             </select>
           </div>
         </Field>
+        {/* 두 칸에 다른 key — 국가를 바꾸면 칸을 새로 그린다. 같은 자리의 입력 칸을 다시 쓰면 넣던 번호가 다른 칸으로 옮겨 간다. */}
         {korean ? (
-          <Field field="bizNo" label="사업자등록번호" error={errors.bizNo} hint="000-00-00000 · 비워도 됩니다">
+          <Field
+            key="bizNo"
+            field="bizNo"
+            label="사업자등록번호"
+            error={errors.bizNo}
+            hint="000-00-00000 · 비워도 됩니다"
+          >
             <div className="sm:max-w-56">
               <Input
                 field="bizNo"
@@ -152,6 +159,7 @@ function Fields(props: Props & { v: PartnerValues; errors: PartnerErrors }) {
           </Field>
         ) : (
           <Field
+            key="foreignBizNo"
             field="foreignBizNo"
             label="해외 사업자번호"
             error={errors.foreignBizNo}

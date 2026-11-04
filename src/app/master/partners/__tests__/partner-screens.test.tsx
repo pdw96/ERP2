@@ -155,6 +155,22 @@ describe("거래처 등록 화면 — 국가(PR G)", () => {
     expect([sent.get("country"), sent.get("foreignBizNo"), sent.has("bizNo")]).toEqual(["US", "12-3456789", false]);
   });
 
+  it("국가를 바꾸면 넣던 번호가 다른 칸으로 옮겨 가지 않는다 — 한국 번호가 해외 번호로 저장되지 않게", async () => {
+    const action = vi.fn().mockResolvedValue(null);
+    create(action);
+    fireEvent.change(screen.getByLabelText(/사업자등록번호/), { target: { value: "000-00-00009" } });
+    fireEvent.change(screen.getByLabelText(/^국가/), { target: { value: "US" } });
+    expect(screen.getByLabelText(/해외 사업자번호/)).toHaveValue("");
+    fireEvent.change(screen.getByLabelText(/해외 사업자번호/), { target: { value: "12-3456789" } });
+    fireEvent.change(screen.getByLabelText(/^국가/), { target: { value: "KR" } });
+    expect(screen.getByLabelText(/사업자등록번호/)).not.toHaveValue("12-3456789");
+    fireEvent.change(screen.getByLabelText(/^국가/), { target: { value: "JP" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    });
+    expect((action.mock.calls[0][1] as FormData).get("foreignBizNo")).toBe("");
+  });
+
   it("거절되면 보낸 국가와 번호로 다시 채운다", async () => {
     const rejected: PartnerFormState = {
       ok: false,
