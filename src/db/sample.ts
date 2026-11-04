@@ -5,6 +5,8 @@ import type { codeGroups, codes, items, partners, warehouses } from "./schema";
 // 실제 회사명 · 실제 사람의 정보를 쓰지 않는다(CLAUDE.md). 거래처 이름은 「(가상)」으로 시작하고,
 // 사업자등록번호는 실제로 발급되지 않는 「000-00-」 꼴만 쓴다. 해외 거래처의 번호도 실제로 쓰이지 않는 꼴이다 —
 // 일본 법인번호(13자리)는 0 으로 채우고, 미국 EIN 은 발급되지 않는 머리 00 을 쓴다.
+// 대표자 · 담당자는 서식 예시에 널리 쓰는 본보기 이름이고, 전화는 쓰이지 않는 0000 번호, 이메일은 예시 전용 주소(example.com),
+// 주소는 없는 지명(가상시)이다(저자 인터뷰 2026-11-04).
 
 type New<T extends { $inferInsert: unknown }> = T["$inferInsert"];
 
@@ -13,6 +15,10 @@ export const SAMPLE_CODE_GROUPS: New<typeof codeGroups>[] = [
   { code: "PROC_TYPE", name: "조달구분", isSystem: true },
   { code: "UNIT", name: "단위", isSystem: false },
   { code: "COUNTRY", name: "국가", isSystem: false },
+  // 품목 분류 — 대분류는 종류, 중분류는 패키지, 소분류는 용도(저자 인터뷰 2026-11-04, ADR 0012).
+  { code: "ITEM_CLS1", name: "품목 대분류", isSystem: false },
+  { code: "ITEM_CLS2", name: "품목 중분류", isSystem: false },
+  { code: "ITEM_CLS3", name: "품목 소분류", isSystem: false },
 ];
 
 export const SAMPLE_CODES: New<typeof codes>[] = [
@@ -28,6 +34,19 @@ export const SAMPLE_CODES: New<typeof codes>[] = [
   { groupCode: "COUNTRY", code: "JP", name: "일본", sortOrder: 30 },
   { groupCode: "COUNTRY", code: "CN", name: "중국", sortOrder: 40 },
   { groupCode: "COUNTRY", code: "TW", name: "대만", sortOrder: 50 },
+  // 품목 분류 — 마이그레이션 0003(손으로 쓴 것)이 데이터가 있는 DB 에 같은 값을 넣는다(시험이 견준다).
+  { groupCode: "ITEM_CLS1", code: "WAFER", name: "웨이퍼", sortOrder: 10 },
+  { groupCode: "ITEM_CLS1", code: "FRAME", name: "리드프레임", sortOrder: 20 },
+  { groupCode: "ITEM_CLS1", code: "WIRE", name: "와이어", sortOrder: 30 },
+  { groupCode: "ITEM_CLS1", code: "CHEM", name: "화학재료", sortOrder: 40 },
+  { groupCode: "ITEM_CLS1", code: "WIP", name: "공정품", sortOrder: 50 },
+  { groupCode: "ITEM_CLS1", code: "IC", name: "IC", sortOrder: 60 },
+  { groupCode: "ITEM_CLS2", code: "SOP", name: "SOP", sortOrder: 10 },
+  { groupCode: "ITEM_CLS2", code: "QFN", name: "QFN", sortOrder: 20 },
+  { groupCode: "ITEM_CLS2", code: "COMMON", name: "공용", sortOrder: 30 },
+  { groupCode: "ITEM_CLS3", code: "POWER", name: "전원", sortOrder: 10 },
+  { groupCode: "ITEM_CLS3", code: "SENSOR", name: "센서", sortOrder: 20 },
+  { groupCode: "ITEM_CLS3", code: "GENERAL", name: "범용", sortOrder: 30 },
 ];
 
 export const SAMPLE_WAREHOUSES: New<typeof warehouses>[] = [
@@ -38,20 +57,105 @@ export const SAMPLE_WAREHOUSES: New<typeof warehouses>[] = [
 ];
 
 export const SAMPLE_PARTNERS: New<typeof partners>[] = [
-  { code: "BP-0001", name: "(가상) 가람리드프레임", isSupplier: true, bizNo: "000-00-00001" },
-  { code: "BP-0002", name: "(가상) 누리와이어", isSupplier: true, bizNo: "000-00-00002" },
-  { code: "BP-0003", name: "(가상) 다온케미칼", isSupplier: true, bizNo: "000-00-00003" },
-  { code: "BP-0004", name: "(가상) 라온전자", isCustomer: true, bizNo: "000-00-00004" },
-  { code: "BP-0005", name: "(가상) 마루반도체", isSupplier: true, isCustomer: true, bizNo: "000-00-00005" },
-  // 해외 — 일본의 몰딩 재료(EMC) 매입처, 미국의 IC 고객 매출처(저자 인터뷰 2026-11-03).
+  {
+    code: "BP-0001",
+    name: "(가상) 가람리드프레임",
+    isSupplier: true,
+    bizNo: "000-00-00001",
+    ceo: "홍길동",
+    bizType: "제조업",
+    bizItem: "리드프레임",
+    address: "가상시 가람구 산단로 101",
+    phone: "031-0000-0001",
+    email: "sales@garam.example.com",
+    contactName: "김철수",
+    contactPhone: "010-0000-0001",
+    note: "SOP · QFN 리드프레임 주 공급처",
+  },
+  {
+    code: "BP-0002",
+    name: "(가상) 누리와이어",
+    isSupplier: true,
+    bizNo: "000-00-00002",
+    ceo: "성춘향",
+    bizType: "제조업",
+    bizItem: "본딩 와이어",
+    address: "가상시 누리구 금속로 22",
+    phone: "031-0000-0002",
+    email: "order@nuri.example.com",
+    contactName: "이영희",
+    contactPhone: "010-0000-0002",
+  },
+  {
+    code: "BP-0003",
+    name: "(가상) 다온케미칼",
+    isSupplier: true,
+    bizNo: "000-00-00003",
+    ceo: "이몽룡",
+    bizType: "제조업",
+    bizItem: "반도체 재료",
+    address: "가상시 다온구 화학로 3",
+    phone: "041-0000-0003",
+    email: "info@daon.example.com",
+  },
+  {
+    code: "BP-0004",
+    name: "(가상) 라온전자",
+    isCustomer: true,
+    bizNo: "000-00-00004",
+    ceo: "심청",
+    bizType: "제조업",
+    bizItem: "전자기기",
+    address: "가상시 라온구 전자로 44",
+    phone: "02-0000-0004",
+    email: "purchase@raon.example.com",
+    contactName: "김영희",
+    contactPhone: "010-0000-0004",
+  },
+  {
+    code: "BP-0005",
+    name: "(가상) 마루반도체",
+    isSupplier: true,
+    isCustomer: true,
+    bizNo: "000-00-00005",
+    ceo: "임꺽정",
+    bizType: "제조업 · 도소매",
+    bizItem: "반도체",
+    address: "가상시 마루구 반도체로 5",
+    phone: "031-0000-0005",
+    email: "biz@maru.example.com",
+    contactName: "이철수",
+    contactPhone: "010-0000-0005",
+    note: "웨이퍼를 사 오고 패키징한 IC 를 판다",
+  },
+  // 해외 — 일본의 몰딩 재료(EMC) 매입처, 미국의 IC 고객 매출처(저자 인터뷰 2026-11-03). 업태 · 종목은 한국 세법의 칸이라 비운다.
   {
     code: "BP-0006",
     name: "(가상) 소라몰드머티리얼",
     isSupplier: true,
     country: "JP",
     foreignBizNo: "0000000000006",
+    ceo: "Taro Yamada",
+    address: "1-6 Kaso-cho, Kaso City, Japan",
+    phone: "+81-0-0000-0006",
+    email: "export@sora.example.com",
+    contactName: "Hanako Yamada",
+    contactPhone: "+81-00-0000-0006",
+    note: "EMC 주 공급처",
   },
-  { code: "BP-0007", name: "(가상) 노스필드디바이스", isCustomer: true, country: "US", foreignBizNo: "00-0000007" },
+  {
+    code: "BP-0007",
+    name: "(가상) 노스필드디바이스",
+    isCustomer: true,
+    country: "US",
+    foreignBizNo: "00-0000007",
+    ceo: "John Doe",
+    address: "7 Example Ave, Kaso City, USA",
+    phone: "+1-000-000-0007",
+    email: "buyer@northfield.example.com",
+    contactName: "Jane Doe",
+    contactPhone: "+1-000-000-0070",
+  },
 ];
 
 // 원자재 → 구매 · 수입검사, 반제품 · 완제품 → 생산, 완제품 → 출하검사(ADR 0003 의 기본값).
@@ -63,6 +167,8 @@ export const SAMPLE_ITEMS: New<typeof items>[] = [
   {
     ...rm,
     code: "RM-0001",
+    cls1: "WAFER",
+    cls2: "COMMON",
     name: "웨이퍼",
     spec: "8인치 · 두께 200µm",
     unit: "EA",
@@ -74,6 +180,8 @@ export const SAMPLE_ITEMS: New<typeof items>[] = [
   {
     ...rm,
     code: "RM-0002",
+    cls1: "FRAME",
+    cls2: "SOP",
     name: "리드프레임",
     spec: "SOP-8 · 구리 합금",
     unit: "EA",
@@ -85,6 +193,8 @@ export const SAMPLE_ITEMS: New<typeof items>[] = [
   {
     ...rm,
     code: "RM-0003",
+    cls1: "WIRE",
+    cls2: "COMMON",
     name: "금 와이어",
     spec: "지름 25µm",
     unit: "M",
@@ -96,6 +206,9 @@ export const SAMPLE_ITEMS: New<typeof items>[] = [
   {
     ...rm,
     code: "RM-0004",
+    cls1: "CHEM",
+    cls2: "COMMON",
+    note: "냉장 보관(5℃ 이하)",
     name: "에폭시 몰딩 컴파운드",
     spec: "EMC · 흑색",
     unit: "KG",
@@ -107,6 +220,8 @@ export const SAMPLE_ITEMS: New<typeof items>[] = [
   {
     ...rm,
     code: "RM-0005",
+    cls1: "CHEM",
+    cls2: "COMMON",
     name: "다이 접착제",
     spec: "은 페이스트",
     unit: "G",
@@ -118,6 +233,8 @@ export const SAMPLE_ITEMS: New<typeof items>[] = [
   {
     ...rm,
     code: "RM-0006",
+    cls1: "FRAME",
+    cls2: "QFN",
     name: "QFN 리드프레임",
     spec: "QFN-32 · 5×5mm",
     unit: "EA",
@@ -126,11 +243,35 @@ export const SAMPLE_ITEMS: New<typeof items>[] = [
     minLot: 5000,
     lotMultiple: 5000,
   },
-  { ...sf, code: "SF-0001", name: "다이 본딩 완료품", spec: "SOP-8 · 와이어 본딩 전", unit: "EA", leadTimeDays: 1 },
-  { ...sf, code: "SF-0002", name: "몰딩 완료품", spec: "SOP-8 · 도금 · 절단 전", unit: "EA", leadTimeDays: 1 },
+  {
+    ...sf,
+    code: "SF-0001",
+    cls1: "WIP",
+    cls2: "SOP",
+    cls3: "POWER",
+    name: "다이 본딩 완료품",
+    spec: "SOP-8 · 와이어 본딩 전",
+    unit: "EA",
+    leadTimeDays: 1,
+  },
+  {
+    ...sf,
+    code: "SF-0002",
+    cls1: "WIP",
+    cls2: "SOP",
+    cls3: "POWER",
+    name: "몰딩 완료품",
+    spec: "SOP-8 · 도금 · 절단 전",
+    unit: "EA",
+    leadTimeDays: 1,
+  },
   {
     ...fg,
     code: "FG-0001",
+    cls1: "IC",
+    cls2: "SOP",
+    cls3: "POWER",
+    note: "주력 제품",
     name: "전원 관리 IC",
     spec: "SOP-8 패키지",
     unit: "EA",
@@ -142,6 +283,9 @@ export const SAMPLE_ITEMS: New<typeof items>[] = [
   {
     ...fg,
     code: "FG-0002",
+    cls1: "IC",
+    cls2: "QFN",
+    cls3: "SENSOR",
     name: "센서 IC",
     spec: "QFN-32 패키지",
     unit: "EA",

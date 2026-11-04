@@ -18,6 +18,15 @@ const partner = (over: Partial<Partner>): Partner => ({
   country: "KR",
   bizNo: "000-00-00005",
   foreignBizNo: null,
+  ceo: "",
+  bizType: "",
+  bizItem: "",
+  address: "",
+  phone: "",
+  email: "",
+  contactName: "",
+  contactPhone: "",
+  note: "",
   active: true,
   createdAt: new Date(),
   updatedAt: new Date(),
@@ -41,15 +50,18 @@ describe("거래처 목록", () => {
       expect(row.getByText(text)).toBeInTheDocument();
   });
 
-  it("휴대폰 폭에서는 사업자번호를 숨긴다", () => {
+  it("휴대폰 폭에서는 사업자번호 · 담당자 · 전화를 숨긴다", () => {
     render(<PartnerList rows={[partner({})]} filter={none} />);
     const hidden = screen.getAllByRole("columnheader").filter((th) => th.className.includes("hidden"));
-    expect(hidden.map((th) => th.textContent)).toEqual(["사업자번호"]);
+    expect(hidden.map((th) => th.textContent)).toEqual(["사업자번호", "담당자 · 전화"]);
   });
 
   it("사업자등록번호가 없으면 「—」, 「사용 안 함」에는 표시가 붙는다", () => {
     render(
-      <PartnerList rows={[partner({ bizNo: null, active: false })]} filter={{ ...none, includeInactive: true }} />,
+      <PartnerList
+        rows={[partner({ bizNo: null, active: false, contactName: "김철수" })]}
+        filter={{ ...none, includeInactive: true }}
+      />,
     );
     expect(screen.getByText("—")).toBeInTheDocument();
     expect(screen.getByText("사용 안 함")).toBeInTheDocument();
@@ -186,6 +198,65 @@ describe("거래처 등록 화면 — 국가(PR G)", () => {
     );
     expect(screen.getByLabelText(/^국가/)).toHaveValue("JP");
     expect(screen.getByLabelText(/해외 사업자번호/)).toHaveValue("1".repeat(31));
+  });
+});
+
+describe("거래처의 설명용 칸(PR H)", () => {
+  it("사업자 정보 · 연락처 · 비고 칸이 있고, 넣은 값을 보낸다", async () => {
+    const action = vi.fn().mockResolvedValue(null);
+    render(
+      <PartnerForm
+        mode="create"
+        countries={countries}
+        action={action}
+        previewCode="BP-0008"
+        initial={{ name: "", country: "KR", bizNo: "", foreignBizNo: "" }}
+      />,
+    );
+    for (const name of ["사업자 정보", "연락처", "비고"])
+      expect(screen.getByRole("heading", { name })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^대표자/), { target: { value: "홍길동" } });
+    fireEvent.change(screen.getByLabelText(/^전화/), { target: { value: "02-0000-0001" } });
+    fireEvent.change(screen.getByLabelText(/^담당자 연락처/), { target: { value: "010-0000-0001" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /비고/ }), { target: { value: "메모" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    });
+    const sent = action.mock.calls[0][1] as FormData;
+    expect(sent.get("ceo")).toBe("홍길동");
+    expect(sent.get("phone")).toBe("02-0000-0001");
+    expect(sent.get("contactPhone")).toBe("010-0000-0001");
+    expect(sent.get("email")).toBe("");
+    expect(sent.get("note")).toBe("메모");
+  });
+
+  it("거절된 칸은 맨 위 목록과 칸 옆에 까닭을 보이고, 넣은 값이 남는다", async () => {
+    const action = vi.fn().mockResolvedValue({
+      ok: false,
+      errors: { email: "이메일은 name@example.com 꼴로 넣으세요" },
+      values: { name: "(가상) 바다", isSupplier: "on", country: "KR", email: "bada" },
+    });
+    render(
+      <PartnerForm
+        mode="create"
+        countries={countries}
+        action={action}
+        previewCode="BP-0008"
+        initial={{ name: "", country: "KR", bizNo: "", foreignBizNo: "" }}
+      />,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    });
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("이메일 — 이메일은 name@example.com 꼴로"));
+    expect(screen.getByLabelText(/^이메일/)).toHaveValue("bada");
+    expect(screen.getByLabelText(/^이메일/)).toHaveAccessibleDescription("이메일은 name@example.com 꼴로 넣으세요");
+  });
+
+  it("목록의 「담당자 · 전화」 칸 — 담당자와 전화를 보인다", () => {
+    render(<PartnerList rows={[partner({ contactName: "김철수", phone: "031-0000-0001" })]} filter={none} />);
+    expect(screen.getByText("김철수")).toBeInTheDocument();
+    expect(screen.getByText("031-0000-0001")).toBeInTheDocument();
   });
 });
 

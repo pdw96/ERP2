@@ -77,6 +77,14 @@ export const items = pgTable(
     safetyStock: qty("safety_stock"),
     minLot: qty("min_lot"),
     lotMultiple: qty("lot_multiple"),
+    // 분류(PR H, ADR 0012) — 대 · 중 · 소 를 따로 고른다. 비우면 없음(null)이고, 그때는 참조를 보지 않는다.
+    cls1Group: text("cls1_group").notNull().default("ITEM_CLS1"),
+    cls1: text("cls1"),
+    cls2Group: text("cls2_group").notNull().default("ITEM_CLS2"),
+    cls2: text("cls2"),
+    cls3Group: text("cls3_group").notNull().default("ITEM_CLS3"),
+    cls3: text("cls3"),
+    note: text("note").notNull().default(""),
     active: boolean("active").notNull().default(true),
     ...timestamps(),
   },
@@ -96,14 +104,33 @@ export const items = pgTable(
       columns: [t.unitGroup, t.unit],
       foreignColumns: [codes.groupCode, codes.code],
     }),
+    foreignKey({
+      name: "items_cls1_fk",
+      columns: [t.cls1Group, t.cls1],
+      foreignColumns: [codes.groupCode, codes.code],
+    }),
+    foreignKey({
+      name: "items_cls2_fk",
+      columns: [t.cls2Group, t.cls2],
+      foreignColumns: [codes.groupCode, codes.code],
+    }),
+    foreignKey({
+      name: "items_cls3_fk",
+      columns: [t.cls3Group, t.cls3],
+      foreignColumns: [codes.groupCode, codes.code],
+    }),
     check("items_item_type_group_fixed", sql`${t.itemTypeGroup} = 'ITEM_TYPE'`),
     check("items_procurement_group_fixed", sql`${t.procurementGroup} = 'PROC_TYPE'`),
     check("items_unit_group_fixed", sql`${t.unitGroup} = 'UNIT'`),
+    check("items_cls1_group_fixed", sql`${t.cls1Group} = 'ITEM_CLS1'`),
+    check("items_cls2_group_fixed", sql`${t.cls2Group} = 'ITEM_CLS2'`),
+    check("items_cls3_group_fixed", sql`${t.cls3Group} = 'ITEM_CLS3'`),
     check("items_code_format", sql`${t.code} ~ '^(RM|SF|FG)-[0-9]{4,}$' and left(${t.code}, 2) = ${t.itemType}`),
     check("items_name_length", sql`char_length(${t.name}) between 1 and 100`),
     check("items_spec_length", sql`char_length(${t.spec}) <= 100`),
     check("items_lead_time_range", sql`${t.leadTimeDays} between 0 and 365`),
     check("items_quantities_not_negative", sql`${t.safetyStock} >= 0 and ${t.minLot} >= 0 and ${t.lotMultiple} >= 0`),
+    check("items_note_length", sql`char_length(${t.note}) <= 500`),
   ],
 );
 
@@ -140,6 +167,16 @@ export const partners = pgTable(
     country: text("country").notNull().default("KR"),
     bizNo: text("biz_no"),
     foreignBizNo: text("foreign_biz_no"),
+    // 설명용 칸(PR H, ADR 0012) — 비우면 빈 글자. 계산이 읽지 않는다.
+    ceo: text("ceo").notNull().default(""),
+    bizType: text("biz_type").notNull().default(""),
+    bizItem: text("biz_item").notNull().default(""),
+    address: text("address").notNull().default(""),
+    phone: text("phone").notNull().default(""),
+    email: text("email").notNull().default(""),
+    contactName: text("contact_name").notNull().default(""),
+    contactPhone: text("contact_phone").notNull().default(""),
+    note: text("note").notNull().default(""),
     active: boolean("active").notNull().default(true),
     ...timestamps(),
   },
@@ -161,6 +198,26 @@ export const partners = pgTable(
     check(
       "partners_biz_no_by_country",
       sql`(${t.country} = 'KR' and ${t.foreignBizNo} is null) or (${t.country} <> 'KR' and ${t.bizNo} is null)`,
+    ),
+    check("partners_ceo_length", sql`char_length(${t.ceo}) <= 50`),
+    check("partners_biz_type_length", sql`char_length(${t.bizType}) <= 50`),
+    check("partners_biz_item_length", sql`char_length(${t.bizItem}) <= 50`),
+    check("partners_address_length", sql`char_length(${t.address}) <= 200`),
+    check("partners_contact_name_length", sql`char_length(${t.contactName}) <= 50`),
+    check("partners_note_length", sql`char_length(${t.note}) <= 500`),
+    // 전화 — 숫자 · 붙임표 · + · 괄호 · 빈칸만 20자까지, 숫자가 하나 이상(src/lib/partner-fields.ts 의 PHONE 과 같다).
+    check(
+      "partners_phone_format",
+      sql`${t.phone} = '' or (${t.phone} ~ '^[0-9+() -]{1,20}$' and ${t.phone} ~ '[0-9]')`,
+    ),
+    check(
+      "partners_contact_phone_format",
+      sql`${t.contactPhone} = '' or (${t.contactPhone} ~ '^[0-9+() -]{1,20}$' and ${t.contactPhone} ~ '[0-9]')`,
+    ),
+    // 이메일 — @ 하나를 사이에 두고 앞뒤가 비지 않고 뒤에 점이 있으며 빈칸이 없다, 100자까지(EMAIL 과 같다).
+    check(
+      "partners_email_format",
+      sql`${t.email} = '' or (char_length(${t.email}) <= 100 and ${t.email} ~ '^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+$')`,
     ),
   ],
 );

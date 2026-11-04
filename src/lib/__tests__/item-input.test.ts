@@ -2,6 +2,8 @@
 import { describe, expect, it } from "vitest";
 import { itemValues, parseItemUpdate, parseNewItem, type ItemValues } from "@/lib/item-input";
 
+const NO_CLASS = { cls1: null, cls2: null, cls3: null, note: "" };
+
 // 설계 ③ 의 품목 칸마다 맞는 꼴과 틀린 꼴 — 서버의 검사라 화면을 건너뛴 요청에도 같다.
 
 const good: ItemValues = {
@@ -33,6 +35,7 @@ describe("등록의 입력", () => {
         safetyStock: 50,
         minLot: 25,
         lotMultiple: 25,
+        ...NO_CLASS,
       },
     });
   });

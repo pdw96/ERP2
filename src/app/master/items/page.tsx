@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { getItem, listItems, parseItemFilter, ITEM_CODE } from "@/db/items";
+import { allItemClasses, getItem, listItems, parseItemFilter, ITEM_CODE } from "@/db/items";
 import { withDb } from "@/db/request";
 import { LoadFailed } from "@/components/load-failed";
 import { ItemList, ItemSearch, SavedNotice } from "./item-list";
@@ -49,24 +49,32 @@ export default function ItemsPage({ searchParams }: PageProps<"/master/items">) 
 async function Results({ searchParams }: Pick<PageProps<"/master/items">, "searchParams">) {
   const params = await searchParams;
   await connection();
-  const { filter, notices } = parseItemFilter(params);
   const savedCode = typeof params.saved === "string" && ITEM_CODE.test(params.saved) ? params.saved : undefined;
 
+  // 분류의 거르기는 공통코드에 있는 값만 받으므로 분류 값을 먼저 읽는다.
   let data;
   try {
-    data = await withDb(async (db) => ({
-      rows: await listItems(db, filter),
-      saved: savedCode ? await getItem(db, savedCode) : undefined,
-    }));
+    data = await withDb(async (db) => {
+      const classes = await allItemClasses(db);
+      const { filter, notices } = parseItemFilter(params, classes);
+      return {
+        classes,
+        filter,
+        notices,
+        rows: await listItems(db, filter),
+        saved: savedCode ? await getItem(db, savedCode) : undefined,
+      };
+    });
   } catch (error) {
     return <LoadFailed error={error} what="품목 목록" />;
   }
+  const { filter, notices, classes } = data;
 
   return (
     <>
       {data.saved && <SavedNotice item={data.saved} shown={data.rows.some((r) => r.id === data.saved!.id)} />}
-      <ItemSearch filter={filter} notices={notices} />
-      <ItemList rows={data.rows} filter={filter} savedCode={data.saved?.code} />
+      <ItemSearch filter={filter} notices={notices} classes={classes} />
+      <ItemList rows={data.rows} filter={filter} savedCode={data.saved?.code} classes={classes} />
     </>
   );
 }

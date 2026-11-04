@@ -12,8 +12,15 @@ import {
   Section,
   inputClass,
 } from "@/components/form-parts";
-import type { UnitOption } from "@/db/items";
-import { ITEM_FIELDS, type ItemErrors, type ItemField, type ItemValues } from "@/lib/item-fields";
+import type { ItemClassOptions, UnitOption } from "@/db/items";
+import {
+  ITEM_CLASSES,
+  ITEM_FIELDS,
+  NOTE_MAX,
+  type ItemErrors,
+  type ItemField,
+  type ItemValues,
+} from "@/lib/item-fields";
 import { ITEM_TYPE_DEFAULTS, ITEM_TYPES, PROC_TYPES, itemTypeName, type ItemType } from "@/lib/master-codes";
 import type { ItemFormState } from "./actions";
 
@@ -23,6 +30,8 @@ import type { ItemFormState } from "./actions";
 type Props = {
   action: (state: ItemFormState, form: FormData) => Promise<ItemFormState>;
   units: UnitOption[];
+  /** 분류 묶음마다 고를 수 있는 값 — 사용 중인 것과, 수정이면 그 품목의 지금 값. */
+  classes: ItemClassOptions;
   initial: ItemValues;
 } & ({ mode: "create"; previewCodes: Record<ItemType, string> } | { mode: "edit"; code: string; itemType: string });
 
@@ -38,6 +47,10 @@ const LABEL: Partial<Record<ItemField, string>> = {
   safetyStock: "안전재고",
   minLot: "최소 발주 · 생산량",
   lotMultiple: "발주 · 생산 배수",
+  cls1: "대분류",
+  cls2: "중분류",
+  cls3: "소분류",
+  note: "비고",
   active: "사용 여부",
 };
 
@@ -212,6 +225,43 @@ function Fields(props: Props & { values: ItemValues; errors: ItemErrors }) {
             />
           </Field>
         </div>
+      </Section>
+
+      <Section title="분류 · 비고" note="모두 비워도 됩니다. 분류의 값은 「시스템 관리 › 공통코드」에서 늘립니다.">
+        <div className="grid gap-6 sm:grid-cols-3">
+          {ITEM_CLASSES.map(({ field, label }) => (
+            <Field key={field} field={field} label={label} error={errors[field]}>
+              <select
+                id={`f-${field}`}
+                name={field}
+                defaultValue={v[field] ?? ""}
+                aria-invalid={!!errors[field] || undefined}
+                aria-describedby={errors[field] ? `e-${field}` : undefined}
+                className={inputClass(!!errors[field])}
+              >
+                <option value="">없음</option>
+                {props.classes[field].map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.code} — {c.name}
+                    {c.active ? "" : " (사용 안 함)"}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ))}
+        </div>
+        <Field field="note" label="비고" error={errors.note} hint={`비워도 됩니다 · ${NOTE_MAX}자까지`}>
+          <textarea
+            id="f-note"
+            name="note"
+            defaultValue={v.note}
+            maxLength={NOTE_MAX}
+            rows={3}
+            aria-invalid={!!errors.note || undefined}
+            aria-describedby={errors.note ? "e-note" : undefined}
+            className={inputClass(!!errors.note)}
+          />
+        </Field>
       </Section>
 
       {props.mode === "edit" && <ActiveSection what="품목" initial={v.active} error={errors.active} />}

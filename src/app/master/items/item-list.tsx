@@ -1,6 +1,7 @@
 import Form from "next/form";
 import Link from "next/link";
-import type { FilterNotice, Item, ItemFilter } from "@/db/items";
+import type { FilterNotice, Item, ItemClassOptions, ItemFilter } from "@/db/items";
+import { ITEM_CLASSES } from "@/lib/item-fields";
 import { SavedNotice as Notice } from "@/components/saved-notice";
 import { ITEM_TYPES, PROC_TYPES, itemTypeName, procTypeName } from "@/lib/master-codes";
 
@@ -8,8 +9,29 @@ import { ITEM_TYPES, PROC_TYPES, itemTypeName, procTypeName } from "@/lib/master
 
 const qty = (n: number) => n.toLocaleString("ko-KR", { maximumFractionDigits: 3 });
 
-export function ItemSearch({ filter, notices }: { filter: ItemFilter; notices: FilterNotice[] }) {
-  const filtered = !!(filter.q || filter.itemType || filter.procurement || filter.includeInactive);
+const NO_CLASSES: ItemClassOptions = { cls1: [], cls2: [], cls3: [] };
+
+/** 찾기 · 거르기가 하나라도 걸렸는지 — 「사용 안 함 포함」은 빼고. */
+const narrowed = (f: ItemFilter) => !!(f.q || f.itemType || f.procurement || f.cls1 || f.cls2 || f.cls3);
+
+/** 품목의 분류를 「대 · 중 · 소」 이름으로. 이름을 모르는 값은 코드 그대로. */
+function classNames(item: Item, classes: ItemClassOptions) {
+  return ITEM_CLASSES.flatMap(({ field }) => {
+    const code = item[field];
+    return code ? [classes[field].find((c) => c.code === code)?.name ?? code] : [];
+  }).join(" · ");
+}
+
+export function ItemSearch({
+  filter,
+  notices,
+  classes = NO_CLASSES,
+}: {
+  filter: ItemFilter;
+  notices: FilterNotice[];
+  classes?: ItemClassOptions;
+}) {
+  const filtered = narrowed(filter) || filter.includeInactive;
   return (
     <Form
       key={JSON.stringify(filter)}
@@ -17,9 +39,9 @@ export function ItemSearch({ filter, notices }: { filter: ItemFilter; notices: F
       replace
       role="search"
       aria-label="품목 찾기"
-      className="mt-6 grid gap-3 border-y border-rule bg-white px-4 py-4 sm:grid-cols-[1fr_auto_auto] sm:items-end md:grid-cols-[1fr_auto_auto_auto_auto]"
+      className="mt-6 grid gap-3 border-y border-rule bg-white px-4 py-4 sm:grid-cols-3 sm:items-end lg:grid-cols-[1.6fr_repeat(5,minmax(0,1fr))]"
     >
-      <label className="grid gap-1 text-sm">
+      <label className="grid gap-1 text-sm sm:col-span-3 lg:col-span-1">
         <span className="font-semibold">코드 · 품명</span>
         <input
           type="search"
@@ -60,6 +82,24 @@ export function ItemSearch({ filter, notices }: { filter: ItemFilter; notices: F
           ))}
         </select>
       </label>
+      {ITEM_CLASSES.map(({ field, label }) => (
+        <label key={field} className="grid gap-1 text-sm">
+          <span className="font-semibold">{label}</span>
+          <select
+            name={field}
+            defaultValue={filter[field] ?? ""}
+            className="w-full min-w-0 rounded border border-rule px-3 py-2 text-base"
+          >
+            <option value="">전체</option>
+            {classes[field].map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.name}
+                {c.active ? "" : " (사용 안 함)"}
+              </option>
+            ))}
+          </select>
+        </label>
+      ))}
       <label className="flex items-center gap-2 py-2 text-sm">
         <input
           type="checkbox"
@@ -70,7 +110,7 @@ export function ItemSearch({ filter, notices }: { filter: ItemFilter; notices: F
         />
         사용 안 함 포함
       </label>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 sm:col-span-2 lg:col-span-5">
         <button type="submit" className="rounded border border-machine px-5 py-2 font-semibold hover:bg-floor">
           찾기
         </button>
@@ -95,11 +135,21 @@ export function SavedNotice({ item, shown }: { item: Item; shown: boolean }) {
   return <Notice code={item.code} name={item.name} active={item.active} shown={shown} listHref="/master/items" />;
 }
 
-export function ItemList({ rows, filter, savedCode }: { rows: Item[]; filter: ItemFilter; savedCode?: string }) {
+export function ItemList({
+  rows,
+  filter,
+  savedCode,
+  classes = NO_CLASSES,
+}: {
+  rows: Item[];
+  filter: ItemFilter;
+  savedCode?: string;
+  classes?: ItemClassOptions;
+}) {
   if (rows.length === 0) {
     return (
       <p className="mt-6 border border-dashed border-rule px-5 py-8 text-center text-muted">
-        {filter.q || filter.itemType || filter.procurement ? "찾는 품목이 없습니다." : "등록된 품목이 없습니다."}
+        {narrowed(filter) ? "찾는 품목이 없습니다." : "등록된 품목이 없습니다."}
       </p>
     );
   }
@@ -123,6 +173,9 @@ export function ItemList({ rows, filter, savedCode }: { rows: Item[]; filter: It
             </th>
             <th scope="col" className="hidden px-3 py-2 md:table-cell">
               조달구분
+            </th>
+            <th scope="col" className="hidden px-3 py-2 lg:table-cell">
+              분류
             </th>
             <th scope="col" className="px-3 py-2">
               단위
@@ -165,6 +218,7 @@ export function ItemList({ rows, filter, savedCode }: { rows: Item[]; filter: It
               </td>
               <td className="px-3 py-2.5 whitespace-nowrap">{itemTypeName(item.itemType)}</td>
               <td className="hidden px-3 py-2.5 whitespace-nowrap md:table-cell">{procTypeName(item.procurement)}</td>
+              <td className="hidden px-3 py-2.5 text-sm lg:table-cell">{classNames(item, classes) || "—"}</td>
               <td className="px-3 py-2.5 font-mono text-sm">{item.unit}</td>
               <td className="hidden px-3 py-2.5 text-sm whitespace-nowrap lg:table-cell">
                 {[item.inspectIn && "수입", item.inspectOut && "출하"].filter(Boolean).join(" · ") || "—"}

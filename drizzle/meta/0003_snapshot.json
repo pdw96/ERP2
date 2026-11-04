@@ -1,0 +1,685 @@
+{
+  "id": "02f31c5f-b229-49ba-8759-c255868f1c53",
+  "prevId": "53a459b8-d43f-4742-8791-0fd9288a7491",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.code_groups": {
+      "name": "code_groups",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "code_groups_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_system": {
+          "name": "is_system",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "code_groups_code_unique": {
+          "name": "code_groups_code_unique",
+          "columns": [
+            "code"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "code_groups_code_format": {
+          "name": "code_groups_code_format",
+          "value": "\"code_groups\".\"code\" ~ '^[A-Z][A-Z0-9_]{1,19}$'"
+        },
+        "code_groups_name_length": {
+          "name": "code_groups_name_length",
+          "value": "char_length(\"code_groups\".\"name\") between 1 and 50"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.codes": {
+      "name": "codes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "codes_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "group_code": {
+          "name": "group_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "codes_group_code_code_groups_code_fk": {
+          "name": "codes_group_code_code_groups_code_fk",
+          "tableFrom": "codes",
+          "columnsFrom": [
+            "group_code"
+          ],
+          "tableTo": "code_groups",
+          "columnsTo": [
+            "code"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "codes_group_code_code_unique": {
+          "name": "codes_group_code_code_unique",
+          "columns": [
+            "group_code",
+            "code"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "codes_code_format": {
+          "name": "codes_code_format",
+          "value": "\"codes\".\"code\" ~ '^[A-Z0-9][A-Z0-9_]{0,19}$'"
+        },
+        "codes_name_length": {
+          "name": "codes_name_length",
+          "value": "char_length(\"codes\".\"name\") between 1 and 50"
+        },
+        "codes_sort_order_range": {
+          "name": "codes_sort_order_range",
+          "value": "\"codes\".\"sort_order\" between 0 and 999"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.items": {
+      "name": "items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "items_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "spec": {
+          "name": "spec",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "item_type_group": {
+          "name": "item_type_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ITEM_TYPE'"
+        },
+        "item_type": {
+          "name": "item_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "procurement_group": {
+          "name": "procurement_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PROC_TYPE'"
+        },
+        "procurement": {
+          "name": "procurement",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unit_group": {
+          "name": "unit_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'UNIT'"
+        },
+        "unit": {
+          "name": "unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "inspect_in": {
+          "name": "inspect_in",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "inspect_out": {
+          "name": "inspect_out",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "lead_time_days": {
+          "name": "lead_time_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "safety_stock": {
+          "name": "safety_stock",
+          "type": "numeric(12, 3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "min_lot": {
+          "name": "min_lot",
+          "type": "numeric(12, 3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "lot_multiple": {
+          "name": "lot_multiple",
+          "type": "numeric(12, 3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "items_item_type_fk": {
+          "name": "items_item_type_fk",
+          "tableFrom": "items",
+          "columnsFrom": [
+            "item_type_group",
+            "item_type"
+          ],
+          "tableTo": "codes",
+          "columnsTo": [
+            "group_code",
+            "code"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "items_procurement_fk": {
+          "name": "items_procurement_fk",
+          "tableFrom": "items",
+          "columnsFrom": [
+            "procurement_group",
+            "procurement"
+          ],
+          "tableTo": "codes",
+          "columnsTo": [
+            "group_code",
+            "code"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "items_unit_fk": {
+          "name": "items_unit_fk",
+          "tableFrom": "items",
+          "columnsFrom": [
+            "unit_group",
+            "unit"
+          ],
+          "tableTo": "codes",
+          "columnsTo": [
+            "group_code",
+            "code"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "items_code_unique": {
+          "name": "items_code_unique",
+          "columns": [
+            "code"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "items_item_type_group_fixed": {
+          "name": "items_item_type_group_fixed",
+          "value": "\"items\".\"item_type_group\" = 'ITEM_TYPE'"
+        },
+        "items_procurement_group_fixed": {
+          "name": "items_procurement_group_fixed",
+          "value": "\"items\".\"procurement_group\" = 'PROC_TYPE'"
+        },
+        "items_unit_group_fixed": {
+          "name": "items_unit_group_fixed",
+          "value": "\"items\".\"unit_group\" = 'UNIT'"
+        },
+        "items_code_format": {
+          "name": "items_code_format",
+          "value": "\"items\".\"code\" ~ '^(RM|SF|FG)-[0-9]{4,}$' and left(\"items\".\"code\", 2) = \"items\".\"item_type\""
+        },
+        "items_name_length": {
+          "name": "items_name_length",
+          "value": "char_length(\"items\".\"name\") between 1 and 100"
+        },
+        "items_spec_length": {
+          "name": "items_spec_length",
+          "value": "char_length(\"items\".\"spec\") <= 100"
+        },
+        "items_lead_time_range": {
+          "name": "items_lead_time_range",
+          "value": "\"items\".\"lead_time_days\" between 0 and 365"
+        },
+        "items_quantities_not_negative": {
+          "name": "items_quantities_not_negative",
+          "value": "\"items\".\"safety_stock\" >= 0 and \"items\".\"min_lot\" >= 0 and \"items\".\"lot_multiple\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.partners": {
+      "name": "partners",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "partners_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_supplier": {
+          "name": "is_supplier",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "is_customer": {
+          "name": "is_customer",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "country_group": {
+          "name": "country_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'COUNTRY'"
+        },
+        "country": {
+          "name": "country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'KR'"
+        },
+        "biz_no": {
+          "name": "biz_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "foreign_biz_no": {
+          "name": "foreign_biz_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "partners_country_fk": {
+          "name": "partners_country_fk",
+          "tableFrom": "partners",
+          "columnsFrom": [
+            "country_group",
+            "country"
+          ],
+          "tableTo": "codes",
+          "columnsTo": [
+            "group_code",
+            "code"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "partners_code_unique": {
+          "name": "partners_code_unique",
+          "columns": [
+            "code"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "partners_country_group_fixed": {
+          "name": "partners_country_group_fixed",
+          "value": "\"partners\".\"country_group\" = 'COUNTRY'"
+        },
+        "partners_code_format": {
+          "name": "partners_code_format",
+          "value": "\"partners\".\"code\" ~ '^BP-[0-9]{4,}$'"
+        },
+        "partners_name_length": {
+          "name": "partners_name_length",
+          "value": "char_length(\"partners\".\"name\") between 1 and 100"
+        },
+        "partners_role_required": {
+          "name": "partners_role_required",
+          "value": "\"partners\".\"is_supplier\" or \"partners\".\"is_customer\""
+        },
+        "partners_biz_no_format": {
+          "name": "partners_biz_no_format",
+          "value": "\"partners\".\"biz_no\" is null or \"partners\".\"biz_no\" ~ '^[0-9]{3}-[0-9]{2}-[0-9]{5}$'"
+        },
+        "partners_foreign_biz_no_length": {
+          "name": "partners_foreign_biz_no_length",
+          "value": "\"partners\".\"foreign_biz_no\" is null or char_length(\"partners\".\"foreign_biz_no\") between 1 and 30"
+        },
+        "partners_biz_no_by_country": {
+          "name": "partners_biz_no_by_country",
+          "value": "(\"partners\".\"country\" = 'KR' and \"partners\".\"foreign_biz_no\" is null) or (\"partners\".\"country\" <> 'KR' and \"partners\".\"biz_no\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.warehouses": {
+      "name": "warehouses",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "warehouses_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "warehouses_code_unique": {
+          "name": "warehouses_code_unique",
+          "columns": [
+            "code"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "warehouses_code_format": {
+          "name": "warehouses_code_format",
+          "value": "\"warehouses\".\"code\" ~ '^WH-[0-9]{2,}$'"
+        },
+        "warehouses_name_length": {
+          "name": "warehouses_name_length",
+          "value": "char_length(\"warehouses\".\"name\") between 1 and 50"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "views": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

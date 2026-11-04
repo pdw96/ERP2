@@ -13,6 +13,10 @@ export const ITEM_FIELDS = [
   "safetyStock",
   "minLot",
   "lotMultiple",
+  "cls1",
+  "cls2",
+  "cls3",
+  "note",
   "active",
 ] as const;
 
@@ -21,3 +25,15 @@ export type ItemField = (typeof ITEM_FIELDS)[number];
 export type ItemValues = Partial<Record<ItemField, string>>;
 /** 칸마다 거절한 까닭 하나. */
 export type ItemErrors = Partial<Record<ItemField, string>>;
+
+/** 품목 분류 — 칸과 공통코드 묶음(저자 인터뷰 2026-11-04, ADR 0012). 대분류는 종류, 중분류는 패키지, 소분류는 용도. */
+export const ITEM_CLASSES = [
+  { field: "cls1", group: "ITEM_CLS1", label: "대분류" },
+  { field: "cls2", group: "ITEM_CLS2", label: "중분류" },
+  { field: "cls3", group: "ITEM_CLS3", label: "소분류" },
+] as const;
+
+export type ItemClassField = (typeof ITEM_CLASSES)[number]["field"];
+
+/** 비고의 길이(설계 「PR H 를 열기 전에 정한 것」) — 품목 · 거래처 같다. */
+export const NOTE_MAX = 500;

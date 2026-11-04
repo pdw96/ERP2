@@ -1,17 +1,21 @@
 import { z } from "zod";
 import { activeFlag, firstErrors, formValues, text, toggle } from "./input-common";
 import { MINOR_CODE } from "./code-fields";
+import { eun } from "./josa";
 import { KOREA } from "./master-codes";
 import {
   FOREIGN_BIZ_NO_MAX,
   PARTNER_FIELDS,
+  PARTNER_TEXT_FIELDS,
+  isEmail,
+  isPhone,
   type PartnerErrorKey,
   type PartnerErrors,
   type PartnerValues,
 } from "./partner-fields";
 
 // 거래처 등록 · 수정의 입력 검사(설계 ③ — 거래처명 1 ~ 100자, 매입처 · 매출처 하나 이상, 국가, 한국이면 사업자등록번호를
-// 비우거나 000-00-00000 꼴로, 아니면 해외 사업자번호를 글자 그대로 30자까지, 사용 여부). 서버가 한다.
+// 비우거나 000-00-00000 꼴로, 아니면 해외 사업자번호를 글자 그대로 30자까지, 사용 여부, PR H 부터 설명용 칸). 서버가 한다.
 // 코드는 받지 않는다 — 서버가 붙이고(BP-0001 꼴), 등록한 뒤 바뀌지 않는다.
 // 국가가 공통코드에 있고 「사용 안 함」이 아닌지는 DB 를 봐야 해서 src/db/partners.ts 가 이어서 본다.
 
@@ -19,6 +23,8 @@ export {
   FOREIGN_BIZ_NO_MAX,
   PARTNER_ERROR_KEYS,
   PARTNER_FIELDS,
+  PARTNER_TEXT_FIELDS,
+  type PartnerTextField,
   type PartnerErrorKey,
   type PartnerErrors,
   type PartnerField,
@@ -32,6 +38,15 @@ export type NewPartnerInput = {
   country: string;
   bizNo: string | null;
   foreignBizNo: string | null;
+  ceo: string;
+  bizType: string;
+  bizItem: string;
+  address: string;
+  phone: string;
+  email: string;
+  contactName: string;
+  contactPhone: string;
+  note: string;
 };
 export type PartnerUpdateInput = NewPartnerInput & { active: boolean };
 
@@ -58,6 +73,19 @@ const foreignBizNo = z
 
 const country = z.string().trim().regex(MINOR_CODE, { error: "국가를 고르세요" });
 
+// 설명용 칸 — 글자 그대로, 비워도 된다. 전화 · 담당자 연락처 · 이메일은 꼴도 본다.
+const PHONE_BAD = (label: string) => `${eun(label)} 숫자 · 붙임표(-) · + · 괄호로 넣으세요`;
+const descriptive = Object.fromEntries(
+  PARTNER_TEXT_FIELDS.map(({ field, label, max }): [string, z.ZodType<string>] => {
+    const base = text(label, 0, max);
+    if (field === "phone" || field === "contactPhone")
+      return [field, base.refine((s) => s === "" || isPhone(s), { error: PHONE_BAD(label) })];
+    if (field === "email")
+      return [field, base.refine((s) => s === "" || isEmail(s), { error: "이메일은 name@example.com 꼴로 넣으세요" })];
+    return [field, base];
+  }),
+) as Record<(typeof PARTNER_TEXT_FIELDS)[number]["field"], z.ZodType<string>>;
+
 const ROLE = "매입처 · 매출처 가운데 하나 이상을 고르세요";
 
 const common = {
@@ -67,6 +95,7 @@ const common = {
   country,
   bizNo,
   foreignBizNo,
+  ...descriptive,
 };
 // 한국이면 사업자등록번호만, 아니면 해외 사업자번호만 남긴다 — 화면은 국가에 맞는 칸 하나만 보낸다(ADR 0011).
 const byCountry = <T extends { country: string; bizNo: string | null; foreignBizNo: string | null }>(v: T): T =>
@@ -92,6 +121,8 @@ const raw = (values: PartnerValues) => {
     country,
     bizNo: korean ? (values.bizNo ?? "") : "",
     foreignBizNo: korean ? "" : (values.foreignBizNo ?? ""),
+    // 설명용 칸은 비워도 된다 — 칸이 오지 않으면 빈 칸이다(PR H 앞의 화면 · 시트도 그대로 저장된다).
+    ...Object.fromEntries(PARTNER_TEXT_FIELDS.map(({ field }) => [field, values[field] ?? ""])),
   };
 };
 

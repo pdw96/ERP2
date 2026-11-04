@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
 import { SheetGrid } from "@/components/sheet-grid";
-import { unitOptions } from "@/db/items";
+import { itemClassOptions, unitOptions } from "@/db/items";
 import { withDb } from "@/db/request";
 import { itemSheetColumns } from "@/lib/sheet-columns";
 import { saveItemSheetAction } from "../actions";
@@ -38,13 +38,18 @@ export default function ItemSheetPage() {
 
 async function ItemSheet() {
   await connection();
-  let units;
+  let data;
   try {
-    units = await withDb((db) => unitOptions(db));
+    data = await withDb(async (db) => ({ units: await unitOptions(db), classes: await itemClassOptions(db) }));
   } catch (error) {
     return <LoadFailed what="입력 화면" error={error} />;
   }
   return (
-    <SheetGrid columns={itemSheetColumns(units)} action={saveItemSheetAction} what="품목" listHref="/master/items" />
+    <SheetGrid
+      columns={itemSheetColumns(data.units, data.classes)}
+      action={saveItemSheetAction}
+      what="품목"
+      listHref="/master/items"
+    />
   );
 }

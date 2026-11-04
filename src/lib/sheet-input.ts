@@ -1,7 +1,7 @@
 import { parseNewItem, type NewItemInput } from "./item-input";
-import type { ItemValues } from "./item-fields";
+import { ITEM_CLASSES, type ItemClassField, type ItemValues } from "./item-fields";
 import { ITEM_TYPE_DEFAULTS, ITEM_TYPES, KOREA, PROC_TYPES, type ItemType } from "./master-codes";
-import { parseNewPartner, type NewPartnerInput, type PartnerValues } from "./partner-input";
+import { PARTNER_TEXT_FIELDS, parseNewPartner, type NewPartnerInput, type PartnerValues } from "./partner-input";
 import type { SheetErrors, SheetRow } from "./sheet";
 
 // 시트형 등록의 한 줄을 한 건 등록의 입력으로 바꿔 같은 규칙으로 본다(성공 기준 11 — 칸의 규칙은 한 건 등록과 같다).
@@ -44,6 +44,7 @@ const AMBIGUOUS = (what: string) => `같은 이름의 ${what}가 둘 이상입�
 export function readItemRow(
   row: SheetRow,
   units: readonly CodeOption[],
+  classes: Readonly<Record<ItemClassField, readonly CodeOption[]>> = { cls1: [], cls2: [], cls3: [] },
 ): { ok: true; value: NewItemInput } | { ok: false; errors: SheetErrors } {
   const errors: SheetErrors = {};
   const values: ItemValues = {
@@ -53,6 +54,7 @@ export function readItemRow(
     safetyStock: (row.safetyStock ?? "").trim() || "0",
     minLot: (row.minLot ?? "").trim() || "0",
     lotMultiple: (row.lotMultiple ?? "").trim() || "0",
+    note: row.note ?? "",
   };
 
   const type = pickOption(row.itemType ?? "", ITEM_TYPES);
@@ -72,6 +74,16 @@ export function readItemRow(
   else if (unit === "none") errors.unit = "공통코드의 단위(UNIT)에 없는 단위입니다";
   else if (!unit.active) errors.unit = "「사용 안 함」인 단위입니다 — 다른 단위를 넣으세요";
   else values.unit = unit.code;
+
+  // 분류 — 단위처럼 이름 · 코드 둘 다 받고, 비우면 없음(PR H). 「사용 안 함」 값은 새 품목에 쓰지 않는다(한 건 등록과 같다).
+  for (const { field, group, label } of ITEM_CLASSES) {
+    const picked = pickOption(row[field] ?? "", classes[field]);
+    if (picked === "blank") values[field] = "";
+    else if (picked === "ambiguous") errors[field] = AMBIGUOUS(label);
+    else if (picked === "none") errors[field] = `공통코드의 ${label}(${group})에 없는 값입니다`;
+    else if (!picked.active) errors[field] = `「사용 안 함」인 ${label}입니다 — 다른 값을 넣으세요`;
+    else values[field] = picked.code;
+  }
 
   for (const key of ["inspectIn", "inspectOut"] as const) {
     const v = yesNo(row[key] ?? "");
@@ -98,6 +110,8 @@ export function readPartnerRow(
 ): { ok: true; value: NewPartnerInput } | { ok: false; errors: SheetErrors } {
   const errors: SheetErrors = {};
   const values: PartnerValues = { name: row.name ?? "" };
+  // 설명용 칸(PR H) — 글자 그대로, 비워도 된다. 길이 · 전화 · 이메일의 꼴은 한 건 등록의 검사가 본다.
+  for (const { field } of PARTNER_TEXT_FIELDS) values[field] = row[field] ?? "";
 
   // 매입처 · 매출처의 거절은 「구분」 한 자리에 보인다(한 건 등록과 같다).
   for (const [key, label] of [

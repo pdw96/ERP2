@@ -15,6 +15,8 @@ import {
 import {
   FOREIGN_BIZ_NO_MAX,
   PARTNER_ERROR_KEYS,
+  PARTNER_TEXT_FIELDS,
+  type PartnerTextField,
   type PartnerErrorKey,
   type PartnerErrors,
   type PartnerValues,
@@ -49,7 +51,20 @@ const LABEL: Record<PartnerErrorKey, string> = {
   country: "국가",
   bizNo: "사업자등록번호",
   foreignBizNo: "해외 사업자번호",
+  ...(Object.fromEntries(PARTNER_TEXT_FIELDS.map((f) => [f.field, f.label])) as Record<PartnerTextField, string>),
   active: "사용 여부",
+};
+
+const TEXT = Object.fromEntries(PARTNER_TEXT_FIELDS.map((f) => [f.field, f])) as Record<
+  PartnerTextField,
+  (typeof PARTNER_TEXT_FIELDS)[number]
+>;
+
+// 설명용 칸의 보기 글자 — 전화 · 이메일은 꼴을 보인다.
+const PLACEHOLDER: Partial<Record<PartnerTextField, string>> = {
+  phone: "예: 02-1234-5678",
+  contactPhone: "예: 010-1234-5678",
+  email: "name@example.com",
 };
 
 export function PartnerForm(props: Props) {
@@ -178,7 +193,53 @@ function Fields(props: Props & { v: PartnerValues; errors: PartnerErrors }) {
           </Field>
         )}
       </Section>
+      <Section title="사업자 정보" note="모두 비워도 됩니다. 업태 · 종목은 사업자등록증에 적힌 대로.">
+        <div className="grid gap-6 sm:grid-cols-3">
+          <TextField field="ceo" v={v} errors={errors} />
+          <TextField field="bizType" v={v} errors={errors} />
+          <TextField field="bizItem" v={v} errors={errors} />
+        </div>
+      </Section>
+      <Section title="연락처" note="모두 비워도 됩니다.">
+        <TextField field="address" v={v} errors={errors} />
+        <div className="grid gap-6 sm:grid-cols-2">
+          <TextField field="phone" v={v} errors={errors} />
+          <TextField field="email" v={v} errors={errors} />
+          <TextField field="contactName" v={v} errors={errors} />
+          <TextField field="contactPhone" v={v} errors={errors} />
+        </div>
+      </Section>
+      <Section title="비고">
+        <Field field="note" label="비고" error={errors.note} hint={`비워도 됩니다 · ${TEXT.note.max}자까지`} hideLabel>
+          <textarea
+            id="f-note"
+            name="note"
+            defaultValue={v.note}
+            maxLength={TEXT.note.max}
+            rows={3}
+            aria-invalid={!!errors.note || undefined}
+            aria-describedby={errors.note ? "e-note" : undefined}
+            className={inputClass(!!errors.note)}
+          />
+        </Field>
+      </Section>
       {props.mode === "edit" && <ActiveSection what="거래처" initial={v.active} error={errors.active} />}
     </>
+  );
+}
+
+/** 설명용 글 칸 하나 — 이름 · 길이는 PARTNER_TEXT_FIELDS 가 든다. */
+function TextField({ field, v, errors }: { field: PartnerTextField; v: PartnerValues; errors: PartnerErrors }) {
+  const { label, max } = TEXT[field];
+  return (
+    <Field field={field} label={label} error={errors[field]} hint={`${max}자까지`}>
+      <Input
+        field={field}
+        defaultValue={v[field]}
+        maxLength={max}
+        placeholder={PLACEHOLDER[field]}
+        invalid={!!errors[field]}
+      />
+    </Field>
   );
 }
