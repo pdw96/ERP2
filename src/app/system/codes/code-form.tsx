@@ -12,7 +12,15 @@ type Props = {
   action: (state: CodeFormState, form: FormData) => Promise<CodeFormState>;
   group: { code: string; name: string };
   initial: CodeValues;
-} & ({ mode: "create" } | { mode: "edit"; code: string });
+} & (
+  | { mode: "create" }
+  | {
+      mode: "edit";
+      code: string;
+      /** 프로그램이 기대는 값(국가 KR) — 「사용 안 함」으로 바꾸는 칸을 두지 않는다. 서버도 거절한다. */
+      alwaysActive?: boolean;
+    }
+);
 
 const LABEL: Record<CodeField, string> = { code: "코드", name: "이름", sortOrder: "정렬 순서", active: "사용 여부" };
 
@@ -74,7 +82,15 @@ export function CodeForm(props: Props) {
             </Field>
           </div>
         </Section>
-        {props.mode === "edit" && (
+        {props.mode === "edit" && props.alwaysActive && (
+          <Section
+            title="사용 여부"
+            note="프로그램이 기대는 값이라 늘 「사용」입니다 — 「사용 안 함」으로 바꿀 수 없습니다."
+          >
+            <input type="hidden" name="active" value="Y" />
+          </Section>
+        )}
+        {props.mode === "edit" && !props.alwaysActive && (
           <ActiveSection
             what="값"
             initial={v.active}

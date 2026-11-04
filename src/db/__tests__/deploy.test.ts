@@ -1,12 +1,13 @@
 // @vitest-environment node
-import { mkdtempSync, writeFileSync, cpSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { isPooled, prepareDatabase } from "@/db/deploy";
 import { describeFailure } from "@/db/status";
-import { codeGroups, items, warehouses } from "@/db/schema";
+import { SAMPLE_CODES } from "@/db/sample";
+import { codeGroups, codes, items, partners, warehouses } from "@/db/schema";
 import { emptyDb } from "./pglite";
 
 // 배포 빌드가 배포 전에 부르는 준비(ADR 0005) — 성공 기준 7.
@@ -34,8 +35,8 @@ describe("마이그레이션과 첫 샘플 데이터", () => {
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(await tableNames(h)).toEqual(["code_groups", "codes", "items", "partners", "warehouses"]);
-    expect(await h.db.select().from(codeGroups)).toHaveLength(3);
-    expect(log[0]).toMatch(/^마이그레이션: 적용된 것 1개 — 이번에 1개 적용$/);
+    expect(await h.db.select().from(codeGroups)).toHaveLength(4);
+    expect(log[0]).toMatch(/^마이그레이션: 적용된 것 3개 — 이번에 3개 적용$/);
     expect(log[1]).toMatch(/^샘플 데이터: 빈 DB 라 넣었다 — items 10 · /);
   });
 
@@ -48,7 +49,7 @@ describe("마이그레이션과 첫 샘플 데이터", () => {
     const log: string[] = [];
     await prepareDatabase(h.db, { ...quiet, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 1개 — 이번에 0개 적용",
+      "마이그레이션: 적용된 것 3개 — 이번에 0개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(["code_groups", "codes", "items", "partners", "warehouses"]);
@@ -62,10 +63,16 @@ describe("마이그레이션과 첫 샘플 데이터", () => {
     // 레포의 마이그레이션에 틀린 SQL 하나를 덧붙인 폴더
     const folder = mkdtempSync(join(tmpdir(), "erp2-migrations-"));
     cpSync("drizzle", folder, { recursive: true });
-    writeFileSync(join(folder, "0001_broken.sql"), `ALTER TABLE "items" ADD COLUMN "x" no_such_type;`);
+    writeFileSync(join(folder, "0099_broken.sql"), `ALTER TABLE "items" ADD COLUMN "x" no_such_type;`);
     const journalPath = join(folder, "meta", "_journal.json");
     const journal = JSON.parse((await import("node:fs")).readFileSync(journalPath, "utf8"));
-    journal.entries.push({ idx: 1, version: "7", when: Date.now(), tag: "0001_broken", breakpoints: true });
+    journal.entries.push({
+      idx: journal.entries.length,
+      version: "7",
+      when: Date.now(),
+      tag: "0099_broken",
+      breakpoints: true,
+    });
     writeFileSync(journalPath, JSON.stringify(journal));
 
     const failure = await prepareDatabase(h.db, { migrate: () => h.migrate(folder), lock: true, log: () => {} }).then(
@@ -83,6 +90,67 @@ describe("마이그레이션과 첫 샘플 데이터", () => {
     // 실패해도 잠금은 풀린다 — 다음 빌드가 기다리지 않는다.
     const locks = await h.db.execute(sql`select count(*)::int as n from pg_locks where locktype = 'advisory'`);
     expect((locks as unknown as { rows: { n: number }[] }).rows[0].n).toBe(0);
+  });
+});
+
+describe("마이그레이션 0001 · 0002 — 거래처의 국가(PR G)", () => {
+  // 0000 만 적용한 폴더 — PR G 앞의 운영 DB 와 같은 모양.
+  function onlyFirstMigration() {
+    const folder = mkdtempSync(join(tmpdir(), "erp2-migrations-"));
+    cpSync("drizzle", folder, { recursive: true });
+    const journalPath = join(folder, "meta", "_journal.json");
+    const journal = JSON.parse(readFileSync(journalPath, "utf8"));
+    journal.entries = journal.entries.slice(0, 1);
+    writeFileSync(journalPath, JSON.stringify(journal));
+    return folder;
+  }
+
+  it("데이터가 있는 DB — 국가 묶음과 처음 값이 먼저 들어가고, 기존 거래처는 한국(KR)이 된다. 샘플은 다시 넣지 않는다", async () => {
+    const h = await fresh();
+    await h.migrate(onlyFirstMigration());
+    // PR G 앞의 데이터 — 국가 칸이 없던 때의 묶음 · 값 · 거래처.
+    await h.client.exec(`
+      insert into code_groups (code, name, is_system) values ('UNIT', '단위', false);
+      insert into codes (group_code, code, name) values ('UNIT', 'EA', '개');
+      insert into partners (code, name, is_supplier, biz_no) values ('BP-0001', '(가상) 옛 거래처', true, '000-00-00001');
+    `);
+
+    const log: string[] = [];
+    await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
+    expect(log).toEqual([
+      "마이그레이션: 적용된 것 3개 — 이번에 2개 적용",
+      "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
+    ]);
+    expect(
+      await h.db
+        .select({ code: partners.code, country: partners.country, foreign: partners.foreignBizNo })
+        .from(partners),
+    ).toEqual([{ code: "BP-0001", country: "KR", foreign: null }]);
+    // 마이그레이션이 넣은 국가는 샘플 데이터와 같다 — 매일 밤 되돌린 뒤와 어긋나지 않게.
+    const country = await h.db
+      .select({ code: codes.code, name: codes.name, sortOrder: codes.sortOrder })
+      .from(codes)
+      .where(eq(codes.groupCode, "COUNTRY"))
+      .orderBy(asc(codes.sortOrder));
+    expect(country).toEqual(
+      SAMPLE_CODES.filter((c) => c.groupCode === "COUNTRY").map((c) => ({
+        code: c.code,
+        name: c.name,
+        sortOrder: c.sortOrder,
+      })),
+    );
+    expect(
+      await h.db.select({ isSystem: codeGroups.isSystem }).from(codeGroups).where(eq(codeGroups.code, "COUNTRY")),
+    ).toEqual([{ isSystem: false }]);
+  });
+
+  it("빈 DB — 마이그레이션은 국가를 넣지 않고, 샘플 데이터가 국가까지 넣는다", async () => {
+    const h = await fresh();
+    await h.migrate(onlyFirstMigration());
+    await h.migrate();
+    expect(await h.db.select().from(codeGroups)).toHaveLength(0);
+    await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: () => {} });
+    expect(await h.db.select().from(codes).where(eq(codes.groupCode, "COUNTRY"))).toHaveLength(5);
   });
 });
 

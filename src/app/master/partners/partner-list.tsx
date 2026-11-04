@@ -2,6 +2,7 @@ import Form from "next/form";
 import Link from "next/link";
 import { SavedNotice as Notice } from "@/components/saved-notice";
 import {
+  bizNoOf,
   PARTNER_ROLES,
   roleNames,
   type Partner,
@@ -9,6 +10,7 @@ import {
   type PartnerFilterNotice,
   type SharedBizNo,
 } from "@/db/partners";
+import { KOREA } from "@/lib/master-codes";
 import { BizNoWarning } from "./biz-no-warning";
 
 // 거래처 목록 화면의 부품 — 찾기 · 거르기, 표, 저장 뒤의 알림.
@@ -92,7 +94,9 @@ export function SavedNotice({
 }) {
   return (
     <Notice code={partner.code} name={partner.name} active={partner.active} shown={shown} listHref="/master/partners">
-      {partner.bizNo && <BizNoWarning bizNo={partner.bizNo} shared={sharedBizNo} />}
+      {bizNoOf(partner) && (
+        <BizNoWarning bizNo={bizNoOf(partner)!} korean={partner.country === KOREA} shared={sharedBizNo} />
+      )}
     </Notice>
   );
 }
@@ -101,10 +105,13 @@ export function PartnerList({
   rows,
   filter,
   savedCode,
+  countries = {},
 }: {
   rows: Partner[];
   filter: PartnerFilter;
   savedCode?: string;
+  /** 국가 코드 → 이름. 없으면 코드만 보인다. */
+  countries?: Record<string, string>;
 }) {
   if (rows.length === 0) {
     return (
@@ -131,8 +138,11 @@ export function PartnerList({
             <th scope="col" className="px-3 py-2">
               구분
             </th>
+            <th scope="col" className="px-3 py-2">
+              국가
+            </th>
             <th scope="col" className="hidden px-3 py-2 md:table-cell">
-              사업자등록번호
+              사업자번호
             </th>
           </tr>
         </thead>
@@ -161,8 +171,12 @@ export function PartnerList({
                 )}
               </td>
               <td className="px-3 py-2.5 text-sm">{roleNames(p)}</td>
-              <td className="hidden px-3 py-2.5 font-mono text-sm whitespace-nowrap tabular-nums md:table-cell">
-                {p.bizNo ?? "—"}
+              <td className="px-3 py-2.5 text-sm whitespace-nowrap">
+                <span className="font-mono">{p.country}</span>
+                {countries[p.country] && <span className="ml-1 hidden sm:inline">{countries[p.country]}</span>}
+              </td>
+              <td className="hidden px-3 py-2.5 font-mono text-sm tabular-nums wrap-anywhere md:table-cell">
+                {bizNoOf(p) ?? "—"}
               </td>
             </tr>
           ))}

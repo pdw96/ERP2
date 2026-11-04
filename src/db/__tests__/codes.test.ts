@@ -52,6 +52,7 @@ const newItem = (unit: string): ItemValues => ({
 describe("목록", () => {
   it("묶음 — 코드 순으로, 가름과 값의 수", async () => {
     expect(await listCodeGroups(db)).toEqual([
+      { code: "COUNTRY", name: "국가", isSystem: false, values: 5 },
       { code: "ITEM_TYPE", name: "품목 유형", isSystem: true, values: 3 },
       { code: "PROC_TYPE", name: "조달구분", isSystem: true, values: 2 },
       { code: "UNIT", name: "단위", isSystem: false, values: 4 },
@@ -210,6 +211,32 @@ describe("값 수정", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe("국가 KR 은 「사용 안 함」으로 바꾸지 못한다(ADR 0011)", () => {
+  it("KR 을 「사용 안 함」으로 보내면 거절하고 그대로 둔다 — 이름 · 정렬 순서는 고칠 수 있다", async () => {
+    const r = await updateCode(db, "COUNTRY", "KR", { name: "대한민국", sortOrder: "5", active: "N" });
+    expect(r).toMatchObject({
+      ok: false,
+      errors: { active: expect.stringContaining("「사용 안 함」으로 바꿀 수 없습니다") },
+    });
+    expect(await getCode(db, "COUNTRY", "KR")).toMatchObject({ name: "한국", active: true });
+    expect(await updateCode(db, "COUNTRY", "KR", { name: "대한민국", sortOrder: "5", active: "Y" })).toEqual({
+      ok: true,
+      code: "KR",
+    });
+  });
+
+  it("다른 나라는 「사용 안 함」으로 바꿀 수 있고, 나라를 더할 수 있다", async () => {
+    expect(await updateCode(db, "COUNTRY", "TW", { name: "대만", sortOrder: "50", active: "N" })).toEqual({
+      ok: true,
+      code: "TW",
+    });
+    expect(await createCode(db, "COUNTRY", { code: "VN", name: "베트남", sortOrder: "60" })).toEqual({
+      ok: true,
+      code: "VN",
+    });
   });
 });
 

@@ -3,7 +3,7 @@ import { asc, eq, getTableName, isTable, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { nextCode } from "@/db/numbering";
 import { RESET_TABLES, resetToSample } from "@/db/reset";
-import { SAMPLE_CODES, SAMPLE_ITEMS, SAMPLE_PARTNERS, SAMPLE_WAREHOUSES } from "@/db/sample";
+import { SAMPLE_CODE_GROUPS, SAMPLE_CODES, SAMPLE_ITEMS, SAMPLE_PARTNERS, SAMPLE_WAREHOUSES } from "@/db/sample";
 import * as schema from "@/db/schema";
 import { codes, items, partners, warehouses } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -56,7 +56,7 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
       warehouses: SAMPLE_WAREHOUSES.length,
       partners: SAMPLE_PARTNERS.length,
       codes: SAMPLE_CODES.length,
-      code_groups: 3,
+      code_groups: SAMPLE_CODE_GROUPS.length,
     });
     expect(clean.items[0].id).toBe(1);
   });
@@ -104,7 +104,7 @@ describe("코드 번호 — 같은 머리의 가장 큰 번호 + 1", () => {
     expect(await nextCode(db, "RM")).toBe("RM-0007");
     expect(await nextCode(db, "SF")).toBe("SF-0003");
     expect(await nextCode(db, "FG")).toBe("FG-0003");
-    expect(await nextCode(db, "BP")).toBe("BP-0006");
+    expect(await nextCode(db, "BP")).toBe("BP-0008");
     await db.execute(sql.raw(`truncate table "items"`));
     expect(await nextCode(db, "RM")).toBe("RM-0001");
   });

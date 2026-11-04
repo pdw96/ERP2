@@ -32,3 +32,14 @@ export const ITEM_TYPE_DEFAULTS: Record<ItemType, { procurement: ProcType; inspe
 
 export const itemTypeName = (code: string) => ITEM_TYPES.find((t) => t.code === code)?.name ?? code;
 export const procTypeName = (code: string) => PROC_TYPES.find((t) => t.code === code)?.name ?? code;
+
+/** 한국 — 거래처의 사업자등록번호 꼴(000-00-00000) 검사가 기대는 국가 코드(ADR 0011). */
+export const KOREA = "KR";
+
+/**
+ * 사용자 코드이지만 「사용 안 함」으로 바꾸지 못하는 값 — 프로그램이 기댄다.
+ * 국가 KR(사업자등록번호 꼴 검사, ADR 0011 · 저자 인터뷰 2026-11-03).
+ */
+export const ALWAYS_ACTIVE: Readonly<Record<string, readonly string[]>> = { COUNTRY: [KOREA] };
+
+export const isAlwaysActive = (group: string, code: string) => ALWAYS_ACTIVE[group]?.includes(code) ?? false;

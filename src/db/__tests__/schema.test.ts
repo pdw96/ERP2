@@ -143,9 +143,46 @@ describe("거래처", () => {
     ["사업자등록번호 꼴이 틀림", { isSupplier: true, bizNo: "0000000100" }, "partners_biz_no_format"],
     ["코드 꼴이 틀림", { isSupplier: true, code: "BP-100" }, "partners_code_format"],
     ["101자 이름", { isSupplier: true, name: "가".repeat(101) }, "partners_name_length"],
+    ["공통코드에 없는 국가", { isSupplier: true, country: "XX" }, "partners_country_fk"],
+    [
+      "국가 묶음이 COUNTRY 가 아님",
+      { isSupplier: true, countryGroup: "UNIT", country: "EA" },
+      "partners_country_group_fixed",
+    ],
+    ["한국인데 해외 사업자번호", { isSupplier: true, foreignBizNo: "12-3456789" }, "partners_biz_no_by_country"],
+    [
+      "해외인데 사업자등록번호",
+      { isSupplier: true, country: "US", bizNo: "000-00-00100" },
+      "partners_biz_no_by_country",
+    ],
+    [
+      "해외 사업자번호 31자",
+      { isSupplier: true, country: "US", foreignBizNo: "1".repeat(31) },
+      "partners_foreign_biz_no_length",
+    ],
+    [
+      "해외 사업자번호 빈 글자",
+      { isSupplier: true, country: "US", foreignBizNo: "" },
+      "partners_foreign_biz_no_length",
+    ],
   ])("%s → 거절", async (_name, over, constraint) => {
     const values = { code: "BP-0100", name: "(가상) 시험", ...over };
     expect(await rejection(db.insert(partners).values(values))).toMatchObject({ constraint });
+  });
+
+  it("국가는 기본이 한국(KR)이고, 해외 거래처는 해외 사업자번호 30자까지를 글자 그대로 둔다", async () => {
+    await db.insert(partners).values({ code: "BP-0100", name: "(가상) 시험", isSupplier: true });
+    await db
+      .insert(partners)
+      .values({ code: "BP-0101", name: "(가상) 시험2", isSupplier: true, country: "US", foreignBizNo: "A".repeat(30) });
+    const rows = await db.select().from(partners).where(eq(partners.code, "BP-0100"));
+    expect(rows[0]).toMatchObject({ countryGroup: "COUNTRY", country: "KR", foreignBizNo: null });
+  });
+
+  it("거래처가 쓰는 국가는 지울 수 없다", async () => {
+    expect(await rejection(db.delete(codes).where(eq(codes.code, "JP")))).toMatchObject({
+      constraint: "partners_country_fk",
+    });
   });
 });
 

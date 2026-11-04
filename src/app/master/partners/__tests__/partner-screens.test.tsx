@@ -14,13 +14,21 @@ const partner = (over: Partial<Partner>): Partner => ({
   name: "(가상) 마루반도체",
   isSupplier: true,
   isCustomer: true,
+  countryGroup: "COUNTRY",
+  country: "KR",
   bizNo: "000-00-00005",
+  foreignBizNo: null,
   active: true,
   createdAt: new Date(),
   updatedAt: new Date(),
   ...over,
 });
 const none = { q: "", includeInactive: false };
+const countries = [
+  { code: "KR", name: "한국", active: true },
+  { code: "US", name: "미국", active: true },
+  { code: "JP", name: "일본", active: true },
+];
 const box = (name: RegExp) => screen.getByRole("checkbox", { name }) as HTMLInputElement;
 const radio = (name: string) => screen.getByRole("radio", { name }) as HTMLInputElement;
 
@@ -33,10 +41,10 @@ describe("거래처 목록", () => {
       expect(row.getByText(text)).toBeInTheDocument();
   });
 
-  it("휴대폰 폭에서는 사업자등록번호를 숨긴다", () => {
+  it("휴대폰 폭에서는 사업자번호를 숨긴다", () => {
     render(<PartnerList rows={[partner({})]} filter={none} />);
     const hidden = screen.getAllByRole("columnheader").filter((th) => th.className.includes("hidden"));
-    expect(hidden.map((th) => th.textContent)).toEqual(["사업자등록번호"]);
+    expect(hidden.map((th) => th.textContent)).toEqual(["사업자번호"]);
   });
 
   it("사업자등록번호가 없으면 「—」, 「사용 안 함」에는 표시가 붙는다", () => {
@@ -96,14 +104,99 @@ describe("거래처 목록", () => {
   });
 });
 
+describe("거래처 목록 — 국가(PR G)", () => {
+  it("국가를 코드와 이름으로, 해외 거래처는 해외 사업자번호를 보인다", () => {
+    render(
+      <PartnerList
+        rows={[
+          partner({}),
+          partner({ id: 2, code: "BP-0007", country: "US", bizNo: null, foreignBizNo: "00-0000007" }),
+        ]}
+        filter={none}
+        countries={{ KR: "한국", US: "미국" }}
+      />,
+    );
+    const [, kr, us] = screen.getAllByRole("row");
+    expect(within(kr).getByText("KR").parentElement).toHaveTextContent("KR한국");
+    expect(within(us).getByText("US").parentElement).toHaveTextContent("US미국");
+    expect(within(us).getByText("00-0000007")).toBeInTheDocument();
+  });
+});
+
+describe("거래처 등록 화면 — 국가(PR G)", () => {
+  const create = (action = vi.fn().mockResolvedValue(null)) =>
+    render(
+      <PartnerForm
+        mode="create"
+        countries={countries}
+        action={action}
+        previewCode="BP-0008"
+        initial={{ name: "", country: "KR", bizNo: "", foreignBizNo: "" }}
+      />,
+    );
+
+  it("처음은 한국 — 사업자등록번호 칸이 보이고 해외 사업자번호 칸은 없다", () => {
+    create();
+    expect(screen.getByLabelText(/^국가/)).toHaveValue("KR");
+    expect(screen.getByLabelText(/사업자등록번호/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/해외 사업자번호/)).toBeNull();
+  });
+
+  it("미국을 고르면 해외 사업자번호 칸으로 바뀌고, 보이는 칸 하나만 보낸다", async () => {
+    const action = vi.fn().mockResolvedValue(null);
+    create(action);
+    fireEvent.change(screen.getByLabelText(/^국가/), { target: { value: "US" } });
+    expect(screen.queryByLabelText(/사업자등록번호/)).toBeNull();
+    fireEvent.change(screen.getByLabelText(/해외 사업자번호/), { target: { value: "12-3456789" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    });
+    const sent = action.mock.calls[0][1] as FormData;
+    expect([sent.get("country"), sent.get("foreignBizNo"), sent.has("bizNo")]).toEqual(["US", "12-3456789", false]);
+  });
+
+  it("거절되면 보낸 국가와 번호로 다시 채운다", async () => {
+    const rejected: PartnerFormState = {
+      ok: false,
+      errors: { foreignBizNo: "해외 사업자번호는 30자까지입니다" },
+      values: { name: "(가상) 하버라인칩스", country: "JP", foreignBizNo: "1".repeat(31) },
+    };
+    create(vi.fn().mockResolvedValue(rejected));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("해외 사업자번호 — 해외 사업자번호는 30자까지입니다"),
+    );
+    expect(screen.getByLabelText(/^국가/)).toHaveValue("JP");
+    expect(screen.getByLabelText(/해외 사업자번호/)).toHaveValue("1".repeat(31));
+  });
+});
+
 describe("거래처 등록 화면", () => {
   it("사업자등록번호 칸은 숫자 키패드를 띄우지 않는다 — iOS 의 숫자 키패드에는 붙임표(-)가 없어 꼴을 넣을 수 없다", () => {
-    render(<PartnerForm mode="create" action={vi.fn()} previewCode="BP-0006" initial={{ name: "", bizNo: "" }} />);
+    render(
+      <PartnerForm
+        mode="create"
+        countries={countries}
+        action={vi.fn()}
+        previewCode="BP-0006"
+        initial={{ name: "", bizNo: "" }}
+      />,
+    );
     expect(screen.getByLabelText(/사업자등록번호/)).not.toHaveAttribute("inputmode");
   });
 
   it("붙을 코드를 보이고, 매입처 · 매출처를 둘 다 고를 수 있다", () => {
-    render(<PartnerForm mode="create" action={vi.fn()} previewCode="BP-0006" initial={{ name: "", bizNo: "" }} />);
+    render(
+      <PartnerForm
+        mode="create"
+        countries={countries}
+        action={vi.fn()}
+        previewCode="BP-0006"
+        initial={{ name: "", bizNo: "" }}
+      />,
+    );
     expect(screen.getByText("BP-0006")).toBeInTheDocument();
     fireEvent.click(box(/매입처/));
     fireEvent.click(box(/매출처/));
@@ -121,7 +214,15 @@ describe("거래처 등록 화면", () => {
       values: { name: "(가상) 바다솔더", bizNo: "123" },
     };
     const action = vi.fn().mockResolvedValue(rejected);
-    render(<PartnerForm mode="create" action={action} previewCode="BP-0006" initial={{ name: "", bizNo: "" }} />);
+    render(
+      <PartnerForm
+        mode="create"
+        countries={countries}
+        action={action}
+        previewCode="BP-0006"
+        initial={{ name: "", bizNo: "" }}
+      />,
+    );
     fireEvent.change(screen.getByLabelText(/거래처명/), { target: { value: "(가상) 바다솔더" } });
     fireEvent.change(screen.getByLabelText(/사업자등록번호/), { target: { value: "123" } });
     await act(async () => {
@@ -146,6 +247,7 @@ describe("거래처 수정 화면", () => {
   it("저장된 사업자등록번호를 다른 거래처도 쓰면 그 칸 아래에 경고한다 — 저장은 막지 않는다", () => {
     render(
       <PartnerForm
+        countries={countries}
         mode="edit"
         code="BP-0006"
         action={vi.fn()}
@@ -161,7 +263,7 @@ describe("거래처 수정 화면", () => {
 
   it("코드는 보이기만 하고 보내지 않는다. 지금의 구분이 켜져 있다", async () => {
     const action = vi.fn().mockResolvedValue(null);
-    render(<PartnerForm mode="edit" code="BP-0005" action={action} initial={initial} />);
+    render(<PartnerForm mode="edit" code="BP-0005" countries={countries} action={action} initial={initial} />);
     expect(screen.getByText("BP-0005")).toBeInTheDocument();
     expect(box(/매입처/).checked).toBe(true);
     expect(box(/매출처/).checked).toBe(true);

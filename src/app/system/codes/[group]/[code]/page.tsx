@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
 import { getCode, getCodeGroup } from "@/db/codes";
 import { withDb } from "@/db/request";
+import { isAlwaysActive } from "@/lib/master-codes";
 import { updateCodeAction } from "../../actions";
 import { CodeForm } from "../../code-form";
 import { Crumbs } from "../../crumbs";
@@ -48,6 +49,7 @@ async function EditCode({ params }: Pick<PageProps<"/system/codes/[group]/[code]
         mode="edit"
         group={{ code: group.code, name: group.name }}
         code={code.code}
+        alwaysActive={isAlwaysActive(group.code, code.code)}
         action={updateCodeAction.bind(null, group.code, code.code)}
         initial={{ name: code.name, sortOrder: String(code.sortOrder), active: code.active ? "Y" : "N" }}
       />
