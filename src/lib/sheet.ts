@@ -179,6 +179,24 @@ export function pasteInto(
   return { rows: next, skippedHeader, pastedRows: grid.length, droppedRows, droppedColumns };
 }
 
+/**
+ * 빨간 표시를 지우는 규칙 — 칸 고치기와 붙여넣기가 같이 쓴다(설계 「경계를 정했다 (2026-11-04, PR F 2회차)」).
+ * 값이 바뀐 칸의 자리(errorKey 또는 key)만 지우고, 칸이 하나라도 바뀌면 줄 전체의 거절도 지운다. 받은 거절은 바꾸지 않는다.
+ */
+export function clearChangedErrors(
+  columns: readonly SheetColumn[],
+  before: SheetRow,
+  after: SheetRow,
+  errors: SheetErrors,
+): SheetErrors {
+  const changed = columns.filter((c) => (before[c.key] ?? "") !== (after[c.key] ?? ""));
+  if (changed.length === 0) return errors;
+  const next = { ...errors };
+  for (const c of changed) delete next[c.errorKey ?? c.key];
+  delete next[ROW_ERROR];
+  return next;
+}
+
 /** 줄 하나의 칸 하나에 받는 글자의 위 — 칸의 검사(100자 따위)보다 넉넉하다. 넘으면 그 줄을 거절한다. */
 const CELL_MAX = 1000;
 

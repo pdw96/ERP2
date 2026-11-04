@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   SHEET_MAX_ROWS,
   blankRow,
+  clearChangedErrors,
   headerLine,
   isBlankRow,
   isHeaderRow,
@@ -183,5 +184,39 @@ describe("리뷰 1회차", () => {
     expect(takesPaste("솔더 볼")).toBe(false);
     expect(takesPaste("솔더 볼\r\n")).toBe(false);
     expect(takesPaste('12" 웨이퍼')).toBe(false);
+  });
+});
+
+describe("리뷰 2회차 — 빨간 표시를 지우는 때(칸 고치기 · 붙여넣기 같은 규칙)", () => {
+  const roleCols: SheetColumn[] = [
+    { key: "name", label: "거래처명", rule: "" },
+    { key: "isSupplier", label: "매입처", rule: "", errorKey: "role" },
+    { key: "isCustomer", label: "매출처", rule: "", errorKey: "role" },
+  ];
+  const before = { name: "", isSupplier: "", isCustomer: "" };
+
+  it("값이 바뀐 칸의 표시만 지운다 — 바뀌지 않은 칸은 남는다", () => {
+    const errors = { name: "거래처명을 넣으세요", role: "하나 이상" };
+    expect(clearChangedErrors(roleCols, before, { ...before, name: "가" }, errors)).toEqual({ role: "하나 이상" });
+  });
+
+  it("같은 값으로 덮은 칸은 바뀌지 않은 칸이다", () => {
+    const errors = { name: "거래처명을 넣으세요" };
+    expect(clearChangedErrors(roleCols, before, { ...before }, errors)).toEqual(errors);
+  });
+
+  it("두 칸이 한 자리(「구분」)면 한 칸만 바뀌어도 그 자리를 지운다", () => {
+    expect(clearChangedErrors(roleCols, before, { ...before, isCustomer: "Y" }, { role: "하나 이상" })).toEqual({});
+  });
+
+  it("줄 전체의 거절은 그 줄의 칸이 하나라도 바뀌면 지운다", () => {
+    expect(clearChangedErrors(roleCols, before, { ...before, name: "가" }, { _row: "상한" })).toEqual({});
+    expect(clearChangedErrors(roleCols, before, { ...before }, { _row: "상한" })).toEqual({ _row: "상한" });
+  });
+
+  it("받은 거절을 바꾸지 않는다", () => {
+    const errors = { name: "x" };
+    clearChangedErrors(roleCols, before, { ...before, name: "가" }, errors);
+    expect(errors).toEqual({ name: "x" });
   });
 });

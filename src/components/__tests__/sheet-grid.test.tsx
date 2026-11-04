@@ -274,3 +274,18 @@ describe("리뷰 1회차", () => {
     await waitFor(() => expect(cell(1, "품명")).toBeEnabled());
   });
 });
+
+describe("리뷰 2회차 — 빨간 표시는 값이 바뀐 칸만 지운다", () => {
+  it("붙여넣은 줄이라도 덮지 않은 칸의 표시는 남는다", async () => {
+    const action = renderItems();
+    const bad = { row: { name: "", unit: "BOX" }, errors: { name: "품명을 넣으세요", unit: "없는 단위" } };
+    action.mockResolvedValue({ saved: [], rejected: [bad, bad] });
+    await save();
+    await waitFor(() => expect(cell(2, "단위")).toHaveAttribute("aria-invalid", "true"));
+    paste(cell(1, "단위"), "EA\nEA");
+    expect(cell(1, "단위")).not.toHaveAttribute("aria-invalid");
+    expect(cell(2, "단위")).not.toHaveAttribute("aria-invalid");
+    expect(cell(1, "품명")).toHaveAttribute("aria-invalid", "true");
+    expect(cell(2, "품명")).toHaveAttribute("aria-invalid", "true");
+  });
+});

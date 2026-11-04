@@ -6,6 +6,7 @@ import {
   ROW_ERROR,
   SHEET_MAX_ROWS,
   blankRow,
+  clearChangedErrors,
   headerLine,
   isBlankRow,
   takesPaste,
@@ -71,10 +72,8 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref }:
       prev.map((l, i) => {
         if (i !== index) return l;
         // 고친 칸의 빨간 표시는 지운다 — 다시 저장하면 서버가 다시 본다.
-        const errors = { ...l.errors };
-        delete errors[column.errorKey ?? column.key];
-        delete errors[ROW_ERROR];
-        return { ...l, values: { ...l.values, [column.key]: value }, errors };
+        const values = { ...l.values, [column.key]: value };
+        return { values, errors: clearChangedErrors(columns, l.values, values, l.errors) };
       }),
     );
   }
@@ -94,8 +93,8 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref }:
       r.rows.map((values, i) => {
         const old = prev[i];
         if (!old) return line(values);
-        // 붙여넣은 줄은 거절 표시를 지운다.
-        return i >= index && i < index + r.pastedRows ? { ...old, values, errors: {} } : old;
+        // 붙여넣기로 값이 바뀐 칸의 표시만 지운다 — 칸 고치기와 같은 규칙.
+        return { values, errors: clearChangedErrors(columns, old.values, values, old.errors) };
       }),
     );
     setPasteNotice(
