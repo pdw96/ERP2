@@ -40,6 +40,15 @@ const asValues = (p: Partner): PartnerValues => ({
   country: p.country,
   bizNo: p.bizNo ?? "",
   foreignBizNo: p.foreignBizNo ?? "",
+  ceo: p.ceo,
+  bizType: p.bizType,
+  bizItem: p.bizItem,
+  address: p.address,
+  phone: p.phone,
+  email: p.email,
+  contactName: p.contactName,
+  contactPhone: p.contactPhone,
+  note: p.note,
   active: p.active ? "Y" : "N",
 });
 

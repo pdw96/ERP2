@@ -1,6 +1,15 @@
-import { and, asc, eq, ilike, or, type SQL } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, or, type SQL } from "drizzle-orm";
+import { eul } from "@/lib/josa";
 import { ITEM_TYPES, PROC_TYPES, type ItemType } from "@/lib/master-codes";
-import { parseItemUpdate, parseNewItem, type ItemErrors, type ItemField, type ItemValues } from "@/lib/item-input";
+import {
+  ITEM_CLASSES,
+  type ItemClassField,
+  parseItemUpdate,
+  parseNewItem,
+  type ItemErrors,
+  type ItemField,
+  type ItemValues,
+} from "@/lib/item-input";
 import { readItemRow, type CodeOption } from "@/lib/sheet-input";
 import { ROW_ERROR, isBlankRow, type SheetResult, type SheetRow } from "@/lib/sheet";
 import {
@@ -21,7 +30,7 @@ import { codes, items } from "./schema";
 import type { Db } from "./types";
 
 // 품목의 목록 · 등록 · 수정(조각 「기준정보」 PR C). 화면(src/app/master/items/)은 이 함수만 부른다.
-// 입력 검사는 src/lib/item-input.ts, 단위가 「사용 안 함」이 아닌지 · 등록 상한 · 코드 번호는 여기서 본다.
+// 입력 검사는 src/lib/item-input.ts, 단위 · 분류가 「사용 안 함」이 아닌지 · 등록 상한 · 코드 번호는 여기서 본다.
 
 /** 품목의 등록 상한(설계 「PR B 를 열기 전에 정한 것」) — 매일 밤 되돌림이 샘플 수로 줄인다. */
 export const ITEM_LIMIT = 2000;
@@ -34,13 +43,26 @@ export type ItemFilter = {
   q: string;
   itemType?: ItemType;
   procurement?: "BUY" | "MAKE";
+  /** 분류 — 셋은 함께 걸린다(그리고). 「사용 안 함」 값으로도 거른다 — 이미 쓴 품목을 찾을 수 있게. */
+  cls1?: string;
+  cls2?: string;
+  cls3?: string;
   includeInactive: boolean;
 };
 
-export type FilterNotice = { field: "q" | "itemType" | "procurement"; message: string };
+export type FilterNotice = { field: "q" | "itemType" | "procurement" | ItemClassField; message: string };
 
-/** 주소의 거르기 값을 읽는다. 닫힌 목록 밖의 값은 거르지 않고 알린다. */
-export function parseItemFilter(params: Params): { filter: ItemFilter; notices: FilterNotice[] } {
+/** 분류 묶음마다의 값 — 「사용 안 함」까지, 정렬 순서대로. */
+export type ItemClassOptions = Record<ItemClassField, CodeOption[]>;
+
+/**
+ * 주소의 거르기 값을 읽는다. 닫힌 목록 밖의 값은 거르지 않고 알린다.
+ * 분류는 공통코드의 값(classes)에 있는 것만 거른다 — 주지 않으면 분류는 거르지 않는다.
+ */
+export function parseItemFilter(
+  params: Params,
+  classes?: ItemClassOptions,
+): { filter: ItemFilter; notices: FilterNotice[] } {
   const notices: FilterNotice[] = [];
   const filter: ItemFilter = { q: "", includeInactive: first(params.inactive) === "1" };
 
@@ -56,6 +78,13 @@ export function parseItemFilter(params: Params): { filter: ItemFilter; notices: 
   if (PROC_TYPES.some((t) => t.code === proc)) filter.procurement = proc as "BUY" | "MAKE";
   else if (proc) notices.push({ field: "procurement", message: "없는 조달구분이라 거르지 않았습니다" });
 
+  for (const { field, label } of ITEM_CLASSES) {
+    const code = first(params[field]) ?? "";
+    if (!code || !classes) continue;
+    if (classes[field].some((c) => c.code === code)) filter[field] = code;
+    else notices.push({ field, message: `없는 ${label}라 거르지 않았습니다` });
+  }
+
   return { filter, notices };
 }
 
@@ -65,6 +94,7 @@ export async function listItems(db: Db, filter: ItemFilter): Promise<Item[]> {
   if (filter.q) where.push(or(ilike(items.code, likeLiteral(filter.q)), ilike(items.name, likeLiteral(filter.q)))!);
   if (filter.itemType) where.push(eq(items.itemType, filter.itemType));
   if (filter.procurement) where.push(eq(items.procurement, filter.procurement));
+  for (const { field } of ITEM_CLASSES) if (filter[field]) where.push(eq(items[field], filter[field]));
   if (!filter.includeInactive) where.push(eq(items.active, true));
   return db
     .select()
@@ -95,6 +125,30 @@ export async function unitOptions(db: Db, current?: string): Promise<UnitOption[
   return rows.filter((r) => r.active || r.code === current);
 }
 
+/** 분류 묶음 셋의 값 — 「사용 안 함」까지. 목록의 거르기 · 이름과 시트가 쓴다. */
+export async function allItemClasses(db: Db): Promise<ItemClassOptions> {
+  const rows = await db
+    .select({ group: codes.groupCode, code: codes.code, name: codes.name, active: codes.active })
+    .from(codes)
+    .where(
+      inArray(
+        codes.groupCode,
+        ITEM_CLASSES.map((c) => c.group),
+      ),
+    )
+    .orderBy(asc(codes.sortOrder), asc(codes.code));
+  const byGroup = (group: string) =>
+    rows.filter((r) => r.group === group).map((r) => ({ code: r.code, name: r.name, active: r.active }));
+  return { cls1: byGroup("ITEM_CLS1"), cls2: byGroup("ITEM_CLS2"), cls3: byGroup("ITEM_CLS3") };
+}
+
+/** 입력 화면의 분류 목록 — 사용 중인 것과, 수정이면 그 품목의 지금 값(「사용 안 함」이어도). */
+export async function itemClassOptions(db: Db, current?: Pick<Item, ItemClassField>): Promise<ItemClassOptions> {
+  const all = await allItemClasses(db);
+  const keep = (field: ItemClassField) => all[field].filter((c) => c.active || c.code === current?.[field]);
+  return { cls1: keep("cls1"), cls2: keep("cls2"), cls3: keep("cls3") };
+}
+
 /** 유형마다 지금 등록하면 붙을 코드 — 화면의 안내용이고, 저장할 때 다시 센다. */
 export async function previewCodes(db: Db): Promise<Record<ItemType, string>> {
   const [RM, SF, FG] = await Promise.all(ITEM_TYPES.map((t) => nextCode(db, t.code)));
@@ -109,12 +163,32 @@ export type SaveResult =
 const INACTIVE_UNIT = "「사용 안 함」인 단위입니다 — 다른 단위를 고르세요";
 const NO_UNIT = "단위를 고르세요";
 
-async function unitState(db: Db, unit: string): Promise<"active" | "inactive" | "missing"> {
+async function codeState(db: Db, group: string, code: string): Promise<"active" | "inactive" | "missing"> {
   const [row] = await db
     .select({ active: codes.active })
     .from(codes)
-    .where(and(eq(codes.groupCode, "UNIT"), eq(codes.code, unit)));
+    .where(and(eq(codes.groupCode, group), eq(codes.code, code)));
   return !row ? "missing" : row.active ? "active" : "inactive";
+}
+
+/**
+ * 단위 · 분류가 공통코드에 있고 「사용 안 함」이 아닌지 — 새로 고르는 값만 본다. 수정에서 그대로 둔 값은 「사용 안 함」이어도 남는다.
+ * 분류는 칸마다 따로 보고, 비우면 보지 않는다(설계 「PR H 를 열기 전에 정한 것」).
+ */
+async function checkCodes(db: Db, values: ItemValues, errors: ItemErrors, current?: Item) {
+  const unit = values.unit ?? "";
+  if (!errors.unit && unit && unit !== current?.unit) {
+    const state = await codeState(db, "UNIT", unit);
+    if (state === "inactive") errors.unit = INACTIVE_UNIT;
+    if (state === "missing") errors.unit = NO_UNIT;
+  }
+  for (const { field, group, label } of ITEM_CLASSES) {
+    const code = (values[field] ?? "").trim();
+    if (errors[field] || !code || code === (current?.[field] ?? "")) continue;
+    const state = await codeState(db, group, code);
+    if (state === "inactive") errors[field] = `「사용 안 함」인 ${label}입니다 — 다른 값을 고르세요`;
+    if (state === "missing") errors[field] = `${eul(label)} 목록에서 고르세요`;
+  }
 }
 
 // DB 제약에 걸린 것(서버의 검사를 빠뜨렸을 때)을 칸으로 가른다 — 제약 이름이 `<테이블>_<무엇>` 꼴이다.
@@ -125,6 +199,10 @@ const CONSTRAINT_FIELD: Record<string, ItemField> = {
   items_unit_fk: "unit",
   items_procurement_fk: "procurement",
   items_item_type_fk: "itemType",
+  items_cls1_fk: "cls1",
+  items_cls2_fk: "cls2",
+  items_cls3_fk: "cls3",
+  items_note_length: "note",
 };
 
 /** 제약 위반이면 칸의 거절로 바꾸고, 아니면 그대로 던진다(부르는 쪽이 코드만 남기고 알린다). */
@@ -140,12 +218,7 @@ function asRejection(error: unknown, values: ItemValues): SaveResult {
 export async function createItem(db: Db, values: ItemValues): Promise<SaveResult> {
   const parsed = parseNewItem(values);
   const errors: ItemErrors = parsed.ok ? {} : { ...parsed.errors };
-  const unit = values.unit ?? "";
-  if (!errors.unit && unit) {
-    const state = await unitState(db, unit);
-    if (state === "inactive") errors.unit = INACTIVE_UNIT;
-    if (state === "missing") errors.unit = NO_UNIT;
-  }
+  await checkCodes(db, values, errors);
   if (!parsed.ok || Object.keys(errors).length) return { ok: false, errors, values };
 
   try {
@@ -180,12 +253,7 @@ export async function updateItem(
 
   const parsed = parseItemUpdate(values);
   const errors: ItemErrors = parsed.ok ? {} : { ...parsed.errors };
-  const unit = values.unit ?? "";
-  if (!errors.unit && unit && unit !== current.unit) {
-    const state = await unitState(db, unit);
-    if (state === "inactive") errors.unit = INACTIVE_UNIT;
-    if (state === "missing") errors.unit = NO_UNIT;
-  }
+  await checkCodes(db, values, errors, current);
   if (!parsed.ok || Object.keys(errors).length) return { ok: false, errors, values };
 
   try {
@@ -212,9 +280,9 @@ async function allUnits(db: Db): Promise<CodeOption[]> {
  * 빈 줄은 건너뛴다. 등록 상한(2,000)을 넘는 줄은 저장되지 않고 남는다. 줄 수(100)는 부르는 쪽이 먼저 본다.
  */
 export async function createItemRows(db: Db, rows: readonly SheetRow[]): Promise<SheetResult> {
-  const units = await allUnits(db);
+  const [units, classes] = await Promise.all([allUnits(db), allItemClasses(db)]);
   const filled = rows.filter((r) => !isBlankRow(r));
-  const read = filled.map((row) => ({ row, ...readItemRow(row, units) }));
+  const read = filled.map((row) => ({ row, ...readItemRow(row, units, classes) }));
   const valid = read.flatMap((r) => (r.ok ? [r] : []));
 
   const results = await registerRowsWithCode(db, {

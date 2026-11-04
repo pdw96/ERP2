@@ -151,6 +151,15 @@ const CONSTRAINT_FIELD: Record<string, PartnerErrorKey> = {
   partners_country_fk: "country",
   partners_foreign_biz_no_length: "foreignBizNo",
   partners_biz_no_by_country: "country",
+  partners_ceo_length: "ceo",
+  partners_biz_type_length: "bizType",
+  partners_biz_item_length: "bizItem",
+  partners_address_length: "address",
+  partners_phone_format: "phone",
+  partners_email_format: "email",
+  partners_contact_name_length: "contactName",
+  partners_contact_phone_format: "contactPhone",
+  partners_note_length: "note",
 };
 
 const INACTIVE_COUNTRY = "「사용 안 함」인 국가입니다 — 다른 국가를 고르세요";
@@ -207,7 +216,7 @@ export async function createPartner(db: Db, values: PartnerValues): Promise<Part
   }
 }
 
-/** 수정 — 코드는 바꾸지 않는다. 거래처명 · 구분 · 국가 · 번호 · 사용 여부. */
+/** 수정 — 코드는 바꾸지 않는다. 거래처명 · 구분 · 국가 · 번호 · 설명용 칸 · 사용 여부. */
 export async function updatePartner(
   db: Db,
   code: string,

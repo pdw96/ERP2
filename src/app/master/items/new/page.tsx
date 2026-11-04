@@ -3,7 +3,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
-import { previewCodes, unitOptions } from "@/db/items";
+import { itemClassOptions, previewCodes, unitOptions } from "@/db/items";
 import { withDb } from "@/db/request";
 import { createItemAction } from "../actions";
 import { ItemForm } from "../item-form";
@@ -32,17 +32,40 @@ export default function NewItemPage() {
 }
 
 // 처음 칸 — 계획 정보는 0(없음)에서 시작한다. 유형을 고르면 조달구분 · 검사 대상이 붙는다.
-const BLANK = { name: "", spec: "", unit: "", leadTimeDays: "0", safetyStock: "0", minLot: "0", lotMultiple: "0" };
+const BLANK = {
+  name: "",
+  spec: "",
+  unit: "",
+  leadTimeDays: "0",
+  safetyStock: "0",
+  minLot: "0",
+  lotMultiple: "0",
+  cls1: "",
+  cls2: "",
+  cls3: "",
+  note: "",
+};
 
 async function NewItemForm() {
   await connection();
   let data;
   try {
-    data = await withDb(async (db) => ({ units: await unitOptions(db), codes: await previewCodes(db) }));
+    data = await withDb(async (db) => ({
+      units: await unitOptions(db),
+      classes: await itemClassOptions(db),
+      codes: await previewCodes(db),
+    }));
   } catch (error) {
     return <LoadFailed what="입력 화면" error={error} />;
   }
   return (
-    <ItemForm mode="create" action={createItemAction} units={data.units} previewCodes={data.codes} initial={BLANK} />
+    <ItemForm
+      mode="create"
+      action={createItemAction}
+      units={data.units}
+      classes={data.classes}
+      previewCodes={data.codes}
+      initial={BLANK}
+    />
   );
 }

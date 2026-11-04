@@ -58,14 +58,66 @@ describe("샘플 데이터 — 성공 기준 1", () => {
     }
   });
 
-  it("공통코드 묶음은 ITEM_TYPE · PROC_TYPE(시스템) · UNIT · COUNTRY(사용자) 넷, 단위는 EA · M · KG · G 로 시작한다", () => {
+  it("공통코드 묶음은 ITEM_TYPE · PROC_TYPE(시스템) · UNIT · COUNTRY · ITEM_CLS1 ~ 3(사용자) 일곱, 단위는 EA · M · KG · G 로 시작한다", () => {
     expect(SAMPLE_CODE_GROUPS.map((g) => [g.code, g.isSystem])).toEqual([
       ["ITEM_TYPE", true],
       ["PROC_TYPE", true],
       ["UNIT", false],
       ["COUNTRY", false],
+      ["ITEM_CLS1", false],
+      ["ITEM_CLS2", false],
+      ["ITEM_CLS3", false],
     ]);
     expect(SAMPLE_CODES.filter((c) => c.groupCode === "UNIT").map((c) => c.code)).toEqual(["EA", "M", "KG", "G"]);
+  });
+});
+
+describe("설명용 칸의 샘플 — 성공 기준 13(저자 인터뷰 2026-11-04)", () => {
+  const valuesOf = (group: string) => SAMPLE_CODES.filter((c) => c.groupCode === group).map((c) => [c.code, c.name]);
+
+  it("분류 — 대분류는 종류, 중분류는 패키지, 소분류는 용도", () => {
+    expect(valuesOf("ITEM_CLS1")).toEqual([
+      ["WAFER", "웨이퍼"],
+      ["FRAME", "리드프레임"],
+      ["WIRE", "와이어"],
+      ["CHEM", "화학재료"],
+      ["WIP", "공정품"],
+      ["IC", "IC"],
+    ]);
+    expect(valuesOf("ITEM_CLS2")).toEqual([
+      ["SOP", "SOP"],
+      ["QFN", "QFN"],
+      ["COMMON", "공용"],
+    ]);
+    expect(valuesOf("ITEM_CLS3")).toEqual([
+      ["POWER", "전원"],
+      ["SENSOR", "센서"],
+      ["GENERAL", "범용"],
+    ]);
+  });
+
+  it("품목은 모두 대 · 중분류가 있고, 용도(소분류)는 반제품 · 완제품에만 있다", () => {
+    for (const i of SAMPLE_ITEMS) {
+      expect(i.cls1, i.code).toBeTruthy();
+      expect(i.cls2, i.code).toBeTruthy();
+      expect(!!i.cls3, i.code).toBe(i.itemType !== "RM");
+    }
+  });
+
+  it("연락처는 쓰이지 않는 것이다 — 전화는 0000 번호, 이메일은 예시 전용 주소, 주소는 없는 지명", () => {
+    for (const p of SAMPLE_PARTNERS) {
+      for (const phone of [p.phone, p.contactPhone].filter(Boolean)) expect(phone, p.code).toMatch(/-0+-0*[0-9]+$/);
+      expect(p.email, p.code).toMatch(/@([a-z]+\.)?example\.com$/);
+      expect(p.address, p.code).toMatch(/가상시|Kaso City/);
+    }
+  });
+
+  it("해외 거래처는 업태 · 종목(한국 세법의 칸)이 비어 있고, 담당자를 비운 거래처가 하나 이상 있다", () => {
+    for (const p of SAMPLE_PARTNERS.filter((x) => (x.country ?? "KR") !== "KR")) {
+      expect(p.bizType ?? "", p.code).toBe("");
+      expect(p.bizItem ?? "", p.code).toBe("");
+    }
+    expect(SAMPLE_PARTNERS.some((p) => !p.contactName)).toBe(true);
   });
 });
 

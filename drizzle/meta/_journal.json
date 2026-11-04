@@ -22,6 +22,20 @@
       "when": 1793765406647,
       "tag": "0002_partner_country",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793782855325,
+      "tag": "0003_item_class_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793782859629,
+      "tag": "0004_master_descriptive",
+      "breakpoints": true
     }
   ]
 }

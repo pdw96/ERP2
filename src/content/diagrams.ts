@@ -282,6 +282,10 @@ export const DATA_MODEL = `erDiagram
     numeric safety_stock "안전재고"
     numeric min_lot "최소 발주 · 생산량"
     numeric lot_multiple "발주 · 생산 배수"
+    text cls1 "공통코드 ITEM_CLS1 — 대분류(종류) · 비워도 됨"
+    text cls2 "공통코드 ITEM_CLS2 — 중분류(패키지) · 비워도 됨"
+    text cls3 "공통코드 ITEM_CLS3 — 소분류(용도) · 비워도 됨"
+    text note "비고"
     boolean active "사용 여부"
   }
   WAREHOUSES["창고 warehouses"] {
@@ -297,10 +301,19 @@ export const DATA_MODEL = `erDiagram
     text country "공통코드 COUNTRY — KR · US · JP …"
     text biz_no "사업자등록번호 — 한국"
     text foreign_biz_no "해외 사업자번호 — 한국 밖"
+    text ceo "대표자"
+    text biz_type "업태"
+    text biz_item "종목"
+    text address "주소"
+    text phone "전화"
+    text email "이메일"
+    text contact_name "담당자"
+    text contact_phone "담당자 연락처"
+    text note "비고"
     boolean active "사용 여부"
   }
   CODE_GROUPS["공통코드 묶음 code_groups (Major)"] {
-    text code UK "ITEM_TYPE · PROC_TYPE · UNIT · COUNTRY"
+    text code UK "ITEM_TYPE · PROC_TYPE · UNIT · COUNTRY · ITEM_CLS1 ~ 3"
     text name "이름"
     boolean is_system "시스템 코드 — 화면에서 못 고침"
   }
@@ -312,7 +325,7 @@ export const DATA_MODEL = `erDiagram
     boolean active "사용 여부"
   }
   CODE_GROUPS ||--o{ CODES : "묶음의 값"
-  CODES ||--o{ ITEMS : "유형 · 조달구분 · 단위"
+  CODES ||--o{ ITEMS : "유형 · 조달구분 · 단위 · 분류"
   CODES ||--o{ PARTNERS : "국가"`;
 
 // 시스템 구성 — 화면 · 서버 · DB · 자동 검사 · 알림.

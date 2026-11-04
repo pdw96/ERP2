@@ -144,6 +144,9 @@ export function PartnerList({
             <th scope="col" className="hidden px-3 py-2 md:table-cell">
               사업자번호
             </th>
+            <th scope="col" className="hidden px-3 py-2 lg:table-cell">
+              담당자 · 전화
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -177,6 +180,16 @@ export function PartnerList({
               </td>
               <td className="hidden px-3 py-2.5 font-mono text-sm tabular-nums wrap-anywhere md:table-cell">
                 {bizNoOf(p) ?? "—"}
+              </td>
+              <td className="hidden px-3 py-2.5 text-sm wrap-anywhere lg:table-cell">
+                {p.contactName || p.phone ? (
+                  <>
+                    {p.contactName && <span className="block">{p.contactName}</span>}
+                    {p.phone && <span className="block font-mono text-muted tabular-nums">{p.phone}</span>}
+                  </>
+                ) : (
+                  "—"
+                )}
               </td>
             </tr>
           ))}

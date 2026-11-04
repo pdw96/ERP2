@@ -28,7 +28,7 @@ const save = async () => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("시트", () => {
-  it("칸은 한 건 등록 화면의 순서이고, 처음에 다섯 줄이다", () => {
+  it("칸은 한 건 등록 화면의 순서이고(PR H 의 분류 · 비고는 지금 칸의 뒤), 처음에 다섯 줄이다", () => {
     renderItems();
     const heads = screen.getAllByRole("columnheader").map((th) => th.textContent);
     expect(heads.slice(1, -1)).toEqual([
@@ -43,6 +43,10 @@ describe("시트", () => {
       "안전재고",
       "최소 발주 · 생산량",
       "발주 · 생산 배수",
+      "대분류",
+      "중분류",
+      "소분류",
+      "비고",
     ]);
     expect(dataRows()).toHaveLength(5);
   });

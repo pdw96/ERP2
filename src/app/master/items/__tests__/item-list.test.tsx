@@ -22,6 +22,13 @@ const item = (over: Partial<Item>): Item => ({
   safetyStock: 20000,
   minLot: 0,
   lotMultiple: 0,
+  cls1Group: "ITEM_CLS1",
+  cls1: null,
+  cls2Group: "ITEM_CLS2",
+  cls2: null,
+  cls3Group: "ITEM_CLS3",
+  cls3: null,
+  note: "",
   active: true,
   createdAt: new Date(),
   updatedAt: new Date(),
@@ -42,7 +49,7 @@ describe("품목 목록", () => {
   it("휴대폰 폭에서는 코드 · 품명 · 유형 · 단위만 남긴다", () => {
     render(<ItemList rows={[item({})]} filter={none} />);
     const hidden = screen.getAllByRole("columnheader").filter((th) => th.className.includes("hidden"));
-    expect(hidden.map((th) => th.textContent)).toEqual(["조달구분", "검사", "리드타임", "안전재고"]);
+    expect(hidden.map((th) => th.textContent)).toEqual(["조달구분", "분류", "검사", "리드타임", "안전재고"]);
   });
 
   it("「사용 안 함」 품목에는 표시가 붙는다", () => {
@@ -76,6 +83,43 @@ describe("찾기 · 거르기", () => {
   it("받지 않은 거르기 값을 알린다", () => {
     render(<ItemSearch filter={none} notices={[{ field: "itemType", message: "없는 유형이라 거르지 않았습니다" }]} />);
     expect(screen.getByRole("status")).toHaveTextContent("없는 유형이라 거르지 않았습니다");
+  });
+});
+
+describe("분류(PR H)", () => {
+  const classes = {
+    cls1: [{ code: "FRAME", name: "리드프레임", active: true }],
+    cls2: [
+      { code: "SOP", name: "SOP", active: true },
+      { code: "OLD", name: "옛 패키지", active: false },
+    ],
+    cls3: [],
+  };
+
+  it("표의 분류 칸은 대 · 중 · 소 의 이름을 「·」로 잇고, 없으면 「—」", () => {
+    render(
+      <ItemList
+        rows={[item({ cls1: "FRAME", cls2: "SOP" }), item({ id: 2, code: "RM-0002" })]}
+        filter={none}
+        classes={classes}
+      />,
+    );
+    expect(screen.getByText("리드프레임 · SOP")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  it("찾기 줄에 분류 고르는 칸 셋 — 「사용 안 함」 값도 표시를 붙여 고를 수 있다", () => {
+    render(<ItemSearch filter={{ ...none, cls2: "OLD" }} notices={[]} classes={classes} />);
+    const form = within(screen.getByRole("search", { name: "품목 찾기" }));
+    expect(form.getByLabelText("대분류")).toHaveDisplayValue("전체");
+    expect(form.getByLabelText("중분류")).toHaveDisplayValue("옛 패키지 (사용 안 함)");
+    expect(form.getByLabelText("소분류")).toHaveDisplayValue("전체");
+    expect(form.getByRole("link", { name: "처음대로" })).toBeInTheDocument();
+  });
+
+  it("분류로만 걸러 찾은 것이 없어도 「찾는 품목이 없습니다」", () => {
+    render(<ItemList rows={[]} filter={{ ...none, cls3: "POWER" }} classes={classes} />);
+    expect(screen.getByText("찾는 품목이 없습니다.")).toBeInTheDocument();
   });
 });
 

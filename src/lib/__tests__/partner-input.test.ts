@@ -2,6 +2,18 @@
 import { describe, expect, it } from "vitest";
 import { parseNewPartner, parsePartnerUpdate, partnerValues, type PartnerValues } from "@/lib/partner-input";
 
+const NO_DESC = {
+  ceo: "",
+  bizType: "",
+  bizItem: "",
+  address: "",
+  phone: "",
+  email: "",
+  contactName: "",
+  contactPhone: "",
+  note: "",
+};
+
 // 설계 ③ 의 거래처 칸마다 맞는 꼴과 틀린 꼴 — 서버의 검사라 화면을 건너뛴 요청에도 같다.
 
 const good: PartnerValues = { name: "(가상) 바다솔더", isSupplier: "on", bizNo: "000-00-00006" };
@@ -19,6 +31,7 @@ describe("거래처 등록의 입력", () => {
         country: "KR",
         bizNo: "000-00-00006",
         foreignBizNo: null,
+        ...NO_DESC,
       },
     });
   });
@@ -79,6 +92,7 @@ describe("거래처 수정의 입력", () => {
         bizNo: "000-00-00006",
         foreignBizNo: null,
         active: false,
+        ...NO_DESC,
       },
     });
   });
@@ -106,6 +120,7 @@ describe("국가와 해외 사업자번호(PR G)", () => {
         country: "US",
         bizNo: null,
         foreignBizNo: "EIN 12-3456789",
+        ...NO_DESC,
       },
     });
   });

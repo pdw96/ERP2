@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { pickOption, readItemRow, readPartnerRow, yesNo, type CodeOption } from "../sheet-input";
 
+const NO_DESC = {
+  ceo: "",
+  bizType: "",
+  bizItem: "",
+  address: "",
+  phone: "",
+  email: "",
+  contactName: "",
+  contactPhone: "",
+  note: "",
+};
+const NO_CLASS = { cls1: null, cls2: null, cls3: null, note: "" };
+
 // 시트의 한 줄을 한 건 등록의 규칙으로 읽는다 — 이름 · 코드, Y/N, 빈 칸의 기본값(저자 인터뷰 2026-11-03).
 
 const units: CodeOption[] = [
@@ -64,6 +77,7 @@ describe("품목 한 줄", () => {
         safetyStock: 0,
         minLot: 0,
         lotMultiple: 0,
+        ...NO_CLASS,
       },
     });
   });
@@ -140,6 +154,7 @@ describe("거래처 한 줄", () => {
         country: "KR",
         bizNo: null,
         foreignBizNo: null,
+        ...NO_DESC,
       },
     });
   });
