@@ -31,12 +31,20 @@ export default function PartnersPage({ searchParams }: PageProps<"/master/partne
           <h1 className="text-3xl leading-tight font-semibold">거래처</h1>
           <p className="mt-1 text-muted">매입처 · 매출처. 한 거래처가 둘 다일 수 있습니다.</p>
         </div>
-        <Link
-          href="/master/partners/new"
-          className="rounded bg-machine px-5 py-2.5 font-semibold text-white hover:bg-machine-deep"
-        >
-          새 거래처 등록
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/master/partners/sheet"
+            className="rounded border border-machine bg-white px-5 py-2.5 font-semibold hover:bg-floor"
+          >
+            시트형 등록
+          </Link>
+          <Link
+            href="/master/partners/new"
+            className="rounded bg-machine px-5 py-2.5 font-semibold text-white hover:bg-machine-deep"
+          >
+            새 거래처 등록
+          </Link>
+        </div>
       </div>
       <Suspense fallback={<p className="mt-8 text-muted">불러오는 중입니다.</p>}>
         <Results searchParams={searchParams} />

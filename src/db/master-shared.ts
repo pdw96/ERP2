@@ -83,3 +83,53 @@ export async function registerWithCode(
 export const COLLIDED = "같은 때 등록한 사람이 있어 저장하지 못했습니다 — 다시 저장하세요";
 export const limitMessage = (what: string, limit: number) =>
   `${eun(what)} ${limit.toLocaleString("ko-KR")}개까지 등록됩니다 — 매일 밤 샘플 데이터로 돌아간 뒤 다시 등록하세요`;
+
+export type RegisteredRow =
+  | { ok: true; code: string }
+  | { ok: false; reason: "limit" }
+  | { ok: false; reason: "collided" }
+  | { ok: false; reason: "rejected"; error: unknown };
+
+/**
+ * 여러 줄의 등록(시트형 등록, PR F) — 한 트랜잭션에서 테이블의 잠금을 쥐고 줄 차례대로 센다 · 번호를 받는다 · 넣는다.
+ * 코드는 줄 차례로 붙고, 상한에 닿은 뒤의 줄은 「limit」으로 남는다(동시에 등록해도 넘지 않는다 — PR C 1회차의 경계).
+ * 줄마다 저장점(savepoint) 안에서 넣어, DB 제약에 걸린 줄은 「rejected」로 남고 앞뒤 줄은 그대로 저장된다.
+ * 제약 위반(23xxx)이 아닌 실패는 던진다 — 트랜잭션이 통째로 되돌아가 아무것도 저장되지 않는다.
+ * 저장한 뒤 읽을 것(거래처의 같은 사업자번호 따위)은 afterAll 로 같은 트랜잭션 안에서 읽는다 — 저장이 끝난 뒤 바깥에서 읽다
+ * 실패하면 저장한 줄을 「저장하지 못함」으로 알리게 된다(리뷰 1회차). afterAll 이 실패하면 아무것도 저장되지 않는다.
+ */
+export async function registerRowsWithCode(
+  db: Db,
+  spec: {
+    table: PgTable;
+    lock: number;
+    limit: number;
+    uniqueConstraint: string;
+    rows: readonly { prefix: CodePrefix; insert: (tx: Db, code: string) => Promise<unknown> }[];
+    afterAll?: (tx: Db, results: readonly RegisteredRow[]) => Promise<void>;
+  },
+): Promise<RegisteredRow[]> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${spec.lock})`);
+    let [{ n }] = await tx.select({ n: count() }).from(spec.table);
+    const results: RegisteredRow[] = [];
+    for (const row of spec.rows) {
+      if (n >= spec.limit) {
+        results.push({ ok: false, reason: "limit" });
+        continue;
+      }
+      const code = await nextCode(tx, row.prefix);
+      try {
+        await tx.transaction((sp) => row.insert(sp, code).then(() => undefined));
+        results.push({ ok: true, code });
+        n++;
+      } catch (error) {
+        if (constraintOf(error) === spec.uniqueConstraint) results.push({ ok: false, reason: "collided" });
+        else if (pgError(error).code?.startsWith("23")) results.push({ ok: false, reason: "rejected", error });
+        else throw error;
+      }
+    }
+    await spec.afterAll?.(tx, results);
+    return results;
+  });
+}

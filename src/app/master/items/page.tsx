@@ -24,12 +24,20 @@ export default function ItemsPage({ searchParams }: PageProps<"/master/items">) 
           <h1 className="text-3xl leading-tight font-semibold">품목</h1>
           <p className="mt-1 text-muted">원자재 · 반제품 · 완제품. 코드는 등록할 때 유형에 따라 붙습니다.</p>
         </div>
-        <Link
-          href="/master/items/new"
-          className="rounded bg-machine px-5 py-2.5 font-semibold text-white hover:bg-machine-deep"
-        >
-          새 품목 등록
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/master/items/sheet"
+            className="rounded border border-machine bg-white px-5 py-2.5 font-semibold hover:bg-floor"
+          >
+            시트형 등록
+          </Link>
+          <Link
+            href="/master/items/new"
+            className="rounded bg-machine px-5 py-2.5 font-semibold text-white hover:bg-machine-deep"
+          >
+            새 품목 등록
+          </Link>
+        </div>
       </div>
       <Suspense fallback={<p className="mt-8 text-muted">불러오는 중입니다.</p>}>
         <Results searchParams={searchParams} />
