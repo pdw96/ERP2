@@ -37,19 +37,23 @@ const item = (over: Partial<Item>): Item => ({
 const none = { q: "", includeInactive: false };
 
 describe("품목 목록", () => {
-  it("행마다 코드(수정 화면 링크) · 품명 · 규격 · 유형 · 조달구분 · 단위 · 검사 · 리드타임 · 안전재고", () => {
+  it("행마다 코드(수정 화면 링크) · 품명 · 규격 · 유형 · 단위", () => {
     render(<ItemList rows={[item({})]} filter={none} />);
     const row = within(screen.getAllByRole("row")[1]);
     expect(row.getByRole("link", { name: "RM-0001" })).toHaveAttribute("href", "/master/items/RM-0001");
-    for (const text of ["웨이퍼", "8인치", "원자재", "구매", "EA", "수입", "21일", "20,000"])
-      expect(row.getByText(text)).toBeInTheDocument();
+    for (const text of ["웨이퍼", "8인치", "원자재", "EA"]) expect(row.getByText(text)).toBeInTheDocument();
     expect(screen.getByText("1개")).toBeInTheDocument();
   });
 
-  it("휴대폰 폭에서는 코드 · 품명 · 유형 · 단위만 남긴다", () => {
+  it("찾아 고르는 칸만 둔다 — 조달구분 · 분류 · 검사 · 계획 정보는 「품목 조회」가 보인다(저자 판정 2026-11-04)", () => {
     render(<ItemList rows={[item({})]} filter={none} />);
-    const hidden = screen.getAllByRole("columnheader").filter((th) => th.className.includes("hidden"));
-    expect(hidden.map((th) => th.textContent)).toEqual(["조달구분", "분류", "검사", "리드타임", "안전재고"]);
+    expect(screen.getAllByRole("columnheader").map((th) => th.textContent)).toEqual([
+      "코드",
+      "품명 · 규격",
+      "유형",
+      "단위",
+    ]);
+    expect(screen.queryByText("21일")).toBeNull();
   });
 
   it("「사용 안 함」 품목에는 표시가 붙는다", () => {
@@ -96,18 +100,6 @@ describe("분류(PR H)", () => {
     cls3: [],
   };
 
-  it("표의 분류 칸은 대 · 중 · 소 의 이름을 「·」로 잇고, 없으면 「—」", () => {
-    render(
-      <ItemList
-        rows={[item({ cls1: "FRAME", cls2: "SOP" }), item({ id: 2, code: "RM-0002" })]}
-        filter={none}
-        classes={classes}
-      />,
-    );
-    expect(screen.getByText("리드프레임 · SOP")).toBeInTheDocument();
-    expect(screen.getByText("—")).toBeInTheDocument();
-  });
-
   it("찾기 줄에 분류 고르는 칸 셋 — 「사용 안 함」 값도 표시를 붙여 고를 수 있다", () => {
     render(<ItemSearch filter={{ ...none, cls2: "OLD" }} notices={[]} classes={classes} />);
     const form = within(screen.getByRole("search", { name: "품목 찾기" }));
@@ -118,7 +110,7 @@ describe("분류(PR H)", () => {
   });
 
   it("분류로만 걸러 찾은 것이 없어도 「찾는 품목이 없습니다」", () => {
-    render(<ItemList rows={[]} filter={{ ...none, cls3: "POWER" }} classes={classes} />);
+    render(<ItemList rows={[]} filter={{ ...none, cls3: "POWER" }} />);
     expect(screen.getByText("찾는 품목이 없습니다.")).toBeInTheDocument();
   });
 });

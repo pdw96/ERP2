@@ -8,3 +8,4 @@ function josa(word: string, withFinal: string, withoutFinal: string): string {
 
 export const eul = (w: string) => josa(w, "을", "를");
 export const eun = (w: string) => josa(w, "은", "는");
+export const iga = (w: string) => josa(w, "이", "가");

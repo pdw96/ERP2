@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { AREAS, isOpen, isWithin, type Menu } from "@/lib/areas";
+import { AREAS, activeMenuHref, isOpen, isWithin, type Menu } from "@/lib/areas";
 
 // 넓은 화면에서는 왼쪽에 늘 보이고, 휴대폰 폭에서는 「메뉴」 단추로 펼친다.
 // 모듈은 마스터플랜 순서다. 지금 보는 모듈은 바닥 안전선처럼 노란 띠로 표시하고, 그 아래 메뉴를 펼친다.
@@ -42,6 +42,7 @@ export function SidebarView({ pathname }: { pathname: string }) {
       >
         {AREAS.map((area) => {
           const current = isWithin(pathname, area.href);
+          const activeHref = current ? activeMenuHref(pathname, area) : undefined;
           return (
             <li key={area.href}>
               <Link
@@ -69,7 +70,7 @@ export function SidebarView({ pathname }: { pathname: string }) {
                       <ul>
                         {group.menus.map((menu) => (
                           <li key={menu.label}>
-                            <MenuLink menu={menu} pathname={pathname} onPick={() => setOpen(false)} />
+                            <MenuLink menu={menu} active={menu.href === activeHref} onPick={() => setOpen(false)} />
                           </li>
                         ))}
                       </ul>
@@ -113,7 +114,7 @@ export function SidebarView({ pathname }: { pathname: string }) {
   );
 }
 
-function MenuLink({ menu, pathname, onPick }: { menu: Menu; pathname: string; onPick: () => void }) {
+function MenuLink({ menu, active, onPick }: { menu: Menu; active: boolean; onPick: () => void }) {
   const pad = "block px-5 py-1.5 pl-9 text-sm md:px-6 md:pl-10";
   if (!menu.href) {
     return (
@@ -123,7 +124,6 @@ function MenuLink({ menu, pathname, onPick }: { menu: Menu; pathname: string; on
       </span>
     );
   }
-  const active = isWithin(pathname, menu.href);
   return (
     <Link
       href={menu.href}

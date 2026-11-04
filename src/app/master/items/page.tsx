@@ -7,9 +7,10 @@ import { withDb } from "@/db/request";
 import { LoadFailed } from "@/components/load-failed";
 import { ItemList, ItemSearch, SavedNotice } from "./item-list";
 
-export const metadata: Metadata = { title: "품목 — ERP2" };
+export const metadata: Metadata = { title: "품목 등록 — ERP2" };
 
-// 기준정보 › 품목 — 목록. 찾기 · 거르기는 주소에 남아 그대로 링크로 건넬 수 있다.
+// 기준정보 › 품목 등록 — 고칠 품목을 찾는 목록과 한 건 · 시트형 등록의 입구. 모든 칸은 「품목 조회」가 보인다(ADR 0013).
+// 찾기 · 거르기는 주소에 남아 그대로 링크로 건넬 수 있다.
 export default function ItemsPage({ searchParams }: PageProps<"/master/items">) {
   return (
     <section className="max-w-6xl">
@@ -17,12 +18,18 @@ export default function ItemsPage({ searchParams }: PageProps<"/master/items">) 
         <Link href="/master" className="underline-offset-4 hover:underline">
           기준정보
         </Link>{" "}
-        › 품목
+        › 품목 등록
       </p>
       <div className="mt-1 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl leading-tight font-semibold">품목</h1>
-          <p className="mt-1 text-muted">원자재 · 반제품 · 완제품. 코드는 등록할 때 유형에 따라 붙습니다.</p>
+          <h1 className="text-3xl leading-tight font-semibold">품목 등록</h1>
+          <p className="mt-1 text-muted">
+            원자재 · 반제품 · 완제품. 코드는 등록할 때 유형에 따라 붙습니다. 모든 칸은{" "}
+            <Link href="/master/items/inquiry" className="underline underline-offset-4 hover:text-ink">
+              품목 조회
+            </Link>
+            에서 봅니다.
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
@@ -74,7 +81,7 @@ async function Results({ searchParams }: Pick<PageProps<"/master/items">, "searc
     <>
       {data.saved && <SavedNotice item={data.saved} shown={data.rows.some((r) => r.id === data.saved!.id)} />}
       <ItemSearch filter={filter} notices={notices} classes={classes} />
-      <ItemList rows={data.rows} filter={filter} savedCode={data.saved?.code} classes={classes} />
+      <ItemList rows={data.rows} filter={filter} savedCode={data.saved?.code} />
     </>
   );
 }

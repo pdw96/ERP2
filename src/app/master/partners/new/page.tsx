@@ -19,7 +19,7 @@ export default function NewPartnerPage() {
         </Link>{" "}
         ›{" "}
         <Link href="/master/partners" className="underline-offset-4 hover:underline">
-          거래처
+          거래처 등록
         </Link>{" "}
         › 새 거래처
       </p>
