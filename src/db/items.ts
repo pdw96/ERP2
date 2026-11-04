@@ -1,6 +1,8 @@
 import { and, asc, eq, ilike, or, type SQL } from "drizzle-orm";
 import { ITEM_TYPES, PROC_TYPES, type ItemType } from "@/lib/master-codes";
 import { parseItemUpdate, parseNewItem, type ItemErrors, type ItemField, type ItemValues } from "@/lib/item-input";
+import { readItemRow, type CodeOption } from "@/lib/sheet-input";
+import { ROW_ERROR, isBlankRow, type SheetResult, type SheetRow } from "@/lib/sheet";
 import {
   COLLIDED,
   REGISTER_LOCK,
@@ -9,6 +11,7 @@ import {
   likeLiteral,
   limitMessage,
   pgError,
+  registerRowsWithCode,
   registerWithCode,
   searchText,
   type Params,
@@ -191,4 +194,61 @@ export async function updateItem(
   } catch (error) {
     return asRejection(error, values);
   }
+}
+
+// ── 시트형 등록(PR F) ────────────────────────────────────
+
+/** 단위의 공통코드 — 「사용 안 함」까지. 시트는 이름 · 코드 둘 다 받고, 「사용 안 함」 단위는 거절한다. */
+async function allUnits(db: Db): Promise<CodeOption[]> {
+  return db
+    .select({ code: codes.code, name: codes.name, active: codes.active })
+    .from(codes)
+    .where(eq(codes.groupCode, "UNIT"))
+    .orderBy(asc(codes.sortOrder), asc(codes.code));
+}
+
+/**
+ * 시트형 등록 — 맞는 줄만 저장하고 코드를 줄 차례로 붙인다. 틀린 줄은 넣은 글자 그대로 까닭과 함께 돌려준다(성공 기준 11).
+ * 빈 줄은 건너뛴다. 등록 상한(2,000)을 넘는 줄은 저장되지 않고 남는다. 줄 수(100)는 부르는 쪽이 먼저 본다.
+ */
+export async function createItemRows(db: Db, rows: readonly SheetRow[]): Promise<SheetResult> {
+  const units = await allUnits(db);
+  const filled = rows.filter((r) => !isBlankRow(r));
+  const read = filled.map((row) => ({ row, ...readItemRow(row, units) }));
+  const valid = read.flatMap((r) => (r.ok ? [r] : []));
+
+  const results = await registerRowsWithCode(db, {
+    table: items,
+    lock: REGISTER_LOCK.items,
+    limit: ITEM_LIMIT,
+    uniqueConstraint: "items_code_unique",
+    rows: valid.map((r) => ({
+      prefix: r.value.itemType,
+      insert: (tx: Db, code: string) => tx.insert(items).values({ ...r.value, code }),
+    })),
+  });
+
+  const result: SheetResult = { saved: [], rejected: [] };
+  const byRow = new Map(valid.map((r, i) => [r, results[i]]));
+  for (const r of read) {
+    if (!r.ok) {
+      result.rejected.push({ row: r.row, errors: r.errors });
+      continue;
+    }
+    const saved = byRow.get(r)!;
+    if (saved.ok) result.saved.push({ code: saved.code, name: r.value.name });
+    else if (saved.reason === "limit")
+      result.rejected.push({ row: r.row, errors: { [ROW_ERROR]: limitMessage("품목", ITEM_LIMIT) } });
+    else if (saved.reason === "collided") result.rejected.push({ row: r.row, errors: { [ROW_ERROR]: COLLIDED } });
+    else {
+      const field = CONSTRAINT_FIELD[constraintOf(saved.error) ?? ""];
+      result.rejected.push({
+        row: r.row,
+        errors: field
+          ? { [field]: "받을 수 없는 값입니다" }
+          : { [ROW_ERROR]: "받을 수 없는 값이 있습니다 — 수량은 0 이상입니다" },
+      });
+    }
+  }
+  return result;
 }

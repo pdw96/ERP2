@@ -13,12 +13,15 @@ import {
   first,
   likeLiteral,
   limitMessage,
+  registerRowsWithCode,
   registerWithCode,
   searchText,
   type Params,
 } from "./master-shared";
 import { nextCode } from "./numbering";
 import { KOREA } from "@/lib/master-codes";
+import { ROW_ERROR, isBlankRow, type SheetResult, type SheetRow } from "@/lib/sheet";
+import { readPartnerRow, type CodeOption } from "@/lib/sheet-input";
 import { codes, partners } from "./schema";
 import type { Db } from "./types";
 
@@ -222,4 +225,63 @@ export async function updatePartner(
   } catch (error) {
     return asRejection(error, values);
   }
+}
+
+// ── 시트형 등록(PR F) ────────────────────────────────────
+
+/** 국가의 공통코드 — 「사용 안 함」까지. 시트는 이름 · 코드 둘 다 받고, 「사용 안 함」 국가는 거절한다. */
+async function allCountries(db: Db): Promise<CodeOption[]> {
+  return db
+    .select({ code: codes.code, name: codes.name, active: codes.active })
+    .from(codes)
+    .where(eq(codes.groupCode, "COUNTRY"))
+    .orderBy(asc(codes.sortOrder), asc(codes.code));
+}
+
+// 시트의 거절 자리 — 사업자등록번호 · 해외 사업자번호는 한 칸(「사업자번호」)이다.
+const SHEET_PLACE: Partial<Record<PartnerErrorKey, string>> = { foreignBizNo: "bizNo" };
+
+/**
+ * 시트형 등록 — 맞는 줄만 저장하고 코드를 줄 차례로 붙인다. 틀린 줄은 넣은 글자 그대로 까닭과 함께 돌려준다(성공 기준 11).
+ * 빈 줄은 건너뛴다. 등록 상한(1,000)을 넘는 줄은 저장되지 않고 남는다. 저장한 줄마다 같은 사업자번호를 쓰는 다른 거래처를
+ * 함께 돌려준다 — 막지 않고 경고만 한다(한 건 등록과 같다, 같은 시트의 줄끼리도).
+ */
+export async function createPartnerRows(db: Db, rows: readonly SheetRow[]): Promise<SheetResult> {
+  const countries = await allCountries(db);
+  const filled = rows.filter((r) => !isBlankRow(r));
+  const read = filled.map((row) => ({ row, ...readPartnerRow(row, countries) }));
+  const valid = read.flatMap((r) => (r.ok ? [r] : []));
+
+  const results = await registerRowsWithCode(db, {
+    table: partners,
+    lock: REGISTER_LOCK.partners,
+    limit: PARTNER_LIMIT,
+    uniqueConstraint: "partners_code_unique",
+    rows: valid.map((r) => ({
+      prefix: "BP" as const,
+      insert: (tx: Db, code: string) => tx.insert(partners).values({ ...r.value, code }),
+    })),
+  });
+
+  const result: SheetResult = { saved: [], rejected: [] };
+  const byRow = new Map(valid.map((r, i) => [r, results[i]]));
+  for (const r of read) {
+    if (!r.ok) {
+      result.rejected.push({ row: r.row, errors: r.errors });
+      continue;
+    }
+    const saved = byRow.get(r)!;
+    if (saved.ok) {
+      const sharedBizNo = await partnersSharingBizNo(db, { code: saved.code, ...r.value });
+      result.saved.push({ code: saved.code, name: r.value.name, ...(sharedBizNo.length ? { sharedBizNo } : {}) });
+    } else if (saved.reason === "limit")
+      result.rejected.push({ row: r.row, errors: { [ROW_ERROR]: limitMessage("거래처", PARTNER_LIMIT) } });
+    else if (saved.reason === "collided") result.rejected.push({ row: r.row, errors: { [ROW_ERROR]: COLLIDED } });
+    else {
+      const field = CONSTRAINT_FIELD[constraintOf(saved.error) ?? ""];
+      const place = field ? (SHEET_PLACE[field] ?? field) : ROW_ERROR;
+      result.rejected.push({ row: r.row, errors: { [place]: "받을 수 없는 값입니다" } });
+    }
+  }
+  return result;
 }

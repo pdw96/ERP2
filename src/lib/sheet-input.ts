@@ -1,0 +1,132 @@
+import { parseNewItem, type NewItemInput } from "./item-input";
+import type { ItemValues } from "./item-fields";
+import { ITEM_TYPE_DEFAULTS, ITEM_TYPES, KOREA, PROC_TYPES, type ItemType } from "./master-codes";
+import { parseNewPartner, type NewPartnerInput, type PartnerValues } from "./partner-input";
+import type { SheetErrors, SheetRow } from "./sheet";
+
+// 시트형 등록의 한 줄을 한 건 등록의 입력으로 바꿔 같은 규칙으로 본다(성공 기준 11 — 칸의 규칙은 한 건 등록과 같다).
+// 시트만의 것은 셋이다(저자 인터뷰 2026-11-03): 고르는 값을 이름 · 코드 둘 다 받고, 켬 · 끔을 Y/N · O/X · 예/아니오로 받고,
+// 빈 칸을 한 건 등록의 기본값으로 채운다. 서버에서만 쓴다.
+
+export type CodeOption = { code: string; name: string; active: boolean };
+
+type Picked = { code: string; active: boolean } | "blank" | "none" | "ambiguous";
+
+/** 이름이나 코드로 고른다 — 코드는 대소문자를 가리지 않고, 코드가 먼저다. 같은 이름이 둘 이상이면 코드로 넣으라고 한다. */
+export function pickOption(text: string, options: readonly { code: string; name: string; active?: boolean }[]): Picked {
+  const t = text.trim();
+  if (!t) return "blank";
+  const byCode = options.find((o) => o.code === t.toUpperCase());
+  if (byCode) return { code: byCode.code, active: byCode.active ?? true };
+  const byName = options.filter((o) => o.name === t);
+  if (byName.length > 1) return "ambiguous";
+  if (byName.length === 1) return { code: byName[0].code, active: byName[0].active ?? true };
+  return "none";
+}
+
+const YES = new Set(["Y", "O", "예"]);
+const NO = new Set(["N", "X", "아니오"]);
+
+/** 켬 · 끔 — Y/N · O/X · 예/아니오(영문은 대소문자를 가리지 않는다). 비면 "blank", 모르는 글이면 "bad". */
+export function yesNo(text: string): "on" | "off" | "blank" | "bad" {
+  const t = text.trim().toUpperCase();
+  if (!t) return "blank";
+  if (YES.has(t)) return "on";
+  if (NO.has(t)) return "off";
+  return "bad";
+}
+
+const names = (list: readonly { code: string; name: string }[]) => list.map((o) => `${o.name}(${o.code})`).join(" · ");
+const YES_NO_BAD = "Y · N 가운데 하나로 넣으세요(O · X, 예 · 아니오도 됩니다)";
+const AMBIGUOUS = (what: string) => `같은 이름의 ${what}가 둘 이상입니다 — 코드로 넣으세요`;
+
+/** 품목 한 줄 — 맞으면 등록할 값을, 틀리면 칸마다의 까닭을. 단위의 「사용 안 함」도 여기서 본다(한 건 등록과 같은 말). */
+export function readItemRow(
+  row: SheetRow,
+  units: readonly CodeOption[],
+): { ok: true; value: NewItemInput } | { ok: false; errors: SheetErrors } {
+  const errors: SheetErrors = {};
+  const values: ItemValues = {
+    name: row.name ?? "",
+    spec: row.spec ?? "",
+    leadTimeDays: (row.leadTimeDays ?? "").trim() || "0",
+    safetyStock: (row.safetyStock ?? "").trim() || "0",
+    minLot: (row.minLot ?? "").trim() || "0",
+    lotMultiple: (row.lotMultiple ?? "").trim() || "0",
+  };
+
+  const type = pickOption(row.itemType ?? "", ITEM_TYPES);
+  if (type === "blank") errors.itemType = `유형을 넣으세요 — ${names(ITEM_TYPES)}`;
+  else if (typeof type === "string") errors.itemType = `유형은 ${names(ITEM_TYPES)} 가운데 하나입니다`;
+  else values.itemType = type.code;
+  const defaults = values.itemType ? ITEM_TYPE_DEFAULTS[values.itemType as ItemType] : undefined;
+
+  const proc = pickOption(row.procurement ?? "", PROC_TYPES);
+  if (proc === "blank") values.procurement = defaults?.procurement ?? "";
+  else if (typeof proc === "string") errors.procurement = `조달구분은 ${names(PROC_TYPES)} 가운데 하나입니다`;
+  else values.procurement = proc.code;
+
+  const unit = pickOption(row.unit ?? "", units);
+  if (unit === "blank") errors.unit = "단위를 넣으세요";
+  else if (unit === "ambiguous") errors.unit = AMBIGUOUS("단위");
+  else if (unit === "none") errors.unit = "공통코드의 단위(UNIT)에 없는 단위입니다";
+  else if (!unit.active) errors.unit = "「사용 안 함」인 단위입니다 — 다른 단위를 넣으세요";
+  else values.unit = unit.code;
+
+  for (const key of ["inspectIn", "inspectOut"] as const) {
+    const v = yesNo(row[key] ?? "");
+    if (v === "bad") errors[key] = YES_NO_BAD;
+    else if (v === "blank") values[key] = defaults?.[key] ? "on" : "off";
+    else values[key] = v;
+  }
+
+  const parsed = parseNewItem(values);
+  if (!parsed.ok)
+    for (const [field, message] of Object.entries(parsed.errors)) {
+      // 유형을 못 읽어 조달구분의 기본값이 없으면 유형의 까닭 하나만 알린다.
+      if (field === "procurement" && proc === "blank" && errors.itemType) continue;
+      if (!errors[field]) errors[field] = message!;
+    }
+  if (parsed.ok && Object.keys(errors).length === 0) return { ok: true, value: parsed.value };
+  return { ok: false, errors };
+}
+
+/** 거래처 한 줄 — 사업자번호 칸은 국가가 한국이면 사업자등록번호, 아니면 해외 사업자번호로 읽는다. */
+export function readPartnerRow(
+  row: SheetRow,
+  countries: readonly CodeOption[],
+): { ok: true; value: NewPartnerInput } | { ok: false; errors: SheetErrors } {
+  const errors: SheetErrors = {};
+  const values: PartnerValues = { name: row.name ?? "" };
+
+  // 매입처 · 매출처의 거절은 「구분」 한 자리에 보인다(한 건 등록과 같다).
+  for (const [key, label] of [
+    ["isSupplier", "매입처"],
+    ["isCustomer", "매출처"],
+  ] as const) {
+    const v = yesNo(row[key] ?? "");
+    if (v === "bad") errors.role ??= `${label} 칸은 ${YES_NO_BAD}`;
+    else values[key] = v === "on" ? "on" : "off";
+  }
+
+  const country = pickOption(row.country ?? "", countries);
+  if (country === "blank") values.country = KOREA;
+  else if (country === "ambiguous") errors.country = AMBIGUOUS("국가");
+  else if (country === "none") errors.country = "공통코드의 국가(COUNTRY)에 없는 국가입니다";
+  else if (!country.active) errors.country = "「사용 안 함」인 국가입니다 — 다른 국가를 넣으세요";
+  else values.country = country.code;
+
+  // 국가를 못 읽었으면 번호는 한국 꼴로 보지 않는다 — 국가의 까닭 하나만 알린다.
+  const korean = (values.country ?? "") === KOREA;
+  if (values.country) values[korean ? "bizNo" : "foreignBizNo"] = row.bizNo ?? "";
+
+  const parsed = parseNewPartner({ ...values, country: values.country ?? KOREA });
+  if (!parsed.ok)
+    for (const [key, message] of Object.entries(parsed.errors)) {
+      const at = key === "foreignBizNo" ? "bizNo" : key;
+      if (at === "bizNo" && errors.country) continue;
+      if (!errors[at]) errors[at] = message!;
+    }
+  if (parsed.ok && Object.keys(errors).length === 0) return { ok: true, value: parsed.value };
+  return { ok: false, errors };
+}

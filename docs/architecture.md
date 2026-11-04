@@ -14,6 +14,7 @@
 | 모듈 화면 | 모듈마다 한 주소(`/master` · `/sales` · `/purchasing` · `/inventory` · `/production` · `/quality` · `/accounting` · `/hr` · `/system`) — 그 모듈의 메뉴를 묶음대로 보인다 | `src/app/<모듈>/` · `src/components/module-home.tsx` |
 | 품목 화면 | 기준정보 › 품목의 목록(찾기 · 유형 · 조달구분 거르기 · 「사용 안 함 포함」) · 등록 · 수정. 저장은 서버 액션이 받고, 입력 검사(`zod`)와 단위 · 등록 상한 · 코드 번호는 서버가 본다. 실패 로그는 오류 코드만 | `src/app/master/items/` · `src/lib/item-input.ts` · `src/db/items.ts` · `src/db/request.ts` |
 | 거래처 · 창고 화면 | 기준정보 › 거래처(찾기 · 매입처 · 매출처 거르기, 국가 — 한국이면 사업자등록번호, 아니면 해외 사업자번호)와 재고 › 재고 기준정보 › 창고(찾기)의 목록 · 등록 · 수정 — 품목 화면과 같은 틀이다. 입력 칸 부품 · 저장 알림, 찾기 · DB 거절 읽기 · 잠금 안의 등록은 세 화면이 같이 쓴다 | `src/app/master/partners/` · `src/app/inventory/warehouses/` · `src/lib/partner-input.ts` · `src/lib/warehouse-input.ts` · `src/lib/input-common.ts` · `src/db/partners.ts` · `src/db/warehouses.ts` · `src/db/master-shared.ts` · `src/components/form-parts.tsx` |
+| 시트형 등록 | 기준정보 › 품목 · 거래처의 「시트형 등록」 — 칸 · 줄로 된 시트에 넣거나 엑셀에서 붙여넣어 한 번에 등록한다(100줄까지). 칸의 규칙은 한 건 등록의 검사를 그대로 쓰고, 고르는 값은 이름 · 코드 둘 다, 빈 칸은 한 건 등록의 기본값. 맞는 줄은 한 트랜잭션에서 잠금을 쥐고 줄 차례로 코드를 받아 저장하고(줄마다 저장점), 틀린 줄은 까닭과 함께 시트에 남는다 | `src/components/sheet-grid.tsx` · `src/app/master/items/sheet/` · `src/app/master/partners/sheet/` · `src/lib/sheet.ts` · `src/lib/sheet-columns.ts` · `src/lib/sheet-input.ts` · `src/db/master-shared.ts` |
 | 공통코드 화면 | 시스템 관리 › 공통코드 — 묶음(Major) 목록과 한 묶음의 값(Minor) 목록, 사용자 코드 묶음의 값 추가 · 수정. 시스템 코드 묶음은 보이기만 하고, 서버도 바꾸는 요청을 거절한다. 프로그램이 기대는 사용자 코드 값(국가 `KR`)은 「사용 안 함」으로 바꾸지 못한다. 묶음 안의 겹침 · 등록 상한은 서버가 본다(ADR 0009) | `src/app/system/codes/` · `src/lib/code-input.ts` · `src/db/codes.ts` |
 | 설계도 화면 | 업무 흐름(스윔레인 · Overview) · 데이터 모델(모듈별 전체 지도 · 이 조각의 테이블) · 시스템 구성 그림. 메뉴 판 아래 「설계도」. 그림의 글과 스윔레인 데이터는 한 파일에 있고, 테이블 · 부품 · 흐름을 바꾸는 PR 이 함께 고친다(ADR 0006). 스윔레인은 서버에서 SVG 로, 모듈별 지도는 서버에서 카드로, 나머지는 브라우저의 Mermaid 가 그린다 | `src/app/design/` · `src/content/diagrams.ts` · `src/lib/swimlane.ts` · `src/components/swimlane.tsx` · `src/components/module-map.tsx` · `src/components/mermaid-diagram.tsx` |
 | 상태 화면 | DB 에 닿는지 묻고 「연결됨」(DB 시각) 또는 「연결 안 됨」을 보인다. 결과를 1분 재사용하고 검색 로봇을 막는다. 떠 있는 배포의 커밋도 보인다 | `src/app/health/` · `src/db/status.ts` |
@@ -29,7 +30,7 @@
 
 ```
 브라우저 ── 웹 앱(Vercel) ── PostgreSQL(Neon 운영 DB)
-         └─ 품목 · 거래처 · 창고 · 공통코드 등록 · 수정(서버 액션) ── 입력 검사 ── 운영 DB
+         └─ 품목 · 거래처 · 창고 · 공통코드 등록 · 수정, 품목 · 거래처 시트형 등록(서버 액션) ── 입력 검사 ── 운영 DB
 PR ── 자동 검사(GitHub Actions)
    └─ 미리보기 배포(Vercel) ── Neon 미리보기 분기 DB
    └─ 빌드: 마이그레이션 · 빈 DB 면 샘플 ── 미리보기 분기 DB
