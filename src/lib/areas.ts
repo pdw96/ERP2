@@ -28,8 +28,11 @@ export const AREAS: readonly Area[] = [
     groups: [
       {
         menus: [
-          { label: "품목", slice: "기준정보", href: "/master/items" },
-          { label: "거래처", slice: "기준정보", href: "/master/partners" },
+          // 등록 · 조회로 나눈다(ADR 0013). 조회는 등록의 주소 아래라, 지금 화면은 가장 길게 맞는 메뉴다(activeMenuHref).
+          { label: "품목 등록", slice: "기준정보", href: "/master/items" },
+          { label: "품목 조회", slice: "기준정보", href: "/master/items/inquiry" },
+          { label: "거래처 등록", slice: "기준정보", href: "/master/partners" },
+          { label: "거래처 조회", slice: "기준정보", href: "/master/partners/inquiry" },
         ],
       },
     ],
@@ -219,4 +222,14 @@ export function isOpen(area: Area): boolean {
 /** 주소가 이 모듈 또는 그 아래 화면인가. */
 export function isWithin(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/**
+ * 지금 화면에 맞는 메뉴의 주소 — 주소가 여러 메뉴 아래에 들면 가장 길게 맞는 것.
+ * 「품목 조회」(/master/items/inquiry)는 「품목 등록」(/master/items) 아래에 있어도 조회만 표시된다.
+ */
+export function activeMenuHref(pathname: string, area: Area): string | undefined {
+  return area.groups
+    .flatMap((g) => g.menus.flatMap((m) => (m.href && isWithin(pathname, m.href) ? [m.href] : [])))
+    .sort((a, b) => b.length - a.length)[0];
 }

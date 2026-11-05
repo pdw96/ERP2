@@ -88,10 +88,17 @@ export function parseItemFilter(
   return { filter, notices };
 }
 
-/** 코드 순으로. 찾기는 코드 · 품명에 글자가 들어 있는지만 본다(대소문자 무시). */
-export async function listItems(db: Db, filter: ItemFilter): Promise<Item[]> {
+/** 찾기가 보는 칸 — 등록의 목록은 코드 · 품명, 조회는 글 칸 전체(저자 판정 2026-11-04, 설계 「PR I 를 열기 전에 정한 것」). */
+const SEARCHED = {
+  codeName: [items.code, items.name],
+  allText: [items.code, items.name, items.spec, items.note],
+} as const;
+export type SearchScope = keyof typeof SEARCHED;
+
+/** 코드 순으로. 찾기는 그 칸들에 글자가 들어 있는지 본다(대소문자 무시) — 등록의 목록은 코드 · 품명, 조회는 글 칸 전체. */
+export async function listItems(db: Db, filter: ItemFilter, scope: SearchScope = "codeName"): Promise<Item[]> {
   const where: SQL[] = [];
-  if (filter.q) where.push(or(ilike(items.code, likeLiteral(filter.q)), ilike(items.name, likeLiteral(filter.q)))!);
+  if (filter.q) where.push(or(...SEARCHED[scope].map((c) => ilike(c, likeLiteral(filter.q))))!);
   if (filter.itemType) where.push(eq(items.itemType, filter.itemType));
   if (filter.procurement) where.push(eq(items.procurement, filter.procurement));
   for (const { field } of ITEM_CLASSES) if (filter[field]) where.push(eq(items[field], filter[field]));

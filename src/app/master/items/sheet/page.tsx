@@ -11,7 +11,7 @@ import { saveItemSheetAction } from "../actions";
 
 export const metadata: Metadata = { title: "품목 시트형 등록 — ERP2" };
 
-// 기준정보 › 품목 › 시트형 등록(성공 기준 11) — 여러 품목을 시트에 넣거나 엑셀에서 붙여넣어 한 번에 등록한다.
+// 기준정보 › 품목 등록 › 시트형 등록(성공 기준 11) — 여러 품목을 시트에 넣거나 엑셀에서 붙여넣어 한 번에 등록한다.
 export default function ItemSheetPage() {
   return (
     <section className="max-w-6xl">
@@ -21,7 +21,7 @@ export default function ItemSheetPage() {
         </Link>{" "}
         ›{" "}
         <Link href="/master/items" className="underline-offset-4 hover:underline">
-          품목
+          품목 등록
         </Link>{" "}
         › 시트형 등록
       </p>

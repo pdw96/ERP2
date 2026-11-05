@@ -12,7 +12,7 @@ import { ItemForm } from "../item-form";
 
 export const metadata: Metadata = { title: "품목 수정 — ERP2" };
 
-// 기준정보 › 품목 › 한 품목의 수정. 주소는 품목 코드다 — 코드는 바뀌지 않는다.
+// 기준정보 › 품목 등록 › 한 품목의 수정. 주소는 품목 코드다 — 코드는 바뀌지 않는다.
 export default function EditItemPage({ params }: PageProps<"/master/items/[code]">) {
   return (
     <section>
@@ -22,7 +22,7 @@ export default function EditItemPage({ params }: PageProps<"/master/items/[code]
         </Link>{" "}
         ›{" "}
         <Link href="/master/items" className="underline-offset-4 hover:underline">
-          품목
+          품목 등록
         </Link>{" "}
         › 수정
       </p>

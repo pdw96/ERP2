@@ -14,9 +14,10 @@ import {
 import { withDb } from "@/db/request";
 import { PartnerList, PartnerSearch, SavedNotice } from "./partner-list";
 
-export const metadata: Metadata = { title: "거래처 — ERP2" };
+export const metadata: Metadata = { title: "거래처 등록 — ERP2" };
 
-// 기준정보 › 거래처 — 목록. 찾기 · 거르기는 주소에 남아 그대로 링크로 건넬 수 있다.
+// 기준정보 › 거래처 등록 — 고칠 거래처를 찾는 목록과 한 건 · 시트형 등록의 입구. 모든 칸은 「거래처 조회」가 보인다(ADR 0013).
+// 찾기 · 거르기는 주소에 남아 그대로 링크로 건넬 수 있다.
 export default function PartnersPage({ searchParams }: PageProps<"/master/partners">) {
   return (
     <section className="max-w-5xl">
@@ -24,12 +25,18 @@ export default function PartnersPage({ searchParams }: PageProps<"/master/partne
         <Link href="/master" className="underline-offset-4 hover:underline">
           기준정보
         </Link>{" "}
-        › 거래처
+        › 거래처 등록
       </p>
       <div className="mt-1 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl leading-tight font-semibold">거래처</h1>
-          <p className="mt-1 text-muted">매입처 · 매출처. 한 거래처가 둘 다일 수 있습니다.</p>
+          <h1 className="text-3xl leading-tight font-semibold">거래처 등록</h1>
+          <p className="mt-1 text-muted">
+            매입처 · 매출처. 한 거래처가 둘 다일 수 있습니다. 모든 칸은{" "}
+            <Link href="/master/partners/inquiry" className="underline underline-offset-4 hover:text-ink">
+              거래처 조회
+            </Link>
+            에서 봅니다.
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link

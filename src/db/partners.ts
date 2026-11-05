@@ -21,7 +21,7 @@ import {
 import { nextCode } from "./numbering";
 import { KOREA } from "@/lib/master-codes";
 import { ROW_ERROR, isBlankRow, type SheetResult, type SheetRow } from "@/lib/sheet";
-import { readPartnerRow, type CodeOption } from "@/lib/sheet-input";
+import { readPartnerRow } from "@/lib/sheet-input";
 import { codes, partners } from "./schema";
 import type { Db } from "./types";
 
@@ -46,11 +46,23 @@ export const roleNames = (p: Pick<Partner, "isSupplier" | "isCustomer">) =>
 
 // ── 목록 ─────────────────────────────────────────────
 
-export type PartnerFilter = { q: string; role?: PartnerRole; includeInactive: boolean };
-export type PartnerFilterNotice = { field: "q" | "role"; message: string };
+export type PartnerFilter = {
+  q: string;
+  role?: PartnerRole;
+  /** 국가 — 조회에만 있다(저자 판정 2026-11-04). 「사용 안 함」 국가로도 거른다 — 이미 쓴 거래처를 찾을 수 있게. */
+  country?: string;
+  includeInactive: boolean;
+};
+export type PartnerFilterNotice = { field: "q" | "role" | "country"; message: string };
 
-/** 주소의 거르기 값을 읽는다. 닫힌 목록 밖의 값은 거르지 않고 알린다. */
-export function parsePartnerFilter(params: Params): { filter: PartnerFilter; notices: PartnerFilterNotice[] } {
+/**
+ * 주소의 거르기 값을 읽는다. 닫힌 목록 밖의 값은 거르지 않고 알린다.
+ * 국가는 공통코드의 값(countries)에 있는 것만 거른다 — 주지 않으면(등록의 목록) 국가는 거르지 않는다.
+ */
+export function parsePartnerFilter(
+  params: Params,
+  countries?: readonly CountryOption[],
+): { filter: PartnerFilter; notices: PartnerFilterNotice[] } {
   const notices: PartnerFilterNotice[] = [];
   const search = searchText(params);
   if (search.notice) notices.push({ field: "q", message: search.notice });
@@ -60,16 +72,46 @@ export function parsePartnerFilter(params: Params): { filter: PartnerFilter; not
   if (PARTNER_ROLES.some((r) => r.code === role)) filter.role = role as PartnerRole;
   else if (role) notices.push({ field: "role", message: "없는 구분이라 거르지 않았습니다" });
 
+  const country = first(params.country) ?? "";
+  if (country && countries) {
+    if (countries.some((c) => c.code === country)) filter.country = country;
+    else notices.push({ field: "country", message: "없는 국가라 거르지 않았습니다" });
+  }
+
   return { filter, notices };
 }
 
-/** 코드 순으로. 찾기는 코드 · 거래처명에 글자가 들어 있는지만 본다(대소문자 무시). 둘 다인 거래처는 어느 쪽으로 걸러도 보인다. */
-export async function listPartners(db: Db, filter: PartnerFilter): Promise<Partner[]> {
+/** 찾기가 보는 칸 — 등록의 목록은 코드 · 거래처명, 조회는 글 칸 전체(저자 판정 2026-11-04, 설계 「PR I 를 열기 전에 정한 것」). */
+const SEARCHED = {
+  codeName: [partners.code, partners.name],
+  allText: [
+    partners.code,
+    partners.name,
+    partners.bizNo,
+    partners.foreignBizNo,
+    partners.ceo,
+    partners.bizType,
+    partners.bizItem,
+    partners.address,
+    partners.phone,
+    partners.email,
+    partners.contactName,
+    partners.contactPhone,
+    partners.note,
+  ],
+} as const;
+export type SearchScope = keyof typeof SEARCHED;
+
+/**
+ * 코드 순으로. 찾기는 그 칸들에 글자가 들어 있는지 본다(대소문자 무시) — 등록의 목록은 코드 · 거래처명, 조회는 글 칸 전체.
+ * 둘 다인 거래처는 어느 쪽으로 걸러도 보인다.
+ */
+export async function listPartners(db: Db, filter: PartnerFilter, scope: SearchScope = "codeName"): Promise<Partner[]> {
   const where: SQL[] = [];
-  if (filter.q)
-    where.push(or(ilike(partners.code, likeLiteral(filter.q)), ilike(partners.name, likeLiteral(filter.q)))!);
+  if (filter.q) where.push(or(...SEARCHED[scope].map((c) => ilike(c, likeLiteral(filter.q))))!);
   if (filter.role === "supplier") where.push(eq(partners.isSupplier, true));
   if (filter.role === "customer") where.push(eq(partners.isCustomer, true));
+  if (filter.country) where.push(eq(partners.country, filter.country));
   if (!filter.includeInactive) where.push(eq(partners.active, true));
   return db
     .select()
@@ -124,6 +166,18 @@ export async function countryOptions(db: Db, current?: string): Promise<CountryO
     .where(eq(codes.groupCode, "COUNTRY"))
     .orderBy(asc(codes.sortOrder), asc(codes.code));
   return rows.filter((r) => r.active || r.code === current);
+}
+
+/**
+ * 국가 목록 — 「사용 안 함」까지, 정렬 순서대로. 조회의 국가 거르기 · 이름이 쓰고, 시트형 등록은 이름 · 코드 둘 다 받으며
+ * 「사용 안 함」 국가는 거절한다.
+ */
+export async function allCountries(db: Db): Promise<CountryOption[]> {
+  return db
+    .select({ code: codes.code, name: codes.name, active: codes.active })
+    .from(codes)
+    .where(eq(codes.groupCode, "COUNTRY"))
+    .orderBy(asc(codes.sortOrder), asc(codes.code));
 }
 
 /** 국가 코드 → 이름(「사용 안 함」 포함) — 목록이 국가를 이름으로 보인다. */
@@ -237,15 +291,6 @@ export async function updatePartner(
 }
 
 // ── 시트형 등록(PR F) ────────────────────────────────────
-
-/** 국가의 공통코드 — 「사용 안 함」까지. 시트는 이름 · 코드 둘 다 받고, 「사용 안 함」 국가는 거절한다. */
-async function allCountries(db: Db): Promise<CodeOption[]> {
-  return db
-    .select({ code: codes.code, name: codes.name, active: codes.active })
-    .from(codes)
-    .where(eq(codes.groupCode, "COUNTRY"))
-    .orderBy(asc(codes.sortOrder), asc(codes.code));
-}
 
 // 시트의 거절 자리 — 사업자등록번호 · 해외 사업자번호는 한 칸(「사업자번호」)이다.
 const SHEET_PLACE: Partial<Record<PartnerErrorKey, string>> = { foreignBizNo: "bizNo" };

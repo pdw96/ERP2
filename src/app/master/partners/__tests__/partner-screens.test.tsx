@@ -42,29 +42,29 @@ const box = (name: RegExp) => screen.getByRole("checkbox", { name }) as HTMLInpu
 const radio = (name: string) => screen.getByRole("radio", { name }) as HTMLInputElement;
 
 describe("거래처 목록", () => {
-  it("행마다 코드(수정 화면 링크) · 거래처명 · 구분 · 사업자등록번호", () => {
+  it("행마다 코드(수정 화면 링크) · 거래처명 · 구분 · 국가", () => {
     render(<PartnerList rows={[partner({})]} filter={none} />);
     const row = within(screen.getAllByRole("row")[1]);
     expect(row.getByRole("link", { name: "BP-0005" })).toHaveAttribute("href", "/master/partners/BP-0005");
-    for (const text of ["(가상) 마루반도체", "매입처 · 매출처", "000-00-00005"])
-      expect(row.getByText(text)).toBeInTheDocument();
+    for (const text of ["(가상) 마루반도체", "매입처 · 매출처", "KR"]) expect(row.getByText(text)).toBeInTheDocument();
   });
 
-  it("휴대폰 폭에서는 사업자번호 · 담당자 · 전화를 숨긴다", () => {
-    render(<PartnerList rows={[partner({})]} filter={none} />);
-    const hidden = screen.getAllByRole("columnheader").filter((th) => th.className.includes("hidden"));
-    expect(hidden.map((th) => th.textContent)).toEqual(["사업자번호", "담당자 · 전화"]);
+  it("찾아 고르는 칸만 둔다 — 사업자번호 · 담당자 · 전화는 「거래처 조회」가 보인다(저자 판정 2026-11-04)", () => {
+    render(<PartnerList rows={[partner({ contactName: "김철수" })]} filter={none} />);
+    expect(screen.getAllByRole("columnheader").map((th) => th.textContent)).toEqual([
+      "코드",
+      "거래처명",
+      "구분",
+      "국가",
+    ]);
+    expect(screen.queryByText("000-00-00005")).toBeNull();
+    expect(screen.queryByText("김철수")).toBeNull();
   });
 
-  it("사업자등록번호가 없으면 「—」, 「사용 안 함」에는 표시가 붙는다", () => {
-    render(
-      <PartnerList
-        rows={[partner({ bizNo: null, active: false, contactName: "김철수" })]}
-        filter={{ ...none, includeInactive: true }}
-      />,
-    );
-    expect(screen.getByText("—")).toBeInTheDocument();
+  it("「사용 안 함」에는 표시가 붙는다", () => {
+    render(<PartnerList rows={[partner({ active: false })]} filter={{ ...none, includeInactive: true }} />);
     expect(screen.getByText("사용 안 함")).toBeInTheDocument();
+    expect(screen.getByText("1개 · 사용 안 함 포함")).toBeInTheDocument();
   });
 
   it("쉼 없이 긴 거래처명도 칸 안에서 접힌다", () => {
@@ -117,7 +117,7 @@ describe("거래처 목록", () => {
 });
 
 describe("거래처 목록 — 국가(PR G)", () => {
-  it("국가를 코드와 이름으로, 해외 거래처는 해외 사업자번호를 보인다", () => {
+  it("국가를 코드와 이름으로 보인다", () => {
     render(
       <PartnerList
         rows={[
@@ -131,7 +131,6 @@ describe("거래처 목록 — 국가(PR G)", () => {
     const [, kr, us] = screen.getAllByRole("row");
     expect(within(kr).getByText("KR").parentElement).toHaveTextContent("KR한국");
     expect(within(us).getByText("US").parentElement).toHaveTextContent("US미국");
-    expect(within(us).getByText("00-0000007")).toBeInTheDocument();
   });
 });
 
@@ -251,12 +250,6 @@ describe("거래처의 설명용 칸(PR H)", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("이메일 — 이메일은 name@example.com 꼴로"));
     expect(screen.getByLabelText(/^이메일/)).toHaveValue("bada");
     expect(screen.getByLabelText(/^이메일/)).toHaveAccessibleDescription("이메일은 name@example.com 꼴로 넣으세요");
-  });
-
-  it("목록의 「담당자 · 전화」 칸 — 담당자와 전화를 보인다", () => {
-    render(<PartnerList rows={[partner({ contactName: "김철수", phone: "031-0000-0001" })]} filter={none} />);
-    expect(screen.getByText("김철수")).toBeInTheDocument();
-    expect(screen.getByText("031-0000-0001")).toBeInTheDocument();
   });
 });
 

@@ -19,7 +19,7 @@ export default function NewItemPage() {
         </Link>{" "}
         ›{" "}
         <Link href="/master/items" className="underline-offset-4 hover:underline">
-          품목
+          품목 등록
         </Link>{" "}
         › 새 품목
       </p>

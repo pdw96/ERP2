@@ -4,11 +4,13 @@ import { ModuleHome } from "@/components/module-home";
 import { AREAS } from "@/lib/areas";
 
 describe("ModuleHome", () => {
-  it("기준정보 — 품목 · 거래처는 화면으로 가는 링크", () => {
+  it("기준정보 — 품목 · 거래처의 등록 · 조회는 화면으로 가는 링크(ADR 0013)", () => {
     render(<ModuleHome href="/master" />);
     expect(screen.getByRole("heading", { name: "기준정보" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /품목/ })).toHaveAttribute("href", "/master/items");
-    expect(screen.getByRole("link", { name: /거래처/ })).toHaveAttribute("href", "/master/partners");
+    expect(screen.getByRole("link", { name: /품목 등록/ })).toHaveAttribute("href", "/master/items");
+    expect(screen.getByRole("link", { name: /품목 조회/ })).toHaveAttribute("href", "/master/items/inquiry");
+    expect(screen.getByRole("link", { name: /거래처 등록/ })).toHaveAttribute("href", "/master/partners");
+    expect(screen.getByRole("link", { name: /거래처 조회/ })).toHaveAttribute("href", "/master/partners/inquiry");
     expect(screen.queryByText("준비 중입니다.")).toBeNull();
   });
 

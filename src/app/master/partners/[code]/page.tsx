@@ -12,7 +12,7 @@ import { PartnerForm } from "../partner-form";
 
 export const metadata: Metadata = { title: "거래처 수정 — ERP2" };
 
-// 기준정보 › 거래처 › 한 거래처의 수정. 주소는 거래처 코드다 — 코드는 바뀌지 않는다.
+// 기준정보 › 거래처 등록 › 한 거래처의 수정. 주소는 거래처 코드다 — 코드는 바뀌지 않는다.
 export default function EditPartnerPage({ params }: PageProps<"/master/partners/[code]">) {
   return (
     <section>
@@ -22,7 +22,7 @@ export default function EditPartnerPage({ params }: PageProps<"/master/partners/
         </Link>{" "}
         ›{" "}
         <Link href="/master/partners" className="underline-offset-4 hover:underline">
-          거래처
+          거래처 등록
         </Link>{" "}
         › 수정
       </p>
