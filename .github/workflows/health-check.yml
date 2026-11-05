@@ -64,10 +64,16 @@ jobs:
             if grep -q '마지막 되돌림 읽지 못함' body.html; then
               echo "상태 화면이 마지막 되돌림을 읽지 못했다 — ${RESET_RETRY_SECONDS}초 뒤 다시 연다"
               sleep "$RESET_RETRY_SECONDS"
+              rm -f body.html
               code=$(curl -sS -o body.html -w '%{http_code}' --max-time 60 --retry 2 --retry-delay 20 "$url/health" || echo "000")
               echo "[다시] HTTP $code"
               grep -o -E '연결됨|연결 안 됨|DB에 닿지 못했습니다|마지막 되돌림 [^<(]*' body.html | sort -u || true
-              if [ "$code" != "200" ] || ! grep -q '연결됨' body.html; then
+              # 상태 화면은 DB 가 끊겨도 200 을 돌려준다 — 200 이 아니면 화면 자체가 열리지 않은 것이다(대장 NC-17).
+              if [ "$code" != "200" ]; then
+                echo "::error::다시 연 상태 화면이 열리지 않았다(HTTP $code) — $url/health 를 열고 docs/deploy.md 「확인하기」를 본다"
+                exit 1
+              fi
+              if [ ! -f body.html ] || ! grep -q '연결됨' body.html; then
                 echo "::error::다시 연 상태 화면이 「연결됨」이 아니다 — DB 연결 문제다. $url/health 를 열고 docs/deploy.md 「확인하기」를 본다"
                 exit 1
               fi
