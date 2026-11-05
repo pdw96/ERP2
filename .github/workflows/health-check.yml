@@ -1,10 +1,13 @@
 name: 데모 상태 확인
 
-# 하루 4번 데모의 상태 화면을 열어 두 가지를 본다. 하나라도 아니면 이 작업이 실패하고,
+# 하루 4번 데모의 상태 화면을 열어 세 가지를 본다. 하나라도 아니면 이 작업이 실패하고,
 # GitHub 가 실패를 메일로 알린다(예약 실행은 이 파일의 예약을 마지막으로 바꿔 머지한 계정, 손으로 돌린 실행은 돌린 계정).
 # 1. 「연결됨」 글자 — 응답 코드가 아니라 글자를 본다. 상태 화면은 DB 가 끊겨도 200 을 돌려준다.
 # 2. 화면의 「커밋」이 main 의 최신 커밋과 같은가 — 머지 뒤 빌드가 실패했거나, 되돌린 뒤 Undo Rollback 을
 #    잊으면 데모는 옛 버전인 채 「연결됨」이다. 빌드가 끝나기를 최대 10분 기다린다.
+# 3. 「마지막 되돌림」이 30시간 안인가 — 매일 밤 되돌림이 비밀값 · Cron · DB 거절 어느 까닭으로 멈춰도 그 실행은
+#    메일을 보내지 않고 기록은 1시간 뒤 사라진다. 결과(샘플을 넣은 시각)로 보면 하루 안에 메일이 온다(대장 NC-10).
+#    데모일 때만 본다 — 미리보기 DB 는 매일 밤 되돌리지 않는다.
 on:
   schedule:
     - cron: "17 */6 * * *"
@@ -37,6 +40,7 @@ jobs:
       REF_NAME: ${{ github.ref_name }}
       ATTEMPTS: "10"
       WAIT_SECONDS: "60"
+      RESET_MAX_HOURS: "30"
     steps:
       - name: 상태 화면 확인
         run: |
@@ -48,22 +52,41 @@ jobs:
             sha=$(curl -sS --max-time 20 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.sha" "$MAIN_API" 2>/dev/null || true)
             if printf '%s' "$sha" | grep -q -E '^[0-9a-f]{40}$'; then printf '%s' "${sha:0:7}"; else printf '%s' "${EXPECT_SHA:0:7}"; fi
           }
+          check_reset() {
+            # 데모일 때만 — 미리보기 DB 는 매일 밤 되돌리지 않는다. 버전이 맞은 뒤에 본다(옛 배포의 화면에는 이 글자가 없다).
+            [ -n "$INPUT_URL" ] && return 0
+            local at reset_epoch age_hours
+            at=$(grep -o -E '마지막 되돌림 [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}' body.html | head -n 1 | cut -d' ' -f3-4 || true)
+            reset_epoch=$(date -u -d "$at +0900" +%s 2>/dev/null || echo "")
+            if [ -z "$at" ] || [ -z "$reset_epoch" ]; then
+              echo "::error::상태 화면에 마지막 되돌림 시각이 없다 — 샘플 데이터가 비었다. docs/deploy.md 「알림」의 「되돌림이 멈췄을 때」를 본다"
+              exit 1
+            fi
+            age_hours=$(( ( $(date -u +%s) - reset_epoch ) / 3600 ))
+            if [ "$age_hours" -ge "$RESET_MAX_HOURS" ]; then
+              echo "::error::매일 밤 되돌림이 ${age_hours}시간째 돌지 않았다(마지막 $at 한국 시간) — docs/deploy.md 「알림」의 「되돌림이 멈췄을 때」를 본다"
+              exit 1
+            fi
+            echo "매일 밤 되돌림 정상 — 마지막 $at 한국 시간(${age_hours}시간 전)"
+          }
           for attempt in $(seq 1 "$ATTEMPTS"); do
             code=$(curl -sS -o body.html -w '%{http_code}' --max-time 60 --retry 2 --retry-delay 20 "$url/health" || echo "000")
             echo "[$attempt] HTTP $code"
             # 실패한 날의 화면 글자를 이 실행 기록에 남긴다(GitHub 가 90일 보관).
-            grep -o -E '연결됨|연결 안 됨|DB에 닿지 못했습니다|설정되지 않았습니다|커밋 [0-9a-f]{7}' body.html | sort -u || true
+            grep -o -E '연결됨|연결 안 됨|DB에 닿지 못했습니다|설정되지 않았습니다|커밋 [0-9a-f]{7}|마지막 되돌림 [^<(]*' body.html | sort -u || true
             if [ "$code" != "200" ] || ! grep -q '연결됨' body.html; then
               echo "::error::상태 화면이 「연결됨」이 아니다 — $url/health 를 열고 docs/deploy.md 「확인하기」를 본다"
               exit 1
             fi
             if [ "$CHECK_VERSION" != "yes" ]; then
+              check_reset
               echo "데모 정상 — 버전은 견주지 않았다(실행 $EVENT_NAME · 가지 $REF_NAME — 예약 실행과 main 에서만 견준다)"
               exit 0
             fi
             got=$(grep -o -E '커밋 [0-9a-f]{7}' body.html | head -n 1 | cut -d' ' -f2 || true)
             want=$(latest_main)
             if [ "$got" = "$want" ]; then
+              check_reset
               echo "데모 정상 — 커밋 $got"
               exit 0
             fi

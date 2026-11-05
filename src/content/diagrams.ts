@@ -335,7 +335,7 @@ export const SYSTEM = `flowchart LR
   subgraph G["GitHub"]
     PR["PR"]:::done
     CI["자동 검사<br/>형식 · 린트 · 타입 · 시험 · 문서 · 의존성 약점"]:::done
-    HC["정기 확인 — 하루 4번<br/>연결됨 · 최신 커밋"]:::done
+    HC["정기 확인 — 하루 4번<br/>연결됨 · 최신 커밋 · 되돌림 30시간 안"]:::done
   end
   subgraph V["Vercel — 앱"]
     PREV["PR 미리보기 배포"]:::done

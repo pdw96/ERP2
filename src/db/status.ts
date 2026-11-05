@@ -1,25 +1,39 @@
 import { sql } from "drizzle-orm";
 import { connect } from "./client";
+import { codeGroups } from "./schema";
+import type { Db } from "./types";
 
-export type DbStatus = { state: "connected"; now: Date } | { state: "unset" } | { state: "unreachable" };
+export type DbStatus =
+  { state: "connected"; now: Date; lastReset: Date | null } | { state: "unset" } | { state: "unreachable" };
 
-// DB 의 현재 시각을 묻는다. 시험에서는 이 자리에 가짜를 끼운다.
-export type Probe = (url: string) => Promise<Date>;
+export type Probed = { now: Date; lastReset: Date | null };
 
+// DB 의 현재 시각과 마지막 되돌림 시각을 묻는다. 시험에서는 이 자리에 가짜를 끼운다.
+export type Probe = (url: string) => Promise<Probed>;
+
+// 마지막 되돌림 — 샘플을 마지막으로 넣은 때. 되돌림 · 첫 배포는 코드 묶음 전부를 한 트랜잭션에 다시 넣고, 묶음은 화면에서
+// 만들 수 없어 방문자의 행이 섞이지 않는다. 그래서 묶음의 가장 이른 등록 시각이 곧 마지막 되돌림이다(대장 NC-10).
+// 테이블이 아직 없으면(마이그레이션 전) 「알 수 없음」 — 연결 상태는 그대로 본다.
 export const probeDatabase: Probe = async (url) => {
   const { db, close } = connect(url);
   try {
     const rows = await db.execute<{ now: Date | string }>(sql`select now() as now`);
-    return new Date(rows[0].now);
+    const now = new Date(rows[0].now);
+    return { now, lastReset: await lastResetAt(db).catch(() => null) };
   } finally {
     await close();
   }
 };
 
+export async function lastResetAt(db: Db): Promise<Date | null> {
+  const [row] = await db.select({ at: sql<Date | string | null>`min(${codeGroups.createdAt})` }).from(codeGroups);
+  return row?.at ? new Date(row.at) : null;
+}
+
 export async function checkDatabase(url: string | undefined, probe: Probe = probeDatabase): Promise<DbStatus> {
   if (!url) return { state: "unset" };
   try {
-    return { state: "connected", now: await probe(url) };
+    return { state: "connected", ...(await probe(url)) };
   } catch (error) {
     console.error(describeFailure(error));
     return { state: "unreachable" };
@@ -45,7 +59,8 @@ export type FailureDetail = "message" | "code-only";
 // 실패 한 줄 — 원인을 가를 만큼 남기되 접속 정보는 남기지 않는다.
 // - DB 서버가 돌려준 오류(SQLSTATE 와 severity 가 있다)는 메시지까지 남긴다. 쿼터 소진 같은 서버 쪽 원인이 보인다.
 // - 드라이버 · 네트워크 오류는 코드만 남긴다. 그 메시지에는 접속하려던 주소가 들어간다.
-// - 그 밖의 오류(코드의 버그 등)는 이름과 메시지를 남긴다.
+// - 그 밖의 오류(코드의 버그 등)는 상태 확인에서는 이름과 메시지를, "code-only" 에서는 「처리 실패: <이름>」만 남긴다 —
+//   DB 가 거절한 것이 아니라서 「DB 질의 실패」로 적지 않는다(대장 NC-12).
 // 방문자 데이터에 닿는 경로(되돌림 · 배포 빌드 · 등록)는 "code-only" 로 부른다 — 서버의 메시지에는 행의 값이 실릴 수
 // 있어서, 코드 · 등급과 스키마의 이름(테이블 · 칸 · 제약)만 남기고 메시지는 남기지 않는다(대장 NC-6). 메시지는 질의가
 // 고정된 상태 확인(/health)만 남긴다.
@@ -60,7 +75,7 @@ export function describeFailure(error: unknown, detail: FailureDetail = "message
   }
   if (code) return `DB 연결 실패: ${code}`;
   const name = typeof inner.name === "string" && inner.name ? inner.name : "unknown";
-  if (detail === "code-only") return `DB 질의 실패: ${name}`;
+  if (detail === "code-only") return `처리 실패: ${name}`;
   return `DB 질의 실패: ${name} ${scrub(inner.message)}`.trimEnd();
 }
 
