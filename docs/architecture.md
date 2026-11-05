@@ -25,6 +25,7 @@
 | 코드 번호 | 같은 머리의 가장 큰 번호 + 1 | `src/db/numbering.ts` · 공통코드의 시스템 값 `src/lib/master-codes.ts` |
 | 정기 확인 | 하루 4번 데모의 `/health` 가 「연결됨」이고 `main` 의 최신 커밋인지 보고, 아니면 GitHub 가 메일로 알린다 | `.github/workflows/health-check.yml` |
 | 자동 검사 | PR 과 `main` 에서 형식 · 린트 · 타입 · 시험 · 문서 모양과, 데모에 실리는 의존성의 알려진 약점(높음 이상)을 본다 | `.github/workflows/ci.yml` |
+| 미리보기 DB 가지 지우기 | PR 이 머지되거나 닫히면 그 PR 의 미리보기 DB 가지(Neon `preview/<가지>`)를 지운다 — 무료 요금제의 가지 10개 한도가 차지 않게. 열쇠는 이 Neon 프로젝트 하나로 좁힌 API 키(GitHub 비밀값) | `.github/workflows/preview-db-cleanup.yml` |
 
 ## 흐름
 
@@ -34,6 +35,7 @@
 PR ── 자동 검사(GitHub Actions)
    └─ 미리보기 배포(Vercel) ── Neon 미리보기 분기 DB
    └─ 빌드: 마이그레이션 · 빈 DB 면 샘플 ── 미리보기 분기 DB
+PR 머지 · 닫힘 ── 미리보기 DB 가지 지우기(GitHub Actions) ── Neon API ── 그 PR 의 미리보기 분기 DB 를 지움
 main 머지 ── 빌드: 마이그레이션 · 빈 DB 면 샘플 ── 운영 DB
          └─ 운영 배포(Vercel)
 예약(하루 4번) ── 정기 확인(GitHub Actions) ── 데모 /health
