@@ -237,7 +237,7 @@ export const MODULE_MAP: readonly MapModule[] = [
       { id: "code_groups", name: "공통코드 묶음", table: "code_groups", slice: "기준정보" },
       { id: "codes", name: "공통코드 값", table: "codes", slice: "기준정보" },
       { id: "company", name: "회사 정보", slice: "인사" },
-      { id: "users", name: "사용자 · 권한", slice: "인사" },
+      { id: "users", name: "사용자 · 메뉴 · 권한", slice: "인사" },
     ],
   },
 ];
