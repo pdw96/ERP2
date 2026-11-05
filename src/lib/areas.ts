@@ -194,13 +194,15 @@ export const AREAS: readonly Area[] = [
   {
     href: "/system",
     label: "시스템 관리",
-    summary: "공통코드, 회사 정보, 사용자와 권한",
+    summary: "공통코드, 회사 정보, 사용자 · 메뉴와 권한",
     groups: [
       {
         menus: [
           { label: "공통코드", slice: "기준정보", href: "/system/codes" },
           { label: "회사 정보", slice: "인사" },
           { label: "사용자", slice: "인사" },
+          // 메뉴를 DB 의 표로 두어 권한이 가리킨다 — 처음 값은 이 목록을 옮긴다(마스터플랜 범위 변경 2026-11-05).
+          { label: "메뉴 관리", slice: "인사" },
           { label: "권한", slice: "인사" },
         ],
       },

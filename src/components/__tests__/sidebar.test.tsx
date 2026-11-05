@@ -94,13 +94,13 @@ describe("Sidebar", () => {
     expect(screen.getByRole("link", { name: /^재고/ })).not.toHaveTextContent("준비 중");
   });
 
-  it("시스템 관리를 열면 공통코드는 링크, 회사 정보 · 사용자 · 권한은 준비 중으로 보인다", () => {
+  it("시스템 관리를 열면 공통코드는 링크, 회사 정보 · 사용자 · 메뉴 관리 · 권한은 준비 중으로 보인다", () => {
     nav.pathname = "/system/codes/UNIT/EA";
     render(<Sidebar />);
     const menu = within(screen.getByRole("list", { name: "시스템 관리 메뉴" }));
     expect(menu.getByRole("link", { name: "공통코드" })).toHaveAttribute("href", "/system/codes");
     expect(menu.getByRole("link", { name: "공통코드" })).toHaveAttribute("aria-current", "page");
-    for (const soon of ["회사 정보", "사용자", "권한"])
+    for (const soon of ["회사 정보", "사용자", "메뉴 관리", "권한"])
       expect(menu.getByText(soon).parentElement).toHaveTextContent(`${soon}준비 중`);
     expect(screen.getByRole("link", { name: /^시스템 관리/ })).not.toHaveTextContent("준비 중");
   });

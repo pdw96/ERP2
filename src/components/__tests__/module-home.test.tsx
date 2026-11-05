@@ -24,10 +24,11 @@ describe("ModuleHome", () => {
     expect(screen.queryAllByRole("link")).toHaveLength(1);
   });
 
-  it("시스템 관리 — 공통코드는 링크, 회사 정보 · 사용자 · 권한은 조각 「인사」가 짓는다", () => {
+  it("시스템 관리 — 공통코드는 링크, 회사 정보 · 사용자 · 메뉴 관리 · 권한은 조각 「인사」가 짓는다", () => {
     render(<ModuleHome href="/system" />);
     expect(screen.getByRole("link", { name: /공통코드/ })).toHaveAttribute("href", "/system/codes");
     expect(screen.getByText("회사 정보").parentElement).toHaveTextContent("준비 중 · 조각 「인사」");
+    expect(screen.getByText("메뉴 관리").parentElement).toHaveTextContent("준비 중 · 조각 「인사」");
     expect(screen.getByText("권한").parentElement).toHaveTextContent("준비 중 · 조각 「인사」");
     expect(screen.queryAllByRole("link")).toHaveLength(1);
   });
