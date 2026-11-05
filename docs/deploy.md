@@ -88,6 +88,38 @@ Vercel 배포의 **Logs** 에서 아래 두 꼴의 줄을 찾는다. 로그에�
 
 Hobby 요금제는 로그를 짧게만 보관한다. 지난 실패는 아래 「알림」의 실행 기록에 남는다.
 
+## 5. 미리보기 DB 가지 지우기
+
+PR 마다 Neon 에 미리보기 DB 가지(`preview/<가지 이름>`)가 하나 생긴다. 무료 요금제는 가지가 10개까지라, 머지한 PR 의 가지가
+쌓이면 다음 PR 의 미리보기 배포가 「Resource provisioning failed」로 시작도 못 한다. Vercel 화면에서 이은 Neon 은 GitHub 가지를
+지워도 DB 가지를 지우지 않는다. 그래서 PR 이 머지되거나 닫히면 GitHub 의 자동 작업(`.github/workflows/preview-db-cleanup.yml`)이
+그 PR 의 DB 가지를 지운다(ADR 0014). 자동 작업이 Neon 에 요청하려면 열쇠(API 키)가 필요하다 — 처음 한 번 넣는다.
+
+1. **열쇠를 만든다** — Neon 콘솔(<https://console.neon.tech>)에서 왼쪽 위의 조직 이름을 누르고 **Settings** → **API keys** →
+   **Create new** 를 누른다.
+   - **Project-scoped** 를 고르고 프로젝트 `cool-smoke-75501764` 를 고른다 — 이 열쇠는 이 프로젝트 하나만 다룬다.
+   - **Organization**(조직 전체) 열쇠는 만들지 않는다 — 이 프로젝트 말고 조직의 모든 프로젝트를 다루고 지울 수도 있다.
+   - 이름은 `github-preview-cleanup`.
+   - 만들면 열쇠가 **한 번만** 보인다. 복사해 두고 2 에 바로 넣는다(다른 곳에 적어 두지 않는다).
+   - **Project-scoped** 가 보이지 않으면 여기서 멈추고 Claude 에게 알린다. 개인 열쇠(**Account settings** → **API keys**)도
+     조직 열쇠처럼 내 계정의 모든 프로젝트를 다루므로 쓰기 전에 함께 정한다.
+   - **만든 뒤 확인한다** — 같은 **API keys** 목록에서 `github-preview-cleanup` 줄의 범위가 프로젝트 `cool-smoke-75501764` 인지
+     본다. 아니면(조직 전체로 보이면) 그 줄의 **Revoke** 를 누르고 다시 만든다.
+2. **열쇠를 GitHub 에 넣는다** — GitHub 의 ERP2 레포 → **Settings** → **Secrets and variables** → **Actions**.
+   - **Secrets** 탭 → **New repository secret** — **Name** `NEON_API_KEY`, **Secret** 1 의 열쇠 → **Add secret**.
+   - **Variables** 탭 → **New repository variable** — **Name** `NEON_PROJECT_ID`, **Value** `cool-smoke-75501764` →
+     **Add variable**. 프로젝트 ID 는 비밀이 아니다.
+3. **이미 쌓인 가지를 손으로 지운다** — 자동 작업은 앞으로 닫히는 PR 만 지운다. Neon 콘솔 → 프로젝트 → **Branches** 에서
+   머지되거나 닫힌 PR 의 `preview/…` 가지를 **⋯** → **Delete** 로 지운다. `main`(데모 DB)과 열린 PR 의 가지는 남긴다.
+4. **확인한다** — 다음 PR 을 머지한 뒤 GitHub 의 **Actions** 탭 → **미리보기 DB 가지 지우기** 실행에
+   `preview/<가지 이름>(br-…)를 지웠다` 한 줄이 있고, Neon 의 **Branches** 에서 그 가지가 사라졌다.
+
+자동 작업이 실패하면 GitHub 가 메일을 보낸다 — 열쇠가 없거나(2), 지워졌거나, Neon 이 거절한 때다. 그때는 실행 기록의 마지막
+줄을 읽고, 3 처럼 손으로 지운다. 열쇠가 새었다고 생각되면 1 의 화면에서 **Revoke** 하고 1 · 2 를 다시 한다.
+
+GitHub 의 가지는 레포 → **Settings** → **General** → **Automatically delete head branches** 를 켜 두면 머지할 때 저절로 지워진다
+— DB 가지와 따로다.
+
 ## 알림
 
 GitHub Actions 의 「데모 상태 확인」(`.github/workflows/health-check.yml`)이 하루 4번(한국 시간 3:17 · 9:17 · 15:17 · 21:17)
