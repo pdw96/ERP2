@@ -192,9 +192,7 @@ function SpecCells({ spec }: { spec?: UnitSpec }) {
     );
   return (
     <>
-      <td className="px-3 py-2.5 font-mono text-sm whitespace-nowrap">
-        {spec.baseUnit === spec.unit ? <span className="text-muted">자신</span> : spec.baseUnit}
-      </td>
+      <td className="px-3 py-2.5 font-mono text-sm whitespace-nowrap">{spec.baseUnit}</td>
       <td className="px-3 py-2.5 text-right tabular-nums">{factorText(spec.factor)}</td>
       <td className="px-3 py-2.5 text-right tabular-nums">{spec.decimals}</td>
     </>

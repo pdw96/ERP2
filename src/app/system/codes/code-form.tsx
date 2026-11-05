@@ -182,7 +182,7 @@ function UnitSpecSection({ unit, values, errors }: { unit: UnitSpecProps; values
             aria-describedby={errors.baseUnit ? "e-baseUnit" : undefined}
             className={inputClass(!!errors.baseUnit)}
           >
-            <option value="">이 단위 자신</option>
+            <option value="">같은 단위(이 단위)</option>
             {unit.bases.map((b) => (
               <option key={b.code} value={b.code}>
                 {b.code} {b.name}
@@ -190,7 +190,7 @@ function UnitSpecSection({ unit, values, errors }: { unit: UnitSpecProps; values
             ))}
           </select>
         </Field>
-        <Field field="factor" label="배수" error={errors.factor} hint="기준 단위 몇 개인가 — 자신이면 비움">
+        <Field field="factor" label="배수" error={errors.factor} hint="기준 단위 몇 개인가 — 같은 단위면 비움">
           <Input
             field="factor"
             defaultValue={values.factor}

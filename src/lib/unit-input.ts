@@ -47,7 +47,7 @@ function newSpecSchema(code: string) {
             code: "custom",
             path: ["factor"],
             input: v.factor,
-            message: "이 단위 자신이 기준이면 배수는 1 입니다",
+            message: "기준 단위가 같은 단위면 배수는 1 입니다",
           });
         return { baseUnit: code, factor: 1, decimals: v.decimals };
       }

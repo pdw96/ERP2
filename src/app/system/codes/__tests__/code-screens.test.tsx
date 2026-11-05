@@ -184,7 +184,7 @@ describe("단위 사양(조각 「재고 수불」 PR A, ADR 0017)", () => {
     MG: { unit: "MG", baseUnit: "G", factor: 0.001, decimals: 0 },
   };
 
-  it("단위 목록 — 기준 단위(자신이면 「자신」) · 배수 · 소수 자릿수 칸이 더 있다", () => {
+  it("단위 목록 — 기준 단위(같은 단위면 그 코드 그대로) · 배수 · 소수 자릿수 칸이 더 있다", () => {
     render(
       <CodeTable
         group={group({})}
@@ -197,7 +197,8 @@ describe("단위 사양(조각 「재고 수불」 PR A, ADR 0017)", () => {
       .getAllByRole("row")
       .slice(1)
       .map((r) => within(r));
-    expect(ea.getByText("자신")).toBeInTheDocument();
+    // 기준 단위 칸에도 EA — 「자신」 같은 말 대신 같은 단위 코드를 그대로 적는다(저자 요청 2026-11-05).
+    expect(ea.getAllByText("EA")).toHaveLength(2);
     expect(kg.getByText("G")).toBeInTheDocument();
     expect(kg.getByText("1000")).toBeInTheDocument();
     expect(kg.getByText("3")).toBeInTheDocument();
@@ -209,7 +210,7 @@ describe("단위 사양(조각 「재고 수불」 PR A, ADR 0017)", () => {
     expect(screen.queryByRole("columnheader", { name: "기준 단위" })).toBeNull();
   });
 
-  it("새 단위 — 기준 단위(기본은 「이 단위 자신」) · 배수 · 자릿수를 넣어 보낸다", async () => {
+  it("새 단위 — 기준 단위(기본은 「같은 단위」) · 배수 · 자릿수를 넣어 보낸다", async () => {
     const action = vi.fn().mockResolvedValue(null);
     render(
       <CodeForm
@@ -232,7 +233,7 @@ describe("단위 사양(조각 「재고 수불」 PR A, ADR 0017)", () => {
       within(base)
         .getAllByRole("option")
         .map((o) => o.textContent),
-    ).toEqual(["이 단위 자신", "EA 개", "G 그램"]);
+    ).toEqual(["같은 단위(이 단위)", "EA 개", "G 그램"]);
     fireEvent.change(screen.getByLabelText(/^코드/), { target: { value: "TON" } });
     fireEvent.change(base, { target: { value: "G" } });
     fireEvent.change(screen.getByLabelText(/^배수/), { target: { value: "1000000" } });

@@ -104,7 +104,7 @@ export async function baseUnitOptions(db: Db): Promise<BaseUnitOption[]> {
     .orderBy(asc(codes.sortOrder), asc(codes.code));
 }
 
-const NOT_BASE = "기준이 될 수 없는 단위입니다 — 자신이 기준이고 「사용」인 단위를 고르세요";
+const NOT_BASE = "기준이 될 수 없는 단위입니다 — 목록에 있는 「사용」 단위를 고르세요";
 
 /** 고른 기준 단위가 자신이 기준이고 「사용」인 단위인가 — 아니면 거절할 까닭. 자신이 기준이면 보지 않는다. */
 async function baseUnitProblem(db: Db, code: string, spec: UnitSpecInput): Promise<string | undefined> {
