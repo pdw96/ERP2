@@ -16,7 +16,8 @@ permissions: {}
 jobs:
   delete:
     name: preview/<가지> 지우기
-    # 이 레포의 가지에서 낸 PR 만 — 남의 레포(fork)에서 낸 PR 에는 미리보기 DB 가 없고, 비밀값도 오지 않는다.
+    # 이 레포의 가지에서 낸 PR 만. pull_request_target 은 남의 레포(fork)에서 낸 PR 에도 비밀값을 준다 —
+    # 이 조건이 fork 를 막는 유일한 장치라 지우지 않는다. fork 에는 미리보기 DB 도 없다.
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
