@@ -155,7 +155,7 @@ export const versionIs = (updatedAt: AnyPgColumn, version: string) =>
 export const touched = () => sql`clock_timestamp()`;
 
 export const STALE = "다른 사람이 먼저 고쳤습니다 — 화면을 새로 열어 다시 고치세요";
-export const STALE_ROW = "불러온 뒤 다른 사람이 먼저 고쳤습니다 — 이 줄을 지우고 다시 불러오세요";
+export const STALE_ROW = "불러온 뒤 다른 사람이 먼저 고쳤습니다 — 이 행을 지우고 다시 불러오세요";
 
 export type UpdatedRow =
   { ok: true } | { ok: false; reason: "stale" } | { ok: false; reason: "rejected"; error: unknown };
@@ -182,7 +182,7 @@ export async function updateRowsWithVersion(
   return results;
 }
 
-export const DUPLICATE_ROW = "같은 코드의 줄이 시트에 둘 이상입니다 — 한 줄만 남기세요";
+export const DUPLICATE_ROW = "같은 코드의 행이 시트에 둘 이상입니다 — 한 행만 남기세요";
 
 /** 저장한 줄의 코드 — 고침은 그 줄의 코드, 새 등록은 붙은 코드. */
 export const savedCode = (

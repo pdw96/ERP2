@@ -151,7 +151,7 @@ describe("서버가 받은 시트", () => {
     expect(readSheetPayload(at(SHEET_MAX_ROWS), cols)).toMatchObject({ ok: true });
     expect(readSheetPayload(at(SHEET_MAX_ROWS + 1), cols)).toEqual({
       ok: false,
-      formError: "한 번에 100줄까지 받습니다 — 나눠서 저장하세요",
+      formError: "한 번에 100행까지 받습니다 — 나눠서 저장하세요",
     });
   });
 

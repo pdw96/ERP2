@@ -257,7 +257,7 @@ export function readSheetPayload(
   }
   if (!Array.isArray(data)) return broken;
   if (data.length > SHEET_MAX_ROWS)
-    return { ok: false, formError: `한 번에 ${SHEET_MAX_ROWS}줄까지 받습니다 — 나눠서 저장하세요` };
+    return { ok: false, formError: `한 번에 ${SHEET_MAX_ROWS}행까지 받습니다 — 나눠서 저장하세요` };
   const rows: SheetRow[] = [];
   for (const item of data) {
     if (!item || typeof item !== "object" || Array.isArray(item)) return broken;

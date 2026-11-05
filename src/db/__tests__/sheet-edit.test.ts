@@ -149,7 +149,7 @@ describe("품목 시트의 고침", () => {
   it("새 줄은 「사용」으로만 등록한다 — N 이면 그 줄을 거절한다", async () => {
     const r = await saveItemRows(db, [{ itemType: "RM", name: "솔더 볼", unit: "EA", active: "N" }]);
     expect(r.saved).toEqual([]);
-    expect(r.rejected[0].errors).toEqual({ active: "새 줄은 사용(Y)으로만 등록합니다 — 비우거나 Y 를 넣으세요" });
+    expect(r.rejected[0].errors).toEqual({ active: "새 행은 사용(Y)으로만 등록합니다 — 비우거나 Y 를 넣으세요" });
   });
 
   it("「사용 안 함」 단위 · 분류도 그 품목의 지금 값이면 남는다 — 새로 고르면 거절한다(한 건 수정과 같다)", async () => {
@@ -198,7 +198,7 @@ describe("품목 시트의 고침", () => {
     ]);
     expect(r.saved).toEqual([]);
     expect(r.rejected.map((x) => x.errors[ROW_ERROR])).toEqual([
-      "없는 품목입니다 — 이 줄을 지우세요",
+      "없는 품목입니다 — 이 행을 지우세요",
       STALE_ROW,
       DUPLICATE_ROW,
       DUPLICATE_ROW,

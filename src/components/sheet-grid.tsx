@@ -28,7 +28,7 @@ import {
   type SheetResult,
   type SheetRow,
 } from "@/lib/sheet";
-import { eul, eun, iga } from "@/lib/josa";
+import { eul, iga } from "@/lib/josa";
 
 // 시트형 등록 화면(성공 기준 11) — 칸 · 줄로 된 시트에 넣거나 엑셀에서 여러 줄을 붙여넣고 한 번에 저장한다.
 // 검사는 서버가 한다. 저장하면 맞는 줄은 빠지고(저장 알림에 코드가 보인다), 틀린 줄은 넣은 글자 그대로 남아 칸이 빨갛게
@@ -53,8 +53,8 @@ type Props = {
 // original — 불러온 줄의 불러온 때 값. 이것과 달라진 줄만 저장한다.
 type Line = { values: SheetRow; errors: SheetErrors; original?: SheetRow };
 
-/** 칸 머리의 색 — 필수 입력 · 선택 입력 · 고칠 수 없는 칸(코드, 불러온 줄의 유형). */
-const KIND_CLASS = { required: "bg-safety/40", optional: "bg-floor", fixed: "bg-rule text-muted" } as const;
+/** 셀의 색 — 필수 입력 · 선택 입력 · 고칠 수 없는 셀(코드, 불러온 행의 유형) (저자 판정 2026-11-05). */
+const KIND_CLASS = { required: "bg-safety/25", optional: "bg-white", fixed: "bg-rule text-muted" } as const;
 const KIND_LABEL = { required: "필수 입력", optional: "선택 입력", fixed: "수정 불가" } as const;
 
 const LOAD_FAILED = "불러오지 못했습니다 — 화면을 새로 고친 뒤 다시 불러오세요";
@@ -95,7 +95,7 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
     .map((c) => c.label)
     .join(" · ");
   const labelOf = (key: string) =>
-    key === ROW_ERROR ? "줄" : (errorLabels[key] ?? columns.find((c) => c.key === key)?.label ?? key);
+    key === ROW_ERROR ? "행 전체" : (errorLabels[key] ?? columns.find((c) => c.key === key)?.label ?? key);
   // 거절 자리마다 첫 칸 — 맨 위 목록의 링크가 그 칸으로 간다.
   const firstColumnOf = (key: string) => columns.find((c) => (c.errorKey ?? c.key) === key)?.key ?? columns[0].key;
   // 한 줄의 거절을 칸 순서대로(줄 전체의 거절이 맨 앞).
@@ -136,11 +136,11 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
     );
     setPasteNotice(
       [
-        r.skippedHeader && "첫 줄은 머리글이라 건너뛰었습니다.",
+        r.skippedHeader && "첫 행은 머리글이라 건너뛰었습니다.",
         r.droppedRows > 0 &&
-          `한 번에 ${SHEET_MAX_ROWS}줄까지 받습니다 — 남은 ${r.droppedRows}줄은 저장한 뒤 나눠 붙여넣으세요.`,
-        r.droppedColumns && `시트의 칸(${columns.length}칸)보다 많은 칸은 버렸습니다 — 칸 순서를 보세요.`,
-        r.skippedFixed && `불러온 줄의 ${eun(fixedLabels)} 고칠 수 없어 그대로 두었습니다.`,
+          `한 번에 ${SHEET_MAX_ROWS}행까지 받습니다 — 남은 ${r.droppedRows}행은 저장한 뒤 나눠 붙여넣으세요.`,
+        r.droppedColumns && `시트의 열(${columns.length}열)보다 많은 열은 버렸습니다 — 열 순서를 보세요.`,
+        r.skippedFixed && `불러온 행의 ${fixedLabels} 셀은 고칠 수 없어 그대로 두었습니다.`,
       ]
         .filter(Boolean)
         .join(" "),
@@ -193,7 +193,7 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
           r.total === 0 ? `찾은 ${iga(what)} 없습니다.` : `찾은 ${r.total}건 가운데 ${added.length}건을 불러왔습니다.`,
           already > 0 && `${already}건은 이미 시트에 있습니다.`,
           left > 0 &&
-            `시트는 ${SHEET_MAX_ROWS}줄까지라 ${left}건은 불러오지 않았습니다 — 찾기를 좁히거나, 저장한 뒤 다시 불러오세요.`,
+            `시트는 ${SHEET_MAX_ROWS}행까지라 ${left}건은 불러오지 않았습니다 — 찾기를 좁히거나, 저장한 뒤 다시 불러오세요.`,
         ]
           .filter(Boolean)
           .join(" "),
@@ -206,9 +206,9 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
   async function copyHeader() {
     try {
       await navigator.clipboard.writeText(headerLine(columns));
-      setCopyNotice("머리글 줄을 복사했습니다 — 엑셀의 첫 줄에 붙여넣으세요.");
+      setCopyNotice("머리글 행을 복사했습니다 — 엑셀의 첫 행에 붙여넣으세요.");
     } catch {
-      setCopyNotice("복사하지 못했습니다 — 위의 칸 순서대로 머리글을 넣으세요.");
+      setCopyNotice("복사하지 못했습니다 — 시트의 열 순서대로 머리글을 넣으세요.");
     }
   }
 
@@ -230,14 +230,14 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
 
   return (
     <div className="mt-6">
-      {/* 칸마다 받는 값은 칸 머리에 마우스를 올리면 보인다. 머리의 색이 필수 · 선택 · 고칠 수 없는 칸을 가른다(저자 판정 2026-11-05). */}
+      {/* 열마다 받는 값은 열 이름에 마우스를 올리면 보인다. 셀의 색이 필수 · 선택 · 고칠 수 없는 셀을 가른다(저자 판정 2026-11-05). */}
       <div className="border-y border-rule bg-white px-4 py-3">
         <p className="text-sm text-muted">
-          엑셀에서 시트와 같은 칸 순서로 여러 줄을 복사해, 시트의 첫 칸을 누른 뒤 붙여넣으세요. 첫 줄이 머리글이면
-          건너뜁니다. 한 번에 {SHEET_MAX_ROWS}줄까지 받습니다. 칸에 넣는 값은 칸 이름에 마우스를 올리면 보입니다.
+          엑셀에서 시트와 같은 열 순서로 여러 행을 복사해, 시트의 첫 셀을 누른 뒤 붙여넣으세요. 첫 행이 머리글이면
+          건너뜁니다. 한 번에 {SHEET_MAX_ROWS}행까지 받습니다. 열에 넣는 값은 열 이름에 마우스를 올리면 보입니다.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <ul aria-label="칸의 색" className="flex flex-wrap gap-2 text-sm">
+          <ul aria-label="셀의 색" className="flex flex-wrap gap-2 text-sm">
             {(["required", "optional", "fixed"] as const).map((k) => (
               <li key={k} className={`rounded-sm border border-rule px-2 py-0.5 ${KIND_CLASS[k]}`}>
                 {KIND_LABEL[k]}
@@ -249,7 +249,7 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
             onClick={copyHeader}
             className="rounded border border-machine px-4 py-2 text-sm font-semibold hover:bg-floor"
           >
-            머리글 줄 복사
+            머리글 행 복사
           </button>
           <span role="status" className="text-sm text-muted">
             {copyNotice}
@@ -262,9 +262,9 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
           <fieldset disabled={locked} className="min-w-0">
             <legend className="font-semibold">기존 {what} 불러와 고치기</legend>
             <p className="mt-1 text-sm text-muted">
-              찾은 {eul(what)} 코드 순으로 앞 {SHEET_MAX_ROWS}건까지 지금 시트 뒤에 붙입니다. 코드가 있는 줄은 고침,
-              없는 줄은 새 등록이고, 달라진 줄만 저장됩니다.
-              {fixedLabels && ` 불러온 줄의 ${eun(fixedLabels)} 고칠 수 없습니다.`}
+              찾은 {eul(what)} 코드 순으로 앞 {SHEET_MAX_ROWS}건까지 지금 시트 뒤에 붙입니다. 코드가 있는 행은 고침,
+              없는 행은 새 등록이고, 달라진 행만 저장됩니다.
+              {fixedLabels && ` 불러온 행의 ${fixedLabels} 셀은 고칠 수 없습니다.`}
             </p>
             <div className="mt-2 flex flex-wrap items-end gap-3">
               {load.filters}
@@ -286,13 +286,13 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
       {state && !state.formError && rejected.length > 0 && (
         <div role="alert" className="mt-4 border-l-4 border-red-700 bg-white px-5 py-4">
           <p className="font-semibold">
-            {state.rejected.length}줄은 저장하지 않았습니다 — 빨간 칸을 고쳐 다시 저장하세요.
+            {state.rejected.length}행은 저장하지 않았습니다 — 빨간 셀을 고쳐 다시 저장하세요.
           </p>
           <ul className="mt-1 list-disc pl-5 text-sm">
             {rejected.map(({ i, key, label, message }) => (
               <li key={`${i}-${key}`}>
                 <a href={`#c-${i}-${firstColumnOf(key)}`} className="underline underline-offset-2">
-                  {i + 1}줄 · {label}
+                  {i + 1}행 · {label}
                 </a>{" "}
                 — {message}
               </li>
@@ -313,30 +313,21 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
               <caption className="sr-only">{what} 시트</caption>
               <thead className="border-b-2 border-machine bg-floor">
                 <tr>
-                  <th scope="col" className="sticky left-0 bg-floor px-2 py-2 text-right">
-                    <span className="sr-only">줄</span>
+                  <th scope="col" className="sticky left-0 z-10 bg-floor px-2 py-2 text-right">
+                    <span className="sr-only">행</span>
                   </th>
                   <th
                     scope="col"
                     title="코드는 서버가 붙입니다 — 고칠 수 없습니다"
-                    className={`px-2 py-2 font-semibold whitespace-nowrap ${KIND_CLASS.fixed}`}
+                    className="px-2 py-2 font-semibold whitespace-nowrap"
                   >
-                    코드<span className="sr-only"> ({KIND_LABEL.fixed})</span>
+                    코드
                   </th>
-                  {columns.map((c) => {
-                    const kind = c.required ? "required" : "optional";
-                    return (
-                      <th
-                        key={c.key}
-                        scope="col"
-                        title={c.rule}
-                        className={`px-1 py-2 font-semibold whitespace-nowrap ${KIND_CLASS[kind]}`}
-                      >
-                        {c.label}
-                        <span className="sr-only"> ({KIND_LABEL[kind]})</span>
-                      </th>
-                    );
-                  })}
+                  {columns.map((c) => (
+                    <th key={c.key} scope="col" title={c.rule} className="px-1 py-2 font-semibold whitespace-nowrap">
+                      {c.label}
+                    </th>
+                  ))}
                   <th scope="col">
                     <span className="sr-only">지우기</span>
                   </th>
@@ -348,10 +339,13 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
                   const describedBy = errs.length ? `r-${i}-errors` : undefined;
                   return [
                     <tr key={i} className={errs.length ? "bg-red-50" : "border-b border-rule"}>
-                      <th scope="row" className="sticky left-0 bg-inherit px-2 text-right font-mono text-xs text-muted">
+                      <th
+                        scope="row"
+                        className={`sticky left-0 z-10 px-2 text-right font-mono text-xs text-muted ${errs.length ? "bg-red-50" : "bg-white"}`}
+                      >
                         {i + 1}
                       </th>
-                      <td className="px-2 text-xs whitespace-nowrap" data-testid={`code-${i}`}>
+                      <td className={`px-2 text-xs whitespace-nowrap ${KIND_CLASS.fixed}`} data-testid={`code-${i}`}>
                         {l.original ? (
                           <>
                             <span className="font-mono font-semibold">{l.values[CODE_KEY]}</span>
@@ -360,12 +354,13 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
                             )}
                           </>
                         ) : (
-                          !isBlankRow(l.values) && <span className="text-muted">새 줄</span>
+                          !isBlankRow(l.values) && <span className="text-muted">새 행</span>
                         )}
                       </td>
                       {columns.map((c, col) => {
                         const invalid = !!(l.errors[c.errorKey ?? c.key] || l.errors[ROW_ERROR]);
                         const fixed = !!(c.fixed && l.original);
+                        const kind = fixed ? "fixed" : c.required ? "required" : "optional";
                         return (
                           <td key={c.key} className="p-0.5">
                             <input
@@ -374,18 +369,16 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
                               onChange={(e) => edit(i, c, e.target.value)}
                               onPaste={(e) => paste(e, i, col)}
                               readOnly={fixed}
-                              title={fixed ? `불러온 줄의 ${eun(c.label)} 고칠 수 없습니다` : undefined}
-                              aria-label={`${i + 1}줄 ${c.label}`}
+                              title={fixed ? `불러온 행의 ${c.label} 셀은 고칠 수 없습니다` : undefined}
+                              aria-label={`${i + 1}행 ${c.label}`}
                               aria-invalid={invalid || undefined}
+                              aria-required={kind === "required" || undefined}
+                              data-kind={kind}
                               aria-describedby={describedBy}
                               autoComplete="off"
                               style={{ width: `${(c.width ?? 8) + 1}em` }}
-                              className={`rounded-sm border px-1.5 py-1 ${
-                                invalid
-                                  ? "border-red-700 bg-white"
-                                  : fixed
-                                    ? `border-transparent ${KIND_CLASS.fixed}`
-                                    : "border-transparent hover:border-rule"
+                              className={`rounded-sm border px-1.5 py-1 ${KIND_CLASS[kind]} ${
+                                invalid ? "border-red-700" : "border-transparent hover:border-rule"
                               } focus-visible:outline-machine`}
                             />
                           </td>
@@ -395,7 +388,7 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
                         <button
                           type="button"
                           onClick={() => removeRow(i)}
-                          aria-label={`${i + 1}줄 지우기`}
+                          aria-label={`${i + 1}행 지우기`}
                           className="rounded px-2 py-1 text-muted hover:bg-floor hover:text-ink"
                         >
                           ×
@@ -428,7 +421,7 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
               disabled={lines.length >= SHEET_MAX_ROWS}
               className="rounded border border-rule bg-white px-4 py-2 text-sm hover:border-machine disabled:opacity-60"
             >
-              줄 더하기
+              행 추가
             </button>
             <button
               type="button"
@@ -438,9 +431,9 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
               모두 비우기
             </button>
             <span className="text-sm text-muted">
-              새 줄 {newRows}
-              {loadedRows > 0 && ` · 불러온 줄 ${loadedRows}(고친 줄 ${editedRows})`} · 시트 {lines.length} /{" "}
-              {SHEET_MAX_ROWS}줄
+              새 행 {newRows}
+              {loadedRows > 0 && ` · 불러온 행 ${loadedRows}(고친 행 ${editedRows})`} · 시트 {lines.length} /{" "}
+              {SHEET_MAX_ROWS}행
             </span>
           </div>
         </fieldset>
@@ -473,7 +466,7 @@ function Outcome({ state, what, listHref }: { state: SheetResult; what: string; 
   if (state.saved.length === 0 && state.rejected.length === 0)
     return (
       <p role="status" className="mt-4 border-l-4 border-rule bg-white px-5 py-3">
-        넣은 줄이 없습니다 — 시트에 넣거나 붙여넣은 뒤 저장하세요.
+        넣은 행이 없습니다 — 시트에 넣거나 붙여넣은 뒤 저장하세요.
       </p>
     );
   if (state.saved.length === 0) return null;
@@ -483,7 +476,7 @@ function Outcome({ state, what, listHref }: { state: SheetResult; what: string; 
     <div role="status" className="mt-4 border-l-4 border-safety bg-white px-5 py-3 wrap-anywhere">
       <p className="font-semibold">
         {what}{" "}
-        {[created > 0 && `${created}줄을 등록`, updated > 0 && `${updated}줄을 고쳐`].filter(Boolean).join("하고 ")}
+        {[created > 0 && `${created}행을 등록`, updated > 0 && `${updated}행을 고쳐`].filter(Boolean).join("하고 ")}
         {updated > 0 ? " 저장했습니다." : "했습니다."}
       </p>
       <ul className="mt-1 grid gap-0.5 text-sm">

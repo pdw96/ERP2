@@ -194,7 +194,7 @@ describe("거래처 한 줄", () => {
   it("틀린 Y/N 도 「구분」 자리에 — 그 칸 이름과 함께", () => {
     expect(readPartnerRow({ name: "a", isSupplier: "Y", isCustomer: "네" }, countries)).toEqual({
       ok: false,
-      errors: { role: "매출처 칸은 Y · N 가운데 하나로 넣으세요(O · X, 예 · 아니오도 됩니다)" },
+      errors: { role: "매출처 셀은 Y · N 가운데 하나로 넣으세요(O · X, 예 · 아니오도 됩니다)" },
     });
   });
 
@@ -274,7 +274,7 @@ describe("불러온 줄(PR J)", () => {
       ok: false,
       errors: {
         unit: "「사용 안 함」인 단위입니다 — 다른 단위를 넣으세요",
-        active: "새 줄은 사용(Y)으로만 등록합니다 — 비우거나 Y 를 넣으세요",
+        active: "새 행은 사용(Y)으로만 등록합니다 — 비우거나 Y 를 넣으세요",
       },
     });
     expect(readItemRow({ itemType: "RM", name: "x", unit: "EA", active: "Y" }, units).ok).toBe(true);

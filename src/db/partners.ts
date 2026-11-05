@@ -392,7 +392,7 @@ export async function savePartnerRows(db: Db, rows: readonly SheetRow[]): Promis
       return r.ok ? { row, kind: "new", value: r } : { row, kind: "rejected", errors: r.errors };
     }
     const current = currents.get(row[CODE_KEY]);
-    if (!current) return { row, kind: "rejected", errors: { [ROW_ERROR]: "없는 거래처입니다 — 이 줄을 지우세요" } };
+    if (!current) return { row, kind: "rejected", errors: { [ROW_ERROR]: "없는 거래처입니다 — 이 행을 지우세요" } };
     if (seen.get(row[CODE_KEY])! > 1) return { row, kind: "rejected", errors: { [ROW_ERROR]: DUPLICATE_ROW } };
     if (!VERSION.test(row[VERSION_KEY] ?? "")) return { row, kind: "rejected", errors: { [ROW_ERROR]: STALE_ROW } };
     const r = readPartnerEditRow(row, countries, current);

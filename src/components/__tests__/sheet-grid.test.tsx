@@ -24,7 +24,7 @@ function renderItems(action = vi.fn<(s: SheetResult | null, f: FormData) => Prom
   render(<SheetGrid columns={columns} action={action} what="품목" listHref="/master/items" />);
   return action;
 }
-const cell = (row: number, label: string) => screen.getByLabelText(`${row}줄 ${label}`) as HTMLInputElement;
+const cell = (row: number, label: string) => screen.getByLabelText(`${row}행 ${label}`) as HTMLInputElement;
 const paste = (el: HTMLElement, text: string) => fireEvent.paste(el, { clipboardData: { getData: () => text } });
 const dataRows = () => screen.getAllByRole("row").filter((r) => within(r).queryAllByRole("textbox").length > 0);
 const save = async () => {
@@ -38,8 +38,7 @@ afterEach(() => vi.restoreAllMocks());
 describe("시트", () => {
   it("칸은 한 건 등록 화면의 순서이고(PR H 의 분류 · 비고, PR J 의 사용 여부는 지금 칸의 뒤), 처음에 다섯 줄이다", () => {
     renderItems();
-    // 칸 이름만 — 칸의 종류(필수 · 선택 · 수정 불가)는 화면 읽기 전용 글로 붙는다.
-    const heads = screen.getAllByRole("columnheader").map((th) => th.firstChild?.textContent);
+    const heads = screen.getAllByRole("columnheader").map((th) => th.textContent);
     // 코드는 붙여넣는 칸이 아니라 줄 번호 옆에 보이기만 한다(PR J).
     expect(heads[1]).toBe("코드");
     expect(heads.slice(2, -1)).toEqual([
@@ -63,33 +62,38 @@ describe("시트", () => {
     expect(dataRows()).toHaveLength(5);
   });
 
-  it("칸 머리의 색이 필수 입력 · 선택 입력 · 수정 불가를 가르고, 받는 값은 칸 이름에 올리면 보인다(저자 판정 2026-11-05)", () => {
+  it("셀마다 색으로 필수 입력 · 선택 입력 · 수정 불가를 가르고, 받는 값은 열 이름에 올리면 보인다(저자 판정 2026-11-05)", () => {
     renderItems();
-    const head = (name: string) => screen.getByRole("columnheader", { name: new RegExp(`^${name}\\(`) });
-    for (const name of ["유형", "품명", "단위"]) expect(head(name)).toHaveAccessibleName(`${name}(필수 입력)`);
-    for (const name of ["규격", "조달구분", "비고", "사용 여부"])
-      expect(head(name)).toHaveAccessibleName(`${name}(선택 입력)`);
-    expect(head("코드")).toHaveAccessibleName("코드(수정 불가)");
-    expect(head("단위")).toHaveClass("bg-safety/40");
-    expect(head("규격")).toHaveClass("bg-floor");
-    expect(head("코드")).toHaveClass("bg-rule");
-    expect(head("단위")).toHaveAttribute("title", "개(EA) · 킬로그램(KG) — 이름이나 코드, 꼭 넣습니다");
-    expect(head("조달구분")).toHaveAttribute("title", "구매(BUY) · 생산(MAKE) — 비우면 유형의 기본값");
-    // 칸마다 받는 값을 늘어놓은 긴 목록은 없다.
+    for (const name of ["유형", "품명", "단위"]) {
+      expect(cell(1, name)).toHaveAttribute("data-kind", "required");
+      expect(cell(1, name)).toHaveAttribute("aria-required", "true");
+      expect(cell(1, name)).toHaveClass("bg-safety/25");
+    }
+    for (const name of ["규격", "조달구분", "비고", "사용 여부"]) {
+      expect(cell(2, name)).toHaveAttribute("data-kind", "optional");
+      expect(cell(2, name)).not.toHaveAttribute("aria-required");
+    }
+    // 코드 셀은 늘 수정 불가의 색이다. 열 머리에는 색이 없다.
+    expect(screen.getByTestId("code-0")).toHaveClass("bg-rule");
+    expect(screen.getByRole("columnheader", { name: "단위" })).not.toHaveClass("bg-safety/25");
+    expect(screen.getByRole("columnheader", { name: "단위" })).toHaveAttribute(
+      "title",
+      "개(EA) · 킬로그램(KG) — 이름이나 코드, 꼭 넣습니다",
+    );
+    // 열마다 받는 값을 늘어놓은 긴 목록은 없다.
     expect(screen.queryByText("칸 순서와 넣는 값")).toBeNull();
     expect(
-      within(screen.getByRole("list", { name: "칸의 색" }))
+      within(screen.getByRole("list", { name: "셀의 색" }))
         .getAllByRole("listitem")
         .map((li) => li.textContent),
     ).toEqual(["필수 입력", "선택 입력", "수정 불가"]);
   });
 
-  it("거래처는 거래처명 · 매입처 · 매출처가 필수 입력이다", () => {
+  it("거래처는 거래처명 · 매입처 · 매출처 셀이 필수 입력이다", () => {
     render(<SheetGrid columns={partnerSheetColumns([])} action={vi.fn()} what="거래처" listHref="/master/partners" />);
-    const required = screen
-      .getAllByRole("columnheader")
-      .filter((th) => th.textContent?.endsWith("(필수 입력)"))
-      .map((th) => th.firstChild?.textContent);
+    const required = partnerSheetColumns([])
+      .map((c) => c.label)
+      .filter((label) => cell(1, label).dataset.kind === "required");
     expect(required).toEqual(["거래처명", "매입처", "매출처"]);
   });
 
@@ -109,15 +113,15 @@ describe("시트", () => {
     paste(cell(1, "유형"), "유형\t품명\n원자재\t솔더 볼");
     expect(cell(1, "유형")).toHaveValue("원자재");
     expect(cell(1, "품명")).toHaveValue("솔더 볼");
-    expect(screen.getByText("첫 줄은 머리글이라 건너뛰었습니다.")).toBeInTheDocument();
+    expect(screen.getByText("첫 행은 머리글이라 건너뛰었습니다.")).toBeInTheDocument();
   });
 
   it("100줄까지만 받고 남은 줄 수를 알린다", () => {
     renderItems();
     paste(cell(1, "유형"), Array.from({ length: 103 }, (_, i) => `원자재\t${i}`).join("\n"));
     expect(dataRows()).toHaveLength(100);
-    expect(screen.getByText(/남은 3줄은 저장한 뒤 나눠 붙여넣으세요/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "줄 더하기" })).toBeDisabled();
+    expect(screen.getByText(/남은 3행은 저장한 뒤 나눠 붙여넣으세요/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "행 추가" })).toBeDisabled();
   });
 
   it("한 칸짜리 글은 가로채지 않는다 — 브라우저가 그 칸에 붙인다", () => {
@@ -127,10 +131,10 @@ describe("시트", () => {
 
   it("줄을 더하고 지운다", () => {
     renderItems();
-    fireEvent.click(screen.getByRole("button", { name: "줄 더하기" }));
+    fireEvent.click(screen.getByRole("button", { name: "행 추가" }));
     expect(dataRows()).toHaveLength(10);
     fireEvent.change(cell(2, "품명"), { target: { value: "둘째" } });
-    fireEvent.click(screen.getByRole("button", { name: "1줄 지우기" }));
+    fireEvent.click(screen.getByRole("button", { name: "1행 지우기" }));
     expect(dataRows()).toHaveLength(9);
     expect(cell(1, "품명")).toHaveValue("둘째");
   });
@@ -140,10 +144,10 @@ describe("시트", () => {
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     renderItems();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "머리글 줄 복사" }));
+      fireEvent.click(screen.getByRole("button", { name: "머리글 행 복사" }));
     });
     expect(writeText).toHaveBeenCalledWith(columns.map((c) => c.label).join("\t"));
-    expect(screen.getByText(/머리글 줄을 복사했습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/머리글 행을 복사했습니다/)).toBeInTheDocument();
   });
 
   it("클립보드를 쓸 수 없으면 그렇게 알린다", async () => {
@@ -153,7 +157,7 @@ describe("시트", () => {
     });
     renderItems();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "머리글 줄 복사" }));
+      fireEvent.click(screen.getByRole("button", { name: "머리글 행 복사" }));
     });
     expect(screen.getByText(/복사하지 못했습니다/)).toBeInTheDocument();
   });
@@ -185,12 +189,12 @@ describe("저장", () => {
       ],
     });
     await save();
-    await waitFor(() => expect(screen.getByText("품목 2줄을 등록했습니다.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("품목 2행을 등록했습니다.")).toBeInTheDocument());
     expect(screen.getByRole("link", { name: "RM-0007" })).toHaveAttribute("href", "/master/items/RM-0007");
 
     const alert = screen.getByRole("alert");
-    expect(alert).toHaveTextContent("1줄은 저장하지 않았습니다");
-    expect(within(alert).getByRole("link", { name: "1줄 · 단위" })).toHaveAttribute("href", "#c-0-unit");
+    expect(alert).toHaveTextContent("1행은 저장하지 않았습니다");
+    expect(within(alert).getByRole("link", { name: "1행 · 단위" })).toHaveAttribute("href", "#c-0-unit");
     expect(cell(1, "단위")).toHaveValue("BOX");
     expect(cell(1, "단위")).toHaveAttribute("aria-invalid", "true");
     expect(cell(1, "품명")).not.toHaveAttribute("aria-invalid");
@@ -222,7 +226,7 @@ describe("저장", () => {
     });
     await save();
     await waitFor(() =>
-      expect(screen.getByRole("alert")).toHaveTextContent("1줄 · 줄 — 품목은 2,000개까지 등록됩니다"),
+      expect(screen.getByRole("alert")).toHaveTextContent("1행 · 행 전체 — 품목은 2,000개까지 등록됩니다"),
     );
     expect(cell(1, "유형")).toHaveAttribute("aria-invalid", "true");
     expect(cell(1, "발주 · 생산 배수")).toHaveAttribute("aria-invalid", "true");
@@ -241,7 +245,7 @@ describe("저장", () => {
     const action = renderItems();
     action.mockResolvedValue({ saved: [], rejected: [] });
     await save();
-    await waitFor(() => expect(screen.getByText(/넣은 줄이 없습니다/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/넣은 행이 없습니다/)).toBeInTheDocument());
   });
 });
 
@@ -270,7 +274,7 @@ describe("거래처 시트", () => {
     await waitFor(() => expect(screen.getByText(/같은 사업자번호를 쓰는 거래처가 있습니다/)).toBeInTheDocument());
     expect(screen.getByRole("link", { name: "BP-0001" })).toHaveAttribute("href", "/master/partners/BP-0001");
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "1줄 · 구분(매입처 · 매출처) — 매입처 · 매출처 가운데 하나 이상을 고르세요",
+      "1행 · 구분(매입처 · 매출처) — 매입처 · 매출처 가운데 하나 이상을 고르세요",
     );
     expect(within(screen.getByRole("alert")).getByRole("link")).toHaveAttribute("href", "#c-0-isSupplier");
     expect(cell(1, "매입처")).toHaveAttribute("aria-invalid", "true");
@@ -306,9 +310,9 @@ describe("리뷰 1회차", () => {
     fireEvent.change(cell(1, "품명"), { target: { value: "솔더 볼" } });
     await save();
     expect(cell(1, "품명")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "줄 더하기" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "행 추가" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "모두 비우기" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "1줄 지우기" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "1행 지우기" })).toBeDisabled();
     await act(async () => finish({ saved: [{ code: "RM-0007", name: "솔더 볼" }], rejected: [] }));
     await waitFor(() => expect(cell(1, "품명")).toBeEnabled());
   });
@@ -375,7 +379,7 @@ describe("불러와 고치기(PR J)", () => {
     expect(cell(1, "품명")).toHaveValue("새 품목");
     expect(cell(2, "품명")).toHaveValue("웨이퍼");
     expect(cell(3, "품명")).toHaveValue("리드프레임");
-    expect(screen.getByTestId("code-0")).toHaveTextContent("새 줄");
+    expect(screen.getByTestId("code-0")).toHaveTextContent("새 행");
     expect(screen.getByTestId("code-1")).toHaveTextContent("RM-0001");
     expect(screen.getByText("찾은 2건 가운데 2건을 불러왔습니다.")).toBeInTheDocument();
     // 다섯 줄을 채울 만큼 빈 줄.
@@ -386,6 +390,8 @@ describe("불러와 고치기(PR J)", () => {
     renderWithLoad(vi.fn<Load>().mockResolvedValue({ rows: [loadedRow("RM-0001", "웨이퍼")], total: 1, notices: [] }));
     await loadNow();
     expect(cell(1, "유형")).toHaveAttribute("readonly");
+    expect(cell(1, "유형")).toHaveAttribute("data-kind", "fixed");
+    expect(cell(2, "유형")).toHaveAttribute("data-kind", "required");
     expect(cell(1, "품명")).not.toHaveAttribute("readonly");
     expect(cell(2, "유형")).not.toHaveAttribute("readonly");
     expect(screen.getByTestId("code-0")).not.toHaveTextContent("고침");
@@ -405,7 +411,7 @@ describe("불러와 고치기(PR J)", () => {
     expect(
       screen.getByText(
         "없는 유형이라 거르지 않았습니다. 찾은 230건 가운데 98건을 불러왔습니다. 2건은 이미 시트에 있습니다. " +
-          "시트는 100줄까지라 130건은 불러오지 않았습니다 — 찾기를 좁히거나, 저장한 뒤 다시 불러오세요.",
+          "시트는 100행까지라 130건은 불러오지 않았습니다 — 찾기를 좁히거나, 저장한 뒤 다시 불러오세요.",
       ),
     ).toBeInTheDocument();
     expect(dataRows()).toHaveLength(100);
@@ -450,7 +456,7 @@ describe("불러와 고치기(PR J)", () => {
     const sent = sentRows(action);
     // 바뀌지 않은 RM-0002 는 보내지 않는다(빈 줄은 서버가 건너뛴다).
     expect(sent.map((r) => r[CODE_KEY] ?? r.name)).toEqual(["RM-0001", "RM-0003", "솔더 볼", ""]);
-    expect(screen.getByText("품목 1줄을 등록하고 1줄을 고쳐 저장했습니다.")).toBeInTheDocument();
+    expect(screen.getByText("품목 1행을 등록하고 1행을 고쳐 저장했습니다.")).toBeInTheDocument();
     // 남은 줄 — 거절된 RM-0003(고친 채로, 「고침」 표시), 보내지 않은 RM-0002.
     expect(screen.getByTestId("code-0")).toHaveTextContent("RM-0003고침");
     expect(screen.getByTestId("code-1")).toHaveTextContent("RM-0002");
@@ -464,7 +470,7 @@ describe("저장 알림의 말(PR J)", () => {
     const action = renderItems();
     action.mockResolvedValue({ saved: [{ code: "RM-0001", name: "웨이퍼", updated: true }], rejected: [] });
     await save();
-    await waitFor(() => expect(screen.getByText("품목 1줄을 고쳐 저장했습니다.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("품목 1행을 고쳐 저장했습니다.")).toBeInTheDocument());
     expect(screen.getByText("(고침)")).toBeInTheDocument();
   });
 });

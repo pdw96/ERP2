@@ -31,7 +31,7 @@ export default function ItemSheetPage() {
       </p>
       <h1 className="mt-1 text-3xl leading-tight font-semibold">품목 시트형 등록</h1>
       <p className="mt-1 text-muted">
-        여러 품목을 한 번에 등록하거나 고칩니다. 맞는 줄은 저장되어 새 줄에는 코드가 줄 차례로 붙고, 틀린 줄은 시트에
+        여러 품목을 한 번에 등록하거나 고칩니다. 맞는 행은 저장되어 새 행에는 코드가 행 순서대로 붙고, 틀린 행은 시트에
         남습니다.
       </p>
       <Suspense fallback={<p className="mt-8 text-muted">불러오는 중입니다.</p>}>

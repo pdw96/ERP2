@@ -21,7 +21,7 @@ export const YES_NO = "Y · N (O · X, 예 · 아니오도 됩니다)";
 const ACTIVE_COLUMN: SheetColumn = {
   key: "active",
   label: "사용 여부",
-  rule: `Y(사용) · N(사용 안 함) — 비우면 Y. 새 줄은 Y 로만 등록합니다`,
+  rule: `Y(사용) · N(사용 안 함) — 비우면 Y. 새 행은 Y 로만 등록합니다`,
   width: 6,
 };
 
@@ -33,7 +33,7 @@ export function itemSheetColumns(units: readonly Option[], classes: ClassLists =
     {
       key: "itemType",
       label: "유형",
-      rule: `${listOf(ITEM_TYPES)} — 꼭 넣습니다. 불러온 줄은 고칠 수 없습니다`,
+      rule: `${listOf(ITEM_TYPES)} — 꼭 넣습니다. 불러온 행은 고칠 수 없습니다`,
       width: 8,
       required: true,
       fixed: true,

@@ -53,7 +53,7 @@ type ItemCurrent = { itemType: string; unit: string; cls1: string | null; cls2: 
 type Classes = Readonly<Record<ItemClassField, readonly CodeOption[]>>;
 const NO_CLASSES: Classes = { cls1: [], cls2: [], cls3: [] };
 
-const NEW_ONLY_ACTIVE = "새 줄은 사용(Y)으로만 등록합니다 — 비우거나 Y 를 넣으세요";
+const NEW_ONLY_ACTIVE = "새 행은 사용(Y)으로만 등록합니다 — 비우거나 Y 를 넣으세요";
 
 /**
  * 사용 여부 칸(PR J) — 비우면 Y. 새 줄은 한 건 등록처럼 「사용」으로만 등록한다.
@@ -177,7 +177,7 @@ function partnerRowValues(row: SheetRow, countries: readonly CodeOption[], curre
     ["isCustomer", "매출처"],
   ] as const) {
     const v = yesNo(row[key] ?? "");
-    if (v === "bad") errors.role ??= `${label} 칸은 ${YES_NO_BAD}`;
+    if (v === "bad") errors.role ??= `${label} 셀은 ${YES_NO_BAD}`;
     else values[key] = v === "on" ? "on" : "off";
   }
 
