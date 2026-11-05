@@ -3,27 +3,50 @@ import { connect } from "./client";
 import { codeGroups } from "./schema";
 import type { Db } from "./types";
 
-export type DbStatus =
-  { state: "connected"; now: Date; lastReset: Date | null } | { state: "unset" } | { state: "unreachable" };
+/** 마지막 되돌림 — 시각, 샘플이 없음(「none」), 읽지 못함(「unreadable」, 로그에 한 줄 남는다). */
+export type LastReset = Date | "none" | "unreadable";
 
-export type Probed = { now: Date; lastReset: Date | null };
+export type DbStatus =
+  { state: "connected"; now: Date; lastReset: LastReset } | { state: "unset" } | { state: "unreachable" };
+
+export type Probed = { now: Date; lastReset: LastReset };
 
 // DB 의 현재 시각과 마지막 되돌림 시각을 묻는다. 시험에서는 이 자리에 가짜를 끼운다.
 export type Probe = (url: string) => Promise<Probed>;
 
 // 마지막 되돌림 — 샘플을 마지막으로 넣은 때. 되돌림 · 첫 배포는 코드 묶음 전부를 한 트랜잭션에 다시 넣고, 묶음은 화면에서
 // 만들 수 없어 방문자의 행이 섞이지 않는다. 그래서 묶음의 가장 이른 등록 시각이 곧 마지막 되돌림이다(대장 NC-10).
-// 테이블이 아직 없으면(마이그레이션 전) 「알 수 없음」 — 연결 상태는 그대로 본다.
+// 샘플이 없거나 테이블이 아직 없으면(마이그레이션 전) 「none」, 그 밖의 까닭으로 읽지 못하면 「unreadable」 — 「샘플이 비었다」와
+// 「읽지 못했다」를 가르고, 읽지 못한 까닭은 로그에 남긴다(대장 NC-14). 연결 상태는 그대로 본다.
 export const probeDatabase: Probe = async (url) => {
   const { db, close } = connect(url);
   try {
     const rows = await db.execute<{ now: Date | string }>(sql`select now() as now`);
     const now = new Date(rows[0].now);
-    return { now, lastReset: await lastResetAt(db).catch(() => null) };
+    return { now, lastReset: await readLastReset(() => lastResetAt(db)) };
   } finally {
     await close();
   }
 };
+
+const UNDEFINED_TABLE = "42P01";
+
+export async function readLastReset(read: () => Promise<Date | null>): Promise<LastReset> {
+  try {
+    return (await read()) ?? "none";
+  } catch (error) {
+    if (sqlState(error) === UNDEFINED_TABLE) return "none";
+    // 고정된 질의라 메시지에 방문자의 글자가 실리지 않는다 — 상태 확인처럼 메시지까지 남긴다.
+    console.error(`마지막 되돌림 조회 실패: ${describeFailure(error)}`);
+    return "unreadable";
+  }
+}
+
+function sqlState(error: unknown): string | undefined {
+  const outer = (error ?? {}) as ErrorLike;
+  const inner = (outer.cause && typeof outer.cause === "object" ? outer.cause : outer) as ErrorLike;
+  return typeof inner.code === "string" ? inner.code : undefined;
+}
 
 export async function lastResetAt(db: Db): Promise<Date | null> {
   const [row] = await db.select({ at: sql<Date | string | null>`min(${codeGroups.createdAt})` }).from(codeGroups);

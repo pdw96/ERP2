@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { checkDatabase, describeFailure } from "@/db/status";
+import { checkDatabase, describeFailure, readLastReset } from "@/db/status";
 
 describe("checkDatabase", () => {
   afterEach(() => vi.restoreAllMocks());
@@ -39,6 +39,39 @@ describe("checkDatabase", () => {
   it("형식이 틀린 값이면 실제 드라이버로 물어도 「닿지 못함」", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await checkDatabase("이건-주소가-아니다")).toEqual({ state: "unreachable" });
+  });
+});
+
+describe("readLastReset — 마지막 되돌림을 읽는다(대장 NC-14)", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("시각이 있으면 그 시각, 샘플이 없으면 「none」", async () => {
+    const at = new Date("2026-11-04T19:07:35Z");
+    expect(await readLastReset(async () => at)).toBe(at);
+    expect(await readLastReset(async () => null)).toBe("none");
+  });
+
+  it("테이블이 아직 없으면(42P01) 로그 없이 「none」", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const missing = Object.assign(new Error("Failed query"), {
+      cause: { code: "42P01", severity: "ERROR", message: 'relation "code_groups" does not exist' },
+    });
+    expect(await readLastReset(() => Promise.reject(missing))).toBe("none");
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it("그 밖의 까닭이면 「unreadable」 — 「샘플이 없다」로 적지 않고, 까닭을 로그에 한 줄 남긴다", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const timeout = Object.assign(new Error("Failed query"), {
+      cause: { code: "57014", severity: "ERROR", message: "canceling statement due to statement timeout" },
+    });
+    expect(await readLastReset(() => Promise.reject(timeout))).toBe("unreadable");
+    expect(log).toHaveBeenCalledWith(
+      "마지막 되돌림 조회 실패: DB 질의 실패: 57014 ERROR canceling statement due to statement timeout",
+    );
+    const net = Object.assign(new Error("connect ECONNRESET 10.0.0.5:5432"), { code: "ECONNRESET" });
+    expect(await readLastReset(() => Promise.reject(net))).toBe("unreadable");
+    expect(log).toHaveBeenLastCalledWith("마지막 되돌림 조회 실패: DB 연결 실패: ECONNRESET");
   });
 });
 

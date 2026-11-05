@@ -128,7 +128,9 @@
 - 회차 13 · 14 · 15 — 닫기 전 `audit-data` · `audit-secrets` · `audit-ops`(요구사항 「제약」의 감사 회차). 부적합 NC-9 ~ NC-12, 확인불가
   U-13 ~ U-18. 닫힌 것: U-8 · NC-8. 저자 판정(2026-11-05): NC-9 ~ NC-12 「고침」 — 이 PR 이 고쳤다(설계 끝 「닫는 PR 에서 정한 것」).
   U-14 · U-16 은 저자의 답(내 컴퓨터에 `.env.local` 이 없다)을 받았다. U-13 · U-15 · U-17 · U-18 은 메인 세션이 근거를 붙였다.
-- 고침과 근거는 담당 감사자의 재감사가 닫는다. 줄마다의 근거는 `docs/audit/nc-ledger.md` 와 `docs/audit/nc-ledger-history.md` 가 든다.
+- 회차 16 · 17 · 18 — 이 PR 의 재감사(`audit-data` · `audit-secrets` · `audit-ops`). 닫힌 것: NC-9 ~ NC-12, U-13 ~ U-18. 새로 낸 것:
+  NC-13 · NC-14 · NC-15 — 저자 판정(2026-11-05) 「고침」, 이 PR 이 고쳤다. U-19(이 PR 의 커밋 이력)는 머지 직전에 근거를 받는다.
+- 줄마다의 근거는 `docs/audit/nc-ledger.md` 와 `docs/audit/nc-ledger-history.md` 가 든다.
 
 ### 넘긴 것
 

@@ -19,9 +19,13 @@ describe("DbStatusView", () => {
     expect(screen.getByText(/^마지막 되돌림 2026-11-02 00:00 \(한국 시간\)/)).toBeInTheDocument();
   });
 
-  it("샘플이 없으면 마지막 되돌림을 「알 수 없음」으로 보인다", () => {
-    render(<DbStatusView status={{ state: "connected", now: new Date("2026-11-02T03:04:05Z"), lastReset: null }} />);
-    expect(screen.getByText(/^마지막 되돌림 알 수 없음/)).toBeInTheDocument();
+  it("샘플이 없으면 「없음」, 읽지 못했으면 「읽지 못함」 — 둘을 가른다(대장 NC-14)", () => {
+    const now = new Date("2026-11-02T03:04:05Z");
+    const { unmount } = render(<DbStatusView status={{ state: "connected", now, lastReset: "none" }} />);
+    expect(screen.getByText(/^마지막 되돌림 없음 — 샘플 데이터가 들어 있지 않습니다/)).toBeInTheDocument();
+    unmount();
+    render(<DbStatusView status={{ state: "connected", now, lastReset: "unreadable" }} />);
+    expect(screen.getByText(/^마지막 되돌림 읽지 못함 — .*「마지막 되돌림 조회 실패」/)).toBeInTheDocument();
   });
 
   it("닿지 못하면 「연결 안 됨」과 다음에 할 일을 보인다", () => {
