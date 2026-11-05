@@ -1,7 +1,15 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SheetGrid } from "../sheet-grid";
-import type { SheetResult } from "@/lib/sheet";
+import {
+  CODE_KEY,
+  ROW_ERROR,
+  VERSION_KEY,
+  blankRow,
+  type SheetLoad,
+  type SheetResult,
+  type SheetRow,
+} from "@/lib/sheet";
 import { PARTNER_SHEET_ERROR_LABELS, itemSheetColumns, partnerSheetColumns } from "@/lib/sheet-columns";
 
 // 시트형 등록 화면 — 붙여넣기 · 머리글 · 100줄 · 저장 결과(맞는 줄은 빠지고 틀린 줄은 빨간 칸과 까닭으로 남음).
@@ -28,10 +36,12 @@ const save = async () => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("시트", () => {
-  it("칸은 한 건 등록 화면의 순서이고(PR H 의 분류 · 비고는 지금 칸의 뒤), 처음에 다섯 줄이다", () => {
+  it("칸은 한 건 등록 화면의 순서이고(PR H 의 분류 · 비고, PR J 의 사용 여부는 지금 칸의 뒤), 처음에 다섯 줄이다", () => {
     renderItems();
     const heads = screen.getAllByRole("columnheader").map((th) => th.textContent);
-    expect(heads.slice(1, -1)).toEqual([
+    // 코드는 붙여넣는 칸이 아니라 줄 번호 옆에 보이기만 한다(PR J).
+    expect(heads[1]).toBe("코드");
+    expect(heads.slice(2, -1)).toEqual([
       "유형",
       "품명",
       "규격",
@@ -47,6 +57,7 @@ describe("시트", () => {
       "중분류",
       "소분류",
       "비고",
+      "사용 여부",
     ]);
     expect(dataRows()).toHaveLength(5);
   });
@@ -150,7 +161,7 @@ describe("저장", () => {
       ],
     });
     await save();
-    await waitFor(() => expect(screen.getByText("품목 2줄을 저장했습니다.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("품목 2줄을 등록했습니다.")).toBeInTheDocument());
     expect(screen.getByRole("link", { name: "RM-0007" })).toHaveAttribute("href", "/master/items/RM-0007");
 
     const alert = screen.getByRole("alert");
@@ -291,5 +302,136 @@ describe("리뷰 2회차 — 빨간 표시는 값이 바뀐 칸만 지운다", (
     expect(cell(2, "단위")).not.toHaveAttribute("aria-invalid");
     expect(cell(1, "품명")).toHaveAttribute("aria-invalid", "true");
     expect(cell(2, "품명")).toHaveAttribute("aria-invalid", "true");
+  });
+});
+
+describe("불러와 고치기(PR J)", () => {
+  type Load = (form: FormData) => Promise<SheetLoad>;
+  const loadedRow = (code: string, name: string): SheetRow => ({
+    ...blankRow(columns),
+    [CODE_KEY]: code,
+    [VERSION_KEY]: "1730000000000000",
+    itemType: "RM",
+    name,
+    unit: "EA",
+    active: "Y",
+  });
+
+  function renderWithLoad(load: Load, action = vi.fn<(s: SheetResult | null, f: FormData) => Promise<SheetResult>>()) {
+    render(
+      <SheetGrid
+        columns={columns}
+        action={action}
+        what="품목"
+        listHref="/master/items"
+        load={{ action: load, filters: <input name="q" aria-label="찾을 글자" /> }}
+      />,
+    );
+    return action;
+  }
+  const loadNow = async () => {
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "불러오기" }));
+    });
+  };
+  const sentRows = (action: ReturnType<typeof vi.fn>) =>
+    JSON.parse((action.mock.calls[0][1] as FormData).get("rows") as string) as SheetRow[];
+
+  it("찾기 칸의 값으로 불러와 넣은 줄 뒤에 붙이고, 코드와 「새 줄」을 보인다", async () => {
+    const load = vi.fn<Load>().mockResolvedValue({
+      rows: [loadedRow("RM-0001", "웨이퍼"), loadedRow("RM-0002", "리드프레임")],
+      total: 2,
+      notices: [],
+    });
+    renderWithLoad(load);
+    fireEvent.change(cell(1, "품명"), { target: { value: "새 품목" } });
+    fireEvent.change(screen.getByLabelText("찾을 글자"), { target: { value: "RM" } });
+    await loadNow();
+    expect((load.mock.calls[0][0] as FormData).get("q")).toBe("RM");
+    expect(cell(1, "품명")).toHaveValue("새 품목");
+    expect(cell(2, "품명")).toHaveValue("웨이퍼");
+    expect(cell(3, "품명")).toHaveValue("리드프레임");
+    expect(screen.getByTestId("code-0")).toHaveTextContent("새 줄");
+    expect(screen.getByTestId("code-1")).toHaveTextContent("RM-0001");
+    expect(screen.getByText("찾은 2건 가운데 2건을 불러왔습니다.")).toBeInTheDocument();
+    // 다섯 줄을 채울 만큼 빈 줄.
+    expect(dataRows()).toHaveLength(5);
+  });
+
+  it("불러온 줄의 유형은 고칠 수 없고, 고치면 「고침」 표시가 붙는다", async () => {
+    renderWithLoad(vi.fn<Load>().mockResolvedValue({ rows: [loadedRow("RM-0001", "웨이퍼")], total: 1, notices: [] }));
+    await loadNow();
+    expect(cell(1, "유형")).toHaveAttribute("readonly");
+    expect(cell(1, "품명")).not.toHaveAttribute("readonly");
+    expect(cell(2, "유형")).not.toHaveAttribute("readonly");
+    expect(screen.getByTestId("code-0")).not.toHaveTextContent("고침");
+    fireEvent.change(cell(1, "품명"), { target: { value: "웨이퍼 8인치" } });
+    expect(screen.getByTestId("code-0")).toHaveTextContent("RM-0001고침");
+  });
+
+  it("이미 시트에 있는 코드는 다시 붙이지 않고, 100줄을 넘는 것은 불러오지 않았다고 알린다", async () => {
+    const many = Array.from({ length: 100 }, (_, i) => loadedRow(`RM-${String(i + 1).padStart(4, "0")}`, `품목 ${i}`));
+    const load = vi
+      .fn<Load>()
+      .mockResolvedValueOnce({ rows: many.slice(0, 2), total: 2, notices: [] })
+      .mockResolvedValueOnce({ rows: many, total: 230, notices: ["없는 유형이라 거르지 않았습니다"] });
+    renderWithLoad(load);
+    await loadNow();
+    await loadNow();
+    expect(
+      screen.getByText(
+        "없는 유형이라 거르지 않았습니다. 찾은 230건 가운데 98건을 불러왔습니다. 2건은 이미 시트에 있습니다. " +
+          "시트는 100줄까지라 130건은 불러오지 않았습니다 — 찾기를 좁히거나, 저장한 뒤 다시 불러오세요.",
+      ),
+    ).toBeInTheDocument();
+    expect(dataRows()).toHaveLength(100);
+  });
+
+  it("찾은 것이 없으면 그렇게 알린다", async () => {
+    renderWithLoad(vi.fn<Load>().mockResolvedValue({ rows: [], total: 0, notices: [] }));
+    await loadNow();
+    expect(screen.getByText("찾은 품목이 없습니다.")).toBeInTheDocument();
+  });
+
+  it("저장은 새 줄과 달라진 불러온 줄만 보내고, 바뀌지 않은 줄은 저장한 뒤에도 시트에 남는다", async () => {
+    const action = renderWithLoad(
+      vi.fn<Load>().mockResolvedValue({
+        rows: [loadedRow("RM-0001", "웨이퍼"), loadedRow("RM-0002", "리드프레임"), loadedRow("RM-0003", "금 와이어")],
+        total: 3,
+        notices: [],
+      }),
+    );
+    await loadNow();
+    fireEvent.change(cell(1, "안전재고"), { target: { value: "200" } });
+    fireEvent.change(cell(3, "비고"), { target: { value: "고침" } });
+    fireEvent.change(cell(4, "품명"), { target: { value: "솔더 볼" } });
+    const stale = { ...loadedRow("RM-0003", "금 와이어"), note: "고침" };
+    action.mockResolvedValue({
+      saved: [
+        { code: "RM-0001", name: "웨이퍼", updated: true },
+        { code: "RM-0007", name: "솔더 볼" },
+      ],
+      rejected: [{ row: stale, errors: { [ROW_ERROR]: "불러온 뒤 다른 사람이 먼저 고쳤습니다" } }],
+    });
+    await save();
+    const sent = sentRows(action);
+    // 바뀌지 않은 RM-0002 는 보내지 않는다(빈 줄은 서버가 건너뛴다).
+    expect(sent.map((r) => r[CODE_KEY] ?? r.name)).toEqual(["RM-0001", "RM-0003", "솔더 볼", ""]);
+    expect(screen.getByText("품목 1줄을 등록하고 1줄을 고쳐 저장했습니다.")).toBeInTheDocument();
+    // 남은 줄 — 거절된 RM-0003(고친 채로, 「고침」 표시), 보내지 않은 RM-0002.
+    expect(screen.getByTestId("code-0")).toHaveTextContent("RM-0003고침");
+    expect(screen.getByTestId("code-1")).toHaveTextContent("RM-0002");
+    expect(screen.getByTestId("code-1")).not.toHaveTextContent("고침");
+    expect(cell(2, "품명")).toHaveValue("리드프레임");
+  });
+});
+
+describe("저장 알림의 말(PR J)", () => {
+  it("고친 줄만이면 「고쳐 저장했습니다」, 줄마다 (고침)", async () => {
+    const action = renderItems();
+    action.mockResolvedValue({ saved: [{ code: "RM-0001", name: "웨이퍼", updated: true }], rejected: [] });
+    await save();
+    await waitFor(() => expect(screen.getByText("품목 1줄을 고쳐 저장했습니다.")).toBeInTheDocument());
+    expect(screen.getByText("(고침)")).toBeInTheDocument();
   });
 });

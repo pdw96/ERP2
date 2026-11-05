@@ -14,7 +14,23 @@ export type SheetColumn = {
   errorKey?: string;
   /** 칸의 넓이(글자 수) — 화면이 칸을 그릴 때만 쓴다. */
   width?: number;
+  /** 불러온 줄(기존 데이터)에서는 고칠 수 없는 칸 — 품목 유형(ADR 0003 · 0013). 새 줄에서는 넣는다. */
+  fixed?: boolean;
 };
+
+/**
+ * 불러온 줄의 숨은 칸(PR J) — 코드와 불러온 때의 버전. 칸(column)이 아니라 붙여넣기 · 머리글 · 칸 순서에 들지 않는다.
+ * 코드가 있는 줄은 고침, 없는 줄은 새 등록이다(저자 판정 2026-11-05 — 한 시트에 같이 둔다).
+ */
+export const CODE_KEY = "_code";
+export const VERSION_KEY = "_version";
+
+/** 기존 데이터를 불러온 줄인가. */
+export const isLoadedRow = (row: SheetRow) => !!row[CODE_KEY];
+
+/** 불러온 줄이 불러온 때와 달라졌나 — 칸만 견준다. 바뀐 줄만 저장한다(성공 기준 15). */
+export const rowChanged = (columns: readonly SheetColumn[], original: SheetRow, row: SheetRow) =>
+  columns.some((c) => (original[c.key] ?? "") !== (row[c.key] ?? ""));
 
 /** 한 줄 — 칸 key → 넣은 글자 그대로. */
 export type SheetRow = Record<string, string>;
@@ -26,6 +42,8 @@ export const ROW_ERROR = "_row";
 export type SheetSaved = {
   code: string;
   name: string;
+  /** 불러온 줄을 고쳐 저장했다(PR J). 없으면 새로 등록한 줄. */
+  updated?: boolean;
   /** 같은 사업자번호를 쓰는 다른 거래처 — 막지 않고 경고만 한다(저자 판정 2026-11-03). */
   sharedBizNo?: { code: string; name: string; active: boolean }[];
 };
@@ -35,6 +53,16 @@ export type SheetResult = {
   saved: SheetSaved[];
   rejected: { row: SheetRow; errors: SheetErrors }[];
   /** 아무것도 저장하지 못한 까닭 — 이때 saved 는 비고 rejected 에 모든 줄이 남는다. */
+  formError?: string;
+};
+
+/** 기존 데이터 불러오기(PR J)의 결과 — 찾은 것을 코드 순으로 앞 100건까지(저자 판정 2026-11-05). */
+export type SheetLoad = {
+  rows: SheetRow[];
+  /** 찾은 건수 — rows 보다 많으면 앞 100건만 온 것이다. */
+  total: number;
+  /** 거르지 않은 값의 알림(없는 유형 따위). */
+  notices: string[];
   formError?: string;
 };
 
@@ -144,6 +172,8 @@ export type Pasted = {
   droppedRows: number;
   /** 시트의 칸보다 많아 버린 칸이 있었나. */
   droppedColumns: boolean;
+  /** 불러온 줄의 고칠 수 없는 칸(유형)에 온 값을 버렸나. */
+  skippedFixed: boolean;
 };
 
 /**
@@ -167,16 +197,20 @@ export function pasteInto(
 
   const next = rows.map((r) => ({ ...r }));
   let droppedColumns = false;
+  let skippedFixed = false;
   grid.forEach((cells, k) => {
     const r = startRow + k;
     while (next.length <= r) next.push(blankRow(columns));
     cells.forEach((value, m) => {
       const column = columns[startCol + m];
-      if (column) next[r][column.key] = value;
-      else if (value.trim()) droppedColumns = true;
+      if (!column) {
+        if (value.trim()) droppedColumns = true;
+      } else if (column.fixed && isLoadedRow(next[r])) {
+        if (value !== next[r][column.key]) skippedFixed = true;
+      } else next[r][column.key] = value;
     });
   });
-  return { rows: next, skippedHeader, pastedRows: grid.length, droppedRows, droppedColumns };
+  return { rows: next, skippedHeader, pastedRows: grid.length, droppedRows, droppedColumns, skippedFixed };
 }
 
 /**
@@ -199,10 +233,13 @@ export function clearChangedErrors(
 
 /** 줄 하나의 칸 하나에 받는 글자의 위 — 칸의 검사(100자 따위)보다 넉넉하다. 넘으면 그 줄을 거절한다. */
 const CELL_MAX = 1000;
+/** 숨은 칸(코드 · 버전)의 글자 위. */
+const HIDDEN_MAX = 30;
 
 /**
  * 서버가 받은 시트(JSON 글)를 읽는다 — 누구나 부를 수 있는 POST 라 화면을 믿지 않는다.
- * 줄마다 아는 칸만 글자로 남긴다. 줄이 100을 넘거나 꼴이 틀리면 거절한다.
+ * 줄마다 아는 칸과 불러온 줄의 숨은 칸(코드 · 버전)만 글자로 남긴다. 줄이 100을 넘거나 꼴이 틀리면 거절한다.
+ * 코드 · 버전의 꼴은 DB 쪽이 본다 — 없는 코드 · 다른 버전은 그 줄의 거절이다.
  */
 export function readSheetPayload(
   text: unknown,
@@ -228,6 +265,12 @@ export function readSheetPayload(
       if (v === undefined || v === null) continue;
       if (typeof v !== "string" || v.length > CELL_MAX) return broken;
       row[c.key] = v;
+    }
+    for (const key of [CODE_KEY, VERSION_KEY]) {
+      const v = (item as Record<string, unknown>)[key];
+      if (v === undefined || v === null || v === "") continue;
+      if (typeof v !== "string" || v.length > HIDDEN_MAX) return broken;
+      row[key] = v;
     }
     rows.push(row);
   }

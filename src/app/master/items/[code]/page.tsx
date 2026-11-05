@@ -73,6 +73,7 @@ async function EditItem({ params }: Pick<PageProps<"/master/items/[code]">, "par
       <ItemForm
         mode="edit"
         code={item.code}
+        version={item.version}
         itemType={item.itemType}
         action={updateItemAction.bind(null, item.code)}
         units={units}

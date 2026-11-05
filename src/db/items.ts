@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, inArray, or, type SQL } from "drizzle-orm";
+import { and, asc, count, eq, getTableColumns, ilike, inArray, or, type SQL } from "drizzle-orm";
 import { eul } from "@/lib/josa";
 import { ITEM_TYPES, PROC_TYPES, type ItemType } from "@/lib/master-codes";
 import {
@@ -10,11 +10,25 @@ import {
   type ItemField,
   type ItemValues,
 } from "@/lib/item-input";
-import { readItemRow, type CodeOption } from "@/lib/sheet-input";
-import { ROW_ERROR, isBlankRow, type SheetResult, type SheetRow } from "@/lib/sheet";
+import { itemSheetRow, readItemEditRow, readItemRow, type CodeOption } from "@/lib/sheet-input";
+import {
+  CODE_KEY,
+  ROW_ERROR,
+  SHEET_MAX_ROWS,
+  VERSION_KEY,
+  isBlankRow,
+  isLoadedRow,
+  type SheetErrors,
+  type SheetResult,
+  type SheetRow,
+} from "@/lib/sheet";
 import {
   COLLIDED,
+  DUPLICATE_ROW,
   REGISTER_LOCK,
+  STALE,
+  STALE_ROW,
+  VERSION,
   constraintOf,
   first,
   likeLiteral,
@@ -22,8 +36,15 @@ import {
   pgError,
   registerRowsWithCode,
   registerWithCode,
+  savedCode,
   searchText,
+  touched,
+  updateRowsWithVersion,
+  versionIs,
+  versionOf,
   type Params,
+  type RegisteredRow,
+  type UpdatedRow,
 } from "./master-shared";
 import { nextCode } from "./numbering";
 import { codes, items } from "./schema";
@@ -36,6 +57,9 @@ import type { Db } from "./types";
 export const ITEM_LIMIT = 2000;
 
 export type Item = typeof items.$inferSelect;
+/** 품목과 그 버전(마지막으로 고친 때) — 고치는 화면 · 시트가 들고 있다가 저장할 때 돌려준다(PR J). */
+export type ItemWithVersion = Item & { version: string };
+const WITH_VERSION = { ...getTableColumns(items), version: versionOf(items.updatedAt) };
 
 // ── 목록 ─────────────────────────────────────────────
 
@@ -95,26 +119,40 @@ const SEARCHED = {
 } as const;
 export type SearchScope = keyof typeof SEARCHED;
 
-/** 코드 순으로. 찾기는 그 칸들에 글자가 들어 있는지 본다(대소문자 무시) — 등록의 목록은 코드 · 품명, 조회는 글 칸 전체. */
-export async function listItems(db: Db, filter: ItemFilter, scope: SearchScope = "codeName"): Promise<Item[]> {
+function itemWhere(filter: ItemFilter, scope: SearchScope) {
   const where: SQL[] = [];
   if (filter.q) where.push(or(...SEARCHED[scope].map((c) => ilike(c, likeLiteral(filter.q))))!);
   if (filter.itemType) where.push(eq(items.itemType, filter.itemType));
   if (filter.procurement) where.push(eq(items.procurement, filter.procurement));
   for (const { field } of ITEM_CLASSES) if (filter[field]) where.push(eq(items[field], filter[field]));
   if (!filter.includeInactive) where.push(eq(items.active, true));
-  return db
-    .select()
-    .from(items)
-    .where(and(...where))
-    .orderBy(asc(items.code));
+  return and(...where);
+}
+
+/** 코드 순으로. 찾기는 그 칸들에 글자가 들어 있는지 본다(대소문자 무시) — 등록의 목록은 코드 · 품명, 조회는 글 칸 전체. */
+export async function listItems(db: Db, filter: ItemFilter, scope: SearchScope = "codeName"): Promise<Item[]> {
+  return db.select().from(items).where(itemWhere(filter, scope)).orderBy(asc(items.code));
+}
+
+/**
+ * 시트에 불러오기(PR J) — 등록의 목록과 같은 찾기 · 거르기로, 코드 순 앞 100건을 시트의 줄로(저자 판정 2026-11-05).
+ * 찾은 건수(total)도 돌려준다 — 100건을 넘으면 화면이 「앞 100건만」을 알린다.
+ */
+export async function loadItemsForSheet(db: Db, filter: ItemFilter): Promise<{ rows: SheetRow[]; total: number }> {
+  const where = itemWhere(filter, "codeName");
+  const [found, [{ n }]] = await Promise.all([
+    db.select(WITH_VERSION).from(items).where(where).orderBy(asc(items.code)).limit(SHEET_MAX_ROWS),
+    db.select({ n: count() }).from(items).where(where),
+  ]);
+  return { rows: found.map(itemSheetRow), total: n };
 }
 
 export const ITEM_CODE = /^(RM|SF|FG)-[0-9]{4,}$/;
 
-export async function getItem(db: Db, code: string): Promise<Item | undefined> {
+/** 품목 하나와 그 버전 — 한 쿼리로 읽어, 보인 값과 버전이 어긋나지 않는다. */
+export async function getItem(db: Db, code: string): Promise<ItemWithVersion | undefined> {
   if (!ITEM_CODE.test(code)) return undefined;
-  const [row] = await db.select().from(items).where(eq(items.code, code));
+  const [row] = await db.select(WITH_VERSION).from(items).where(eq(items.code, code));
   return row;
 }
 
@@ -249,11 +287,16 @@ export async function createItem(db: Db, values: ItemValues): Promise<SaveResult
   }
 }
 
-/** 수정 — 코드 · 유형은 바꾸지 않는다. 단위를 바꾸면 사용 중인 단위만, 그대로면 「사용 안 함」 단위도 남는다. */
+/**
+ * 수정 — 코드 · 유형은 바꾸지 않는다. 단위를 바꾸면 사용 중인 단위만, 그대로면 「사용 안 함」 단위도 남는다.
+ * version 은 화면을 연 때의 버전이다 — 그 사이 다른 사람이 고쳤으면 저장하지 않는다(저자 판정 2026-11-05).
+ * 주지 않으면 버전을 보지 않는다(서버 안의 시험용 — 화면의 입구는 늘 준다).
+ */
 export async function updateItem(
   db: Db,
   code: string,
   values: ItemValues,
+  version?: string,
 ): Promise<SaveResult | { ok: false; notFound: true }> {
   const current = await getItem(db, code);
   if (!current) return { ok: false, notFound: true };
@@ -262,9 +305,19 @@ export async function updateItem(
   const errors: ItemErrors = parsed.ok ? {} : { ...parsed.errors };
   await checkCodes(db, values, errors, current);
   if (!parsed.ok || Object.keys(errors).length) return { ok: false, errors, values };
+  if (version !== undefined && !VERSION.test(version)) return { ok: false, errors: {}, formError: STALE, values };
 
   try {
-    await db.update(items).set(parsed.value).where(eq(items.id, current.id));
+    const done = await db
+      .update(items)
+      .set({ ...parsed.value, updatedAt: touched() })
+      .where(
+        version === undefined
+          ? eq(items.id, current.id)
+          : and(eq(items.id, current.id), versionIs(items.updatedAt, version)),
+      )
+      .returning({ id: items.id });
+    if (done.length === 0) return { ok: false, errors: {}, formError: STALE, values };
     return { ok: true, code };
   } catch (error) {
     return asRejection(error, values);
@@ -282,48 +335,95 @@ async function allUnits(db: Db): Promise<CodeOption[]> {
     .orderBy(asc(codes.sortOrder), asc(codes.code));
 }
 
-/**
- * 시트형 등록 — 맞는 줄만 저장하고 코드를 줄 차례로 붙인다. 틀린 줄은 넣은 글자 그대로 까닭과 함께 돌려준다(성공 기준 11).
- * 빈 줄은 건너뛴다. 등록 상한(2,000)을 넘는 줄은 저장되지 않고 남는다. 줄 수(100)는 부르는 쪽이 먼저 본다.
- */
-export async function createItemRows(db: Db, rows: readonly SheetRow[]): Promise<SheetResult> {
-  const [units, classes] = await Promise.all([allUnits(db), allItemClasses(db)]);
-  const filled = rows.filter((r) => !isBlankRow(r));
-  const read = filled.map((row) => ({ row, ...readItemRow(row, units, classes) }));
-  const valid = read.flatMap((r) => (r.ok ? [r] : []));
+/** 저장하지 못한 줄의 까닭 — 등록 상한 · 겹침 · 버전 · DB 제약. */
+function rowRejection(r: RegisteredRow | UpdatedRow): SheetErrors {
+  if (r.ok) return {};
+  if (r.reason === "limit") return { [ROW_ERROR]: limitMessage("품목", ITEM_LIMIT) };
+  if (r.reason === "collided") return { [ROW_ERROR]: COLLIDED };
+  if (r.reason === "stale") return { [ROW_ERROR]: STALE_ROW };
+  const field = CONSTRAINT_FIELD[constraintOf(r.error) ?? ""];
+  return field
+    ? { [field]: "받을 수 없는 값입니다" }
+    : { [ROW_ERROR]: "받을 수 없는 값이 있습니다 — 수량은 0 이상입니다" };
+}
 
-  const results = await registerRowsWithCode(db, {
-    table: items,
-    lock: REGISTER_LOCK.items,
-    limit: ITEM_LIMIT,
-    uniqueConstraint: "items_code_unique",
-    rows: valid.map((r) => ({
-      prefix: r.value.itemType,
-      insert: (tx: Db, code: string) => tx.insert(items).values({ ...r.value, code }),
-    })),
+/** 시트가 고치려는 품목들 — 코드의 꼴이 맞는 것만 DB 에 묻는다. */
+async function itemsByCode(db: Db, rows: readonly SheetRow[]): Promise<Map<string, Item>> {
+  const wanted = [...new Set(rows.map((r) => r[CODE_KEY]).filter((c) => ITEM_CODE.test(c)))];
+  if (wanted.length === 0) return new Map();
+  const found = await db.select().from(items).where(inArray(items.code, wanted));
+  return new Map(found.map((i) => [i.code, i]));
+}
+
+/**
+ * 시트형 등록 · 고침(성공 기준 11 · 15) — 맞는 줄만 저장한다. 틀린 줄은 넣은 글자 그대로 까닭과 함께 돌려준다.
+ * 코드가 없는 줄은 새 등록이다 — 코드를 줄 차례로 붙이고, 등록 상한(2,000)을 넘는 줄은 남는다.
+ * 코드가 있는 줄(불러온 줄)은 고침이다 — 한 건 수정의 규칙으로 보고, 불러온 뒤 다른 사람이 고쳤으면 그 줄만 남는다.
+ * 빈 줄은 건너뛴다. 줄 수(100)는 부르는 쪽이 먼저 본다. 고침과 등록은 한 트랜잭션이다 — 제약 위반이 아닌 실패면 아무것도 저장되지 않는다.
+ */
+export async function saveItemRows(db: Db, rows: readonly SheetRow[]): Promise<SheetResult> {
+  const filled = rows.filter((r) => !isBlankRow(r));
+  const [units, classes, currents] = await Promise.all([allUnits(db), allItemClasses(db), itemsByCode(db, filled)]);
+  const seen = new Map<string, number>();
+  for (const r of filled) if (isLoadedRow(r)) seen.set(r[CODE_KEY], (seen.get(r[CODE_KEY]) ?? 0) + 1);
+
+  type Read =
+    | { row: SheetRow; kind: "rejected"; errors: SheetErrors }
+    | { row: SheetRow; kind: "new"; value: ReturnType<typeof readItemRow> & { ok: true } }
+    | { row: SheetRow; kind: "edit"; current: Item; value: ReturnType<typeof readItemEditRow> & { ok: true } };
+  const read: Read[] = filled.map((row) => {
+    if (!isLoadedRow(row)) {
+      const r = readItemRow(row, units, classes);
+      return r.ok ? { row, kind: "new", value: r } : { row, kind: "rejected", errors: r.errors };
+    }
+    const current = currents.get(row[CODE_KEY]);
+    if (!current) return { row, kind: "rejected", errors: { [ROW_ERROR]: "없는 품목입니다 — 이 줄을 지우세요" } };
+    if (seen.get(row[CODE_KEY])! > 1) return { row, kind: "rejected", errors: { [ROW_ERROR]: DUPLICATE_ROW } };
+    if (!VERSION.test(row[VERSION_KEY] ?? "")) return { row, kind: "rejected", errors: { [ROW_ERROR]: STALE_ROW } };
+    const r = readItemEditRow(row, units, classes, current);
+    return r.ok ? { row, kind: "edit", current, value: r } : { row, kind: "rejected", errors: r.errors };
+  });
+  const edits = read.flatMap((r) => (r.kind === "edit" ? [r] : []));
+  const news = read.flatMap((r) => (r.kind === "new" ? [r] : []));
+
+  const outcome = await db.transaction(async (tx) => {
+    const updated = await updateRowsWithVersion(
+      tx,
+      edits.map((r) => ({
+        update: async (sp: Db) =>
+          (
+            await sp
+              .update(items)
+              .set({ ...r.value.value, updatedAt: touched() })
+              .where(and(eq(items.id, r.current.id), versionIs(items.updatedAt, r.row[VERSION_KEY])))
+              .returning({ id: items.id })
+          ).length,
+      })),
+    );
+    const registered = news.length
+      ? await registerRowsWithCode(tx, {
+          table: items,
+          lock: REGISTER_LOCK.items,
+          limit: ITEM_LIMIT,
+          uniqueConstraint: "items_code_unique",
+          rows: news.map((r) => ({
+            prefix: r.value.value.itemType,
+            insert: (sp: Db, code: string) => sp.insert(items).values({ ...r.value.value, code }),
+          })),
+        })
+      : [];
+    return { updated, registered };
   });
 
   const result: SheetResult = { saved: [], rejected: [] };
-  const byRow = new Map(valid.map((r, i) => [r, results[i]]));
   for (const r of read) {
-    if (!r.ok) {
+    if (r.kind === "rejected") {
       result.rejected.push({ row: r.row, errors: r.errors });
       continue;
     }
-    const saved = byRow.get(r)!;
-    if (saved.ok) result.saved.push({ code: saved.code, name: r.value.name });
-    else if (saved.reason === "limit")
-      result.rejected.push({ row: r.row, errors: { [ROW_ERROR]: limitMessage("품목", ITEM_LIMIT) } });
-    else if (saved.reason === "collided") result.rejected.push({ row: r.row, errors: { [ROW_ERROR]: COLLIDED } });
-    else {
-      const field = CONSTRAINT_FIELD[constraintOf(saved.error) ?? ""];
-      result.rejected.push({
-        row: r.row,
-        errors: field
-          ? { [field]: "받을 수 없는 값입니다" }
-          : { [ROW_ERROR]: "받을 수 없는 값이 있습니다 — 수량은 0 이상입니다" },
-      });
-    }
+    const done = r.kind === "edit" ? outcome.updated[edits.indexOf(r)] : outcome.registered[news.indexOf(r)];
+    if (!done.ok) result.rejected.push({ row: r.row, errors: rowRejection(done) });
+    else result.saved.push({ ...savedCode(r, done), name: r.value.value.name });
   }
   return result;
 }

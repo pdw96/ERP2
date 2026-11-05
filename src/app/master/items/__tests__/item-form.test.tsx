@@ -125,6 +125,7 @@ describe("품목 수정 화면", () => {
     render(
       <ItemForm
         mode="edit"
+        version="1"
         code="RM-0005"
         itemType="RM"
         action={action}
@@ -144,12 +145,15 @@ describe("품목 수정 화면", () => {
     expect(sent.has("code")).toBe(false);
     expect(sent.get("active")).toBe("Y");
     expect(sent.get("unit")).toBe("G");
+    // 화면을 연 때의 버전을 함께 보낸다 — 그 사이 다른 사람이 고쳤으면 서버가 막는다(PR J).
+    expect(sent.get("version")).toBe("1");
   });
 
   it("「사용 안 함」 단위는 그 표시와 함께 고른 채로 보인다", () => {
     render(
       <ItemForm
         mode="edit"
+        version="1"
         code="RM-0005"
         itemType="RM"
         action={vi.fn()}
@@ -165,6 +169,7 @@ describe("품목 수정 화면", () => {
     render(
       <ItemForm
         mode="edit"
+        version="1"
         code="RM-0005"
         itemType="RM"
         action={vi.fn()}

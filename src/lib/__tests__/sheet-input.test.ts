@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { pickOption, readItemRow, readPartnerRow, yesNo, type CodeOption } from "../sheet-input";
+import {
+  itemSheetRow,
+  partnerSheetRow,
+  pickOption,
+  readItemEditRow,
+  readItemRow,
+  readPartnerEditRow,
+  readPartnerRow,
+  yesNo,
+  type CodeOption,
+} from "../sheet-input";
 
 const NO_DESC = {
   ceo: "",
@@ -203,6 +213,109 @@ describe("거래처 한 줄", () => {
     expect(readPartnerRow({ name: "a", isSupplier: "Y", country: "US", bizNo: "x".repeat(31) }, countries)).toEqual({
       ok: false,
       errors: { bizNo: "해외 사업자번호는 30자까지입니다" },
+    });
+  });
+});
+
+describe("불러온 줄(PR J)", () => {
+  const units: CodeOption[] = [
+    { code: "EA", name: "개", active: true },
+    { code: "M", name: "미터", active: false },
+  ];
+  const classes = { cls1: [{ code: "WIRE", name: "와이어", active: false }], cls2: [], cls3: [] };
+  const wire = {
+    code: "RM-0003",
+    version: "1",
+    itemType: "RM",
+    name: "금 와이어",
+    spec: "지름 25µm",
+    unit: "M",
+    procurement: "BUY",
+    inspectIn: true,
+    inspectOut: false,
+    leadTimeDays: 30,
+    safetyStock: 1000.5,
+    minLot: 0,
+    lotMultiple: 0,
+    cls1: "WIRE",
+    cls2: null,
+    cls3: null,
+    note: "",
+    active: false,
+  };
+
+  it("불러온 품목을 그대로 다시 읽으면 같은 값이다 — 지금 값인 「사용 안 함」 단위 · 분류도 남는다", () => {
+    const r = readItemEditRow(itemSheetRow(wire), units, classes, wire);
+    expect(r).toEqual({
+      ok: true,
+      value: {
+        procurement: "BUY",
+        name: "금 와이어",
+        spec: "지름 25µm",
+        unit: "M",
+        inspectIn: true,
+        inspectOut: false,
+        leadTimeDays: 30,
+        safetyStock: 1000.5,
+        minLot: 0,
+        lotMultiple: 0,
+        cls1: "WIRE",
+        cls2: null,
+        cls3: null,
+        note: "",
+        active: false,
+      },
+    });
+  });
+
+  it("새 줄은 「사용 안 함」 단위를 거절하고, 사용 여부 N 을 받지 않는다", () => {
+    const r = readItemRow({ itemType: "RM", name: "x", unit: "M", active: "N" }, units, classes);
+    expect(r).toEqual({
+      ok: false,
+      errors: {
+        unit: "「사용 안 함」인 단위입니다 — 다른 단위를 넣으세요",
+        active: "새 줄은 사용(Y)으로만 등록합니다 — 비우거나 Y 를 넣으세요",
+      },
+    });
+    expect(readItemRow({ itemType: "RM", name: "x", unit: "EA", active: "Y" }, units).ok).toBe(true);
+    expect(readItemRow({ itemType: "RM", name: "x", unit: "EA", active: "가" }, units)).toMatchObject({
+      errors: { active: expect.stringContaining("Y · N") },
+    });
+  });
+
+  it("불러온 거래처를 그대로 다시 읽으면 같은 값이다 — 해외 번호는 사업자번호 칸에서 읽는다", () => {
+    const jp = {
+      code: "BP-0006",
+      version: "1",
+      name: "(가상) 몰딩",
+      isSupplier: true,
+      isCustomer: false,
+      country: "JP",
+      bizNo: null,
+      foreignBizNo: "0000000000000",
+      ...NO_DESC,
+      active: true,
+    };
+    const countries: CodeOption[] = [
+      { code: "KR", name: "한국", active: true },
+      { code: "JP", name: "일본", active: false },
+    ];
+    expect(readPartnerEditRow(partnerSheetRow(jp), countries, jp)).toEqual({
+      ok: true,
+      value: {
+        name: "(가상) 몰딩",
+        isSupplier: true,
+        isCustomer: false,
+        country: "JP",
+        bizNo: null,
+        foreignBizNo: "0000000000000",
+        ...NO_DESC,
+        active: true,
+      },
+    });
+    // 새 줄이면 「사용 안 함」 국가는 거절한다.
+    expect(readPartnerRow({ ...partnerSheetRow(jp), _code: "" }, countries)).toMatchObject({
+      errors: { country: "「사용 안 함」인 국가입니다 — 다른 국가를 넣으세요" },
     });
   });
 });
