@@ -24,7 +24,7 @@ export default function ItemInquiryPage({ searchParams }: PageProps<"/master/ite
       </p>
       <h1 className="mt-1 text-3xl leading-tight font-semibold">품목 조회</h1>
       <p className="mt-1 max-w-3xl text-muted">
-        품목의 모든 칸을 봅니다. 여기서는 고치지 않습니다 — 코드를 누르면{" "}
+        품목의 모든 열을 봅니다. 여기서는 고치지 않습니다 — 코드를 누르면{" "}
         <Link href="/master/items" className="underline underline-offset-4 hover:text-ink">
           품목 등록
         </Link>

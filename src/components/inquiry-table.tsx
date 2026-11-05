@@ -52,7 +52,7 @@ export function InquiryTable<Row extends Base>({
     <>
       <p className="mt-4 text-sm text-muted" aria-live="polite">
         {rows.length}개{includeInactive ? " · 사용 안 함 포함" : ""}
-        <span className="md:hidden"> · 표를 옆으로 밀면 다른 칸이 보입니다</span>
+        <span className="md:hidden"> · 표를 옆으로 밀면 다른 열이 보입니다</span>
       </p>
       <div
         className="mt-2 overflow-x-auto border-x border-rule bg-white"
@@ -61,7 +61,7 @@ export function InquiryTable<Row extends Base>({
         aria-label={`${what} 조회 표`}
       >
         <table className="w-max min-w-full border-collapse text-left text-sm">
-          <caption className="sr-only">{what} 조회 — 모든 칸</caption>
+          <caption className="sr-only">{what} 조회 — 모든 열</caption>
           <thead className="border-b-2 border-machine">
             <tr>
               <th scope="col" className={`${STICKY} px-3 py-2 whitespace-nowrap`}>

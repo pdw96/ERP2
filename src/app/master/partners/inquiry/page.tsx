@@ -24,7 +24,7 @@ export default function PartnerInquiryPage({ searchParams }: PageProps<"/master/
       </p>
       <h1 className="mt-1 text-3xl leading-tight font-semibold">거래처 조회</h1>
       <p className="mt-1 max-w-3xl text-muted">
-        거래처의 모든 칸을 봅니다. 여기서는 고치지 않습니다 — 코드를 누르면{" "}
+        거래처의 모든 열을 봅니다. 여기서는 고치지 않습니다 — 코드를 누르면{" "}
         <Link href="/master/partners" className="underline underline-offset-4 hover:text-ink">
           거래처 등록
         </Link>
