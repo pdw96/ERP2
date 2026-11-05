@@ -53,6 +53,8 @@ type Props = {
 // original — 불러온 줄의 불러온 때 값. 이것과 달라진 줄만 저장한다.
 type Line = { values: SheetRow; errors: SheetErrors; original?: SheetRow };
 
+const LOAD_FAILED = "불러오지 못했습니다 — 화면을 새로 고친 뒤 다시 불러오세요";
+
 /** 처음 · 저장한 뒤 시트가 갖는 줄 수. 「줄 더하기」도 이만큼 더한다. */
 const START_ROWS = 5;
 
@@ -164,7 +166,14 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
     // 불러오는 동안 시트는 잠겨 있어 lines 는 누른 때 그대로다.
     const kept = lines.filter((l) => !isBlankRow(l.values));
     startLoad(async () => {
-      const r = await load.action(form);
+      // 서버에 닿지 못하면(네트워크 · 새 배포 앞에 연 화면) 말없이 끝나지 않게 알린다.
+      let r: SheetLoad;
+      try {
+        r = await load.action(form);
+      } catch {
+        setLoadNotice(LOAD_FAILED);
+        return;
+      }
       if (r.formError) {
         setLoadNotice(r.formError);
         return;

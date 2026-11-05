@@ -387,6 +387,15 @@ describe("불러와 고치기(PR J)", () => {
     expect(dataRows()).toHaveLength(100);
   });
 
+  it("서버에 닿지 못하면 말없이 끝나지 않고 다시 불러오라고 알린다 — 시트는 그대로", async () => {
+    renderWithLoad(vi.fn<Load>().mockRejectedValue(new Error("network")));
+    fireEvent.change(cell(1, "품명"), { target: { value: "새 품목" } });
+    await loadNow();
+    expect(screen.getByText("불러오지 못했습니다 — 화면을 새로 고친 뒤 다시 불러오세요")).toBeInTheDocument();
+    expect(cell(1, "품명")).toHaveValue("새 품목");
+    expect(screen.getByRole("button", { name: "불러오기" })).toBeEnabled();
+  });
+
   it("찾은 것이 없으면 그렇게 알린다", async () => {
     renderWithLoad(vi.fn<Load>().mockResolvedValue({ rows: [], total: 0, notices: [] }));
     await loadNow();
