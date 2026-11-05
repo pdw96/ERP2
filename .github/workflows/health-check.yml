@@ -25,7 +25,8 @@ jobs:
   health:
     name: 데모 /health 가 「연결됨」이고 최신 커밋인가
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 버전을 최대 10분 기다리고, 되돌림 시각을 다시 여는 데 2분 반이 더 걸릴 수 있다.
+    timeout-minutes: 20
     env:
       DEMO_URL: https://erp-2-eta.vercel.app
       INPUT_URL: ${{ inputs.url }}
@@ -41,7 +42,8 @@ jobs:
       ATTEMPTS: "10"
       WAIT_SECONDS: "60"
       RESET_MAX_HOURS: "30"
-      RESET_RETRY_SECONDS: "90"
+      # 상태 화면은 결과를 최대 2분(expire 120초) 재사용한다 — 그보다 늦게 다시 열어야 새로 읽은 결과를 받는다(대장 NC-16).
+      RESET_RETRY_SECONDS: "150"
     steps:
       - name: 상태 화면 확인
         run: |
@@ -58,16 +60,21 @@ jobs:
             # 화면에는 이 글자가 없다). 버전을 견주지 않는 손 실행은 옛 배포를 보면 「시각이 없다」로 실패할 수 있다.
             [ -n "$INPUT_URL" ] && return 0
             local at reset_epoch age_hours
-            # 상태 화면이 시각을 잠깐 읽지 못했으면(「읽지 못함」) 결과 재사용(1분)이 지난 뒤 한 번 더 연다(대장 NC-14).
+            # 상태 화면이 시각을 잠깐 읽지 못했으면(「읽지 못함」) 결과 재사용(최대 2분)이 끝난 뒤 한 번 더 연다(대장 NC-14 · NC-16).
             if grep -q '마지막 되돌림 읽지 못함' body.html; then
               echo "상태 화면이 마지막 되돌림을 읽지 못했다 — ${RESET_RETRY_SECONDS}초 뒤 다시 연다"
               sleep "$RESET_RETRY_SECONDS"
-              curl -sS -o body.html --max-time 60 --retry 2 --retry-delay 20 "$url/health" || true
-              grep -o -E '연결됨|마지막 되돌림 [^<(]*' body.html | sort -u || true
-            fi
-            if grep -q '마지막 되돌림 읽지 못함' body.html; then
-              echo "::error::상태 화면이 마지막 되돌림 시각을 읽지 못했다(두 번) — Vercel Logs 의 「마지막 되돌림 조회 실패」 줄을 본다. docs/deploy.md 「알림」의 「되돌림이 멈췄을 때」"
-              exit 1
+              code=$(curl -sS -o body.html -w '%{http_code}' --max-time 60 --retry 2 --retry-delay 20 "$url/health" || echo "000")
+              echo "[다시] HTTP $code"
+              grep -o -E '연결됨|연결 안 됨|DB에 닿지 못했습니다|마지막 되돌림 [^<(]*' body.html | sort -u || true
+              if [ "$code" != "200" ] || ! grep -q '연결됨' body.html; then
+                echo "::error::다시 연 상태 화면이 「연결됨」이 아니다 — DB 연결 문제다. $url/health 를 열고 docs/deploy.md 「확인하기」를 본다"
+                exit 1
+              fi
+              if grep -q '마지막 되돌림 읽지 못함' body.html; then
+                echo "::error::상태 화면이 마지막 되돌림 시각을 ${RESET_RETRY_SECONDS}초 간격으로 두 번 읽지 못했다 — Vercel Logs 의 「마지막 되돌림 조회 실패」 줄을 본다. docs/deploy.md 「알림」의 「되돌림이 멈췄을 때」"
+                exit 1
+              fi
             fi
             at=$(grep -o -E '마지막 되돌림 [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}' body.html | head -n 1 | cut -d' ' -f3-4 || true)
             reset_epoch=$(date -u -d "$at +0900" +%s 2>/dev/null || echo "")
