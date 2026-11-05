@@ -35,15 +35,17 @@ export function itemSheetColumns(units: readonly Option[], classes: ClassLists =
       label: "유형",
       rule: `${listOf(ITEM_TYPES)} — 꼭 넣습니다. 불러온 줄은 고칠 수 없습니다`,
       width: 8,
+      required: true,
       fixed: true,
     },
-    { key: "name", label: "품명", rule: "100자까지 — 꼭 넣습니다", width: 18 },
+    { key: "name", label: "품명", rule: "100자까지 — 꼭 넣습니다", width: 18, required: true },
     { key: "spec", label: "규격", rule: "100자까지 — 비워도 됩니다", width: 14 },
     {
       key: "unit",
       label: "단위",
       rule: `${units.length ? listOf(units) : "공통코드 UNIT 의 값"} — 이름이나 코드, 꼭 넣습니다`,
       width: 7,
+      required: true,
     },
     { key: "procurement", label: "조달구분", rule: `${listOf(PROC_TYPES)} — 비우면 유형의 기본값`, width: 8 },
     { key: "inspectIn", label: "수입검사", rule: `${YES_NO} — 비우면 유형의 기본값`, width: 6 },
@@ -69,15 +71,23 @@ export function itemSheetColumns(units: readonly Option[], classes: ClassLists =
 /** 거래처 시트의 칸 — 국가의 안내는 공통코드 `COUNTRY` 의 사용 중인 값으로 만든다. */
 export function partnerSheetColumns(countries: readonly Option[]): SheetColumn[] {
   return [
-    { key: "name", label: "거래처명", rule: "100자까지 — 꼭 넣습니다", width: 20 },
+    { key: "name", label: "거래처명", rule: "100자까지 — 꼭 넣습니다", width: 20, required: true },
     {
       key: "isSupplier",
       label: "매입처",
       rule: `${YES_NO} — 매입처 · 매출처 가운데 하나 이상`,
       errorKey: "role",
       width: 6,
+      required: true,
     },
-    { key: "isCustomer", label: "매출처", rule: `${YES_NO} — 비우면 N`, errorKey: "role", width: 6 },
+    {
+      key: "isCustomer",
+      label: "매출처",
+      rule: `${YES_NO} — 비우면 N. 매입처 · 매출처 가운데 하나 이상`,
+      errorKey: "role",
+      width: 6,
+      required: true,
+    },
     {
       key: "country",
       label: "국가",

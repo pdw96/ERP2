@@ -38,7 +38,8 @@ afterEach(() => vi.restoreAllMocks());
 describe("시트", () => {
   it("칸은 한 건 등록 화면의 순서이고(PR H 의 분류 · 비고, PR J 의 사용 여부는 지금 칸의 뒤), 처음에 다섯 줄이다", () => {
     renderItems();
-    const heads = screen.getAllByRole("columnheader").map((th) => th.textContent);
+    // 칸 이름만 — 칸의 종류(필수 · 선택 · 수정 불가)는 화면 읽기 전용 글로 붙는다.
+    const heads = screen.getAllByRole("columnheader").map((th) => th.firstChild?.textContent);
     // 코드는 붙여넣는 칸이 아니라 줄 번호 옆에 보이기만 한다(PR J).
     expect(heads[1]).toBe("코드");
     expect(heads.slice(2, -1)).toEqual([
@@ -62,11 +63,34 @@ describe("시트", () => {
     expect(dataRows()).toHaveLength(5);
   });
 
-  it("칸 순서 안내에 고르는 값(단위는 공통코드의 값)과 빈 칸의 기본값이 보인다", () => {
+  it("칸 머리의 색이 필수 입력 · 선택 입력 · 수정 불가를 가르고, 받는 값은 칸 이름에 올리면 보인다(저자 판정 2026-11-05)", () => {
     renderItems();
-    const guide = screen.getByText("칸 순서와 넣는 값").closest("details")!;
-    expect(guide).toHaveTextContent("단위 — 개(EA) · 킬로그램(KG) — 이름이나 코드, 꼭 넣습니다");
-    expect(guide).toHaveTextContent("조달구분 — 구매(BUY) · 생산(MAKE) — 비우면 유형의 기본값");
+    const head = (name: string) => screen.getByRole("columnheader", { name: new RegExp(`^${name}\\(`) });
+    for (const name of ["유형", "품명", "단위"]) expect(head(name)).toHaveAccessibleName(`${name}(필수 입력)`);
+    for (const name of ["규격", "조달구분", "비고", "사용 여부"])
+      expect(head(name)).toHaveAccessibleName(`${name}(선택 입력)`);
+    expect(head("코드")).toHaveAccessibleName("코드(수정 불가)");
+    expect(head("단위")).toHaveClass("bg-safety/40");
+    expect(head("규격")).toHaveClass("bg-floor");
+    expect(head("코드")).toHaveClass("bg-rule");
+    expect(head("단위")).toHaveAttribute("title", "개(EA) · 킬로그램(KG) — 이름이나 코드, 꼭 넣습니다");
+    expect(head("조달구분")).toHaveAttribute("title", "구매(BUY) · 생산(MAKE) — 비우면 유형의 기본값");
+    // 칸마다 받는 값을 늘어놓은 긴 목록은 없다.
+    expect(screen.queryByText("칸 순서와 넣는 값")).toBeNull();
+    expect(
+      within(screen.getByRole("list", { name: "칸의 색" }))
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual(["필수 입력", "선택 입력", "수정 불가"]);
+  });
+
+  it("거래처는 거래처명 · 매입처 · 매출처가 필수 입력이다", () => {
+    render(<SheetGrid columns={partnerSheetColumns([])} action={vi.fn()} what="거래처" listHref="/master/partners" />);
+    const required = screen
+      .getAllByRole("columnheader")
+      .filter((th) => th.textContent?.endsWith("(필수 입력)"))
+      .map((th) => th.firstChild?.textContent);
+    expect(required).toEqual(["거래처명", "매입처", "매출처"]);
   });
 
   it("엑셀에서 복사한 여러 줄을 붙여넣으면 고른 칸부터 채워지고, 모자란 줄은 더해진다", () => {

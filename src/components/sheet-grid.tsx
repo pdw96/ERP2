@@ -53,6 +53,10 @@ type Props = {
 // original — 불러온 줄의 불러온 때 값. 이것과 달라진 줄만 저장한다.
 type Line = { values: SheetRow; errors: SheetErrors; original?: SheetRow };
 
+/** 칸 머리의 색 — 필수 입력 · 선택 입력 · 고칠 수 없는 칸(코드, 불러온 줄의 유형). */
+const KIND_CLASS = { required: "bg-safety/40", optional: "bg-floor", fixed: "bg-rule text-muted" } as const;
+const KIND_LABEL = { required: "필수 입력", optional: "선택 입력", fixed: "수정 불가" } as const;
+
 const LOAD_FAILED = "불러오지 못했습니다 — 화면을 새로 고친 뒤 다시 불러오세요";
 
 /** 처음 · 저장한 뒤 시트가 갖는 줄 수. 「줄 더하기」도 이만큼 더한다. */
@@ -226,20 +230,20 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
 
   return (
     <div className="mt-6">
-      <details open className="border-y border-rule bg-white px-4 py-3">
-        <summary className="cursor-pointer font-semibold">칸 순서와 넣는 값</summary>
-        <p className="mt-2 text-sm text-muted">
-          엑셀에서 이 순서대로 칸을 두고 여러 줄을 복사해, 시트의 첫 칸을 누른 뒤 붙여넣으세요. 고른 칸부터 오른쪽 ·
-          아래로 채워지고, 첫 줄이 머리글이면 건너뜁니다. 한 번에 {SHEET_MAX_ROWS}줄까지 받습니다.
+      {/* 칸마다 받는 값은 칸 머리에 마우스를 올리면 보인다. 머리의 색이 필수 · 선택 · 고칠 수 없는 칸을 가른다(저자 판정 2026-11-05). */}
+      <div className="border-y border-rule bg-white px-4 py-3">
+        <p className="text-sm text-muted">
+          엑셀에서 시트와 같은 칸 순서로 여러 줄을 복사해, 시트의 첫 칸을 누른 뒤 붙여넣으세요. 첫 줄이 머리글이면
+          건너뜁니다. 한 번에 {SHEET_MAX_ROWS}줄까지 받습니다. 칸에 넣는 값은 칸 이름에 마우스를 올리면 보입니다.
         </p>
-        <ol className="mt-2 grid list-decimal gap-1 pl-6 text-sm">
-          {columns.map((c) => (
-            <li key={c.key}>
-              <span className="font-semibold">{c.label}</span> — {c.rule}
-            </li>
-          ))}
-        </ol>
         <div className="mt-3 flex flex-wrap items-center gap-3">
+          <ul aria-label="칸의 색" className="flex flex-wrap gap-2 text-sm">
+            {(["required", "optional", "fixed"] as const).map((k) => (
+              <li key={k} className={`rounded-sm border border-rule px-2 py-0.5 ${KIND_CLASS[k]}`}>
+                {KIND_LABEL[k]}
+              </li>
+            ))}
+          </ul>
           <button
             type="button"
             onClick={copyHeader}
@@ -251,7 +255,7 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
             {copyNotice}
           </span>
         </div>
-      </details>
+      </div>
 
       {load && (
         <form onSubmit={onLoad} className="mt-4 border-y border-rule bg-white px-4 py-3">
@@ -312,14 +316,27 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
                   <th scope="col" className="sticky left-0 bg-floor px-2 py-2 text-right">
                     <span className="sr-only">줄</span>
                   </th>
-                  <th scope="col" className="px-2 py-2 font-semibold whitespace-nowrap">
-                    코드
+                  <th
+                    scope="col"
+                    title="코드는 서버가 붙입니다 — 고칠 수 없습니다"
+                    className={`px-2 py-2 font-semibold whitespace-nowrap ${KIND_CLASS.fixed}`}
+                  >
+                    코드<span className="sr-only"> ({KIND_LABEL.fixed})</span>
                   </th>
-                  {columns.map((c) => (
-                    <th key={c.key} scope="col" className="px-1 py-2 font-semibold whitespace-nowrap">
-                      {c.label}
-                    </th>
-                  ))}
+                  {columns.map((c) => {
+                    const kind = c.required ? "required" : "optional";
+                    return (
+                      <th
+                        key={c.key}
+                        scope="col"
+                        title={c.rule}
+                        className={`px-1 py-2 font-semibold whitespace-nowrap ${KIND_CLASS[kind]}`}
+                      >
+                        {c.label}
+                        <span className="sr-only"> ({KIND_LABEL[kind]})</span>
+                      </th>
+                    );
+                  })}
                   <th scope="col">
                     <span className="sr-only">지우기</span>
                   </th>
@@ -367,7 +384,7 @@ export function SheetGrid({ columns, errorLabels = {}, action, what, listHref, l
                                 invalid
                                   ? "border-red-700 bg-white"
                                   : fixed
-                                    ? "border-transparent bg-floor text-muted"
+                                    ? `border-transparent ${KIND_CLASS.fixed}`
                                     : "border-transparent hover:border-rule"
                               } focus-visible:outline-machine`}
                             />

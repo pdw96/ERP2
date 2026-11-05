@@ -8,8 +8,10 @@ export const SHEET_MAX_ROWS = 100;
 export type SheetColumn = {
   key: string;
   label: string;
-  /** 칸에 넣는 값의 규칙 — 화면의 「칸 순서」 안내에 보인다. */
+  /** 칸에 넣는 값의 규칙 — 화면에서 칸 이름에 마우스를 올리면 보인다. */
   rule: string;
+  /** 꼭 넣는 칸 — 화면이 칸 머리를 필수 입력의 색으로 보인다(새 줄 기준). */
+  required?: boolean;
   /** 거절을 묶어 보이는 자리 — 예: 매입처 · 매출처는 「구분」 한 자리. 없으면 key. */
   errorKey?: string;
   /** 칸의 넓이(글자 수) — 화면이 칸을 그릴 때만 쓴다. */
