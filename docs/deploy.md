@@ -98,10 +98,13 @@ PR 마다 Neon 에 미리보기 DB 가지(`preview/<가지 이름>`)가 하나 �
 1. **열쇠를 만든다** — Neon 콘솔(<https://console.neon.tech>)에서 왼쪽 위의 조직 이름을 누르고 **Settings** → **API keys** →
    **Create new** 를 누른다.
    - **Project-scoped** 를 고르고 프로젝트 `cool-smoke-75501764` 를 고른다 — 이 열쇠는 이 프로젝트 하나만 다룬다.
+   - **Organization**(조직 전체) 열쇠는 만들지 않는다 — 이 프로젝트 말고 조직의 모든 프로젝트를 다루고 지울 수도 있다.
    - 이름은 `github-preview-cleanup`.
    - 만들면 열쇠가 **한 번만** 보인다. 복사해 두고 2 에 바로 넣는다(다른 곳에 적어 두지 않는다).
-   - **Project-scoped** 가 보이지 않으면 여기서 멈추고 Claude 에게 알린다 — 개인 열쇠(**Account settings** → **API keys**)는
-     내 계정의 모든 프로젝트를 다루므로 쓰기 전에 함께 정한다.
+   - **Project-scoped** 가 보이지 않으면 여기서 멈추고 Claude 에게 알린다. 개인 열쇠(**Account settings** → **API keys**)도
+     조직 열쇠처럼 내 계정의 모든 프로젝트를 다루므로 쓰기 전에 함께 정한다.
+   - **만든 뒤 확인한다** — 같은 **API keys** 목록에서 `github-preview-cleanup` 줄의 범위가 프로젝트 `cool-smoke-75501764` 인지
+     본다. 아니면(조직 전체로 보이면) 그 줄의 **Revoke** 를 누르고 다시 만든다.
 2. **열쇠를 GitHub 에 넣는다** — GitHub 의 ERP2 레포 → **Settings** → **Secrets and variables** → **Actions**.
    - **Secrets** 탭 → **New repository secret** — **Name** `NEON_API_KEY`, **Secret** 1 의 열쇠 → **Add secret**.
    - **Variables** 탭 → **New repository variable** — **Name** `NEON_PROJECT_ID`, **Value** `cool-smoke-75501764` →

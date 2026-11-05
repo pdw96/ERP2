@@ -4,8 +4,10 @@ name: 미리보기 DB 가지 지우기
 # Vercel 화면에서 이은 Neon(Vercel-Managed)은 Git 가지를 지워도 DB 가지를 지우지 않아, 무료 요금제의 10개 한도가 찬다 —
 # 차면 다음 PR 의 미리보기 배포가 「Resource provisioning failed」로 시작도 못 한다.
 # 열쇠는 이 Neon 프로젝트 하나로 좁힌 API 키다(docs/deploy.md 「5. 미리보기 DB 가지 지우기」).
+# pull_request_target — PR 쪽이 아니라 main 의 이 파일이 돈다. PR 의 가지가 이 파일을 고쳐 열쇠를 꺼내는 길을 막고,
+# 머지 충돌이 있는 PR 을 닫아도 돈다(pull_request 는 충돌이 있으면 돌지 않는다). PR 의 코드는 받지도 돌리지도 않는다.
 on:
-  pull_request:
+  pull_request_target:
     types: [closed]
 
 # GitHub 의 토큰은 쓰지 않는다.
