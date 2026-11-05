@@ -205,6 +205,18 @@ describe("품목 시트의 고침", () => {
     ]);
   });
 
+  it("bigint 를 넘는 버전(20자리)은 그 줄만 남고 같은 시트의 다른 줄은 저장된다(대장 NC-9)", async () => {
+    const [big, other] = [await loadedItem("RM-0002"), await loadedItem("RM-0003")];
+    const r = await saveItemRows(db, [
+      { ...big, [VERSION_KEY]: "99999999999999999999", note: "버전 조작" },
+      { ...other, note: "고침" },
+      { ...big, [CODE_KEY]: "", [VERSION_KEY]: "", name: "새 품목" },
+    ]);
+    expect(r.saved.map((s) => s.updated ?? false)).toEqual([true, false]);
+    expect(r.rejected.map((x) => x.errors[ROW_ERROR])).toEqual([STALE_ROW]);
+    expect((await getItem(db, "RM-0003"))!.note).toBe("고침");
+  });
+
   it("고친 줄이 칸의 규칙에 걸리면 한 건 수정과 같은 까닭으로 남는다", async () => {
     const row = await loadedItem("RM-0001");
     const r = await saveItemRows(db, [{ ...row, name: "", leadTimeDays: "400" }]);
@@ -280,7 +292,7 @@ describe("한 건 수정의 버전", () => {
   });
 
   it("버전이 없거나 꼴이 틀리면 고치지 않는다", async () => {
-    for (const version of ["", "abc", "1; drop table items"])
+    for (const version of ["", "abc", "1; drop table items", "99999999999999999999"])
       expect(await updateItem(db, "RM-0001", waferEdit({ safetyStock: "1" }), version)).toMatchObject({
         formError: STALE,
       });

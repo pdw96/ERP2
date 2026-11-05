@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { checkDatabase, describeFailure } from "@/db/status";
+import { checkDatabase, describeFailure, readLastReset } from "@/db/status";
 
 describe("checkDatabase", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("닿으면 DB 의 현재 시각과 함께 「연결됨」", async () => {
+  it("닿으면 DB 의 현재 시각 · 마지막 되돌림 시각과 함께 「연결됨」", async () => {
     const now = new Date("2026-11-02T03:04:05Z");
-    const probe = vi.fn().mockResolvedValue(now);
-    expect(await checkDatabase("postgres://u:p@db.example/erp", probe)).toEqual({ state: "connected", now });
+    const lastReset = new Date("2026-11-01T19:00:02Z");
+    const probe = vi.fn().mockResolvedValue({ now, lastReset });
+    expect(await checkDatabase("postgres://u:p@db.example/erp", probe)).toEqual({ state: "connected", now, lastReset });
     expect(probe).toHaveBeenCalledWith("postgres://u:p@db.example/erp");
   });
 
@@ -38,6 +39,39 @@ describe("checkDatabase", () => {
   it("형식이 틀린 값이면 실제 드라이버로 물어도 「닿지 못함」", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await checkDatabase("이건-주소가-아니다")).toEqual({ state: "unreachable" });
+  });
+});
+
+describe("readLastReset — 마지막 되돌림을 읽는다(대장 NC-14)", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("시각이 있으면 그 시각, 샘플이 없으면 「none」", async () => {
+    const at = new Date("2026-11-04T19:07:35Z");
+    expect(await readLastReset(async () => at)).toBe(at);
+    expect(await readLastReset(async () => null)).toBe("none");
+  });
+
+  it("테이블이 아직 없으면(42P01) 로그 없이 「none」", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const missing = Object.assign(new Error("Failed query"), {
+      cause: { code: "42P01", severity: "ERROR", message: 'relation "code_groups" does not exist' },
+    });
+    expect(await readLastReset(() => Promise.reject(missing))).toBe("none");
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it("그 밖의 까닭이면 「unreadable」 — 「샘플이 없다」로 적지 않고, 까닭을 로그에 한 줄 남긴다", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const timeout = Object.assign(new Error("Failed query"), {
+      cause: { code: "57014", severity: "ERROR", message: "canceling statement due to statement timeout" },
+    });
+    expect(await readLastReset(() => Promise.reject(timeout))).toBe("unreadable");
+    expect(log).toHaveBeenCalledWith(
+      "마지막 되돌림 조회 실패: DB 질의 실패: 57014 ERROR canceling statement due to statement timeout",
+    );
+    const net = Object.assign(new Error("connect ECONNRESET 10.0.0.5:5432"), { code: "ECONNRESET" });
+    expect(await readLastReset(() => Promise.reject(net))).toBe("unreadable");
+    expect(log).toHaveBeenLastCalledWith("마지막 되돌림 조회 실패: DB 연결 실패: ECONNRESET");
   });
 });
 
@@ -101,8 +135,8 @@ describe("describeFailure — 코드만(방문자 데이터에 닿는 경로, �
     expect(describeFailure(pg, "code-only")).toBe("DB 질의 실패: 23514 ERROR table=items constraint=items_name_length");
   });
 
-  it("코드가 없는 오류는 이름만 남긴다", () => {
-    expect(describeFailure(new TypeError(`bad ${visitor}`), "code-only")).toBe("DB 질의 실패: TypeError");
+  it("코드가 없는 오류(코드의 버그 등)는 「처리 실패」와 이름만 남긴다 — DB 가 거절한 것으로 적지 않는다(대장 NC-12)", () => {
+    expect(describeFailure(new TypeError(`bad ${visitor}`), "code-only")).toBe("처리 실패: TypeError");
   });
 
   it("네트워크 오류는 그대로 코드만", () => {

@@ -3,6 +3,7 @@ import { asc, eq, getTableName, isTable, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { nextCode } from "@/db/numbering";
 import { RESET_TABLES, resetToSample } from "@/db/reset";
+import { lastResetAt } from "@/db/status";
 import { SAMPLE_CODE_GROUPS, SAMPLE_CODES, SAMPLE_ITEMS, SAMPLE_PARTNERS, SAMPLE_WAREHOUSES } from "@/db/sample";
 import * as schema from "@/db/schema";
 import { codes, items, partners, warehouses } from "@/db/schema";
@@ -95,6 +96,25 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
       count: number;
     }[];
     expect(count).toBe(5);
+  });
+});
+
+describe("마지막 되돌림 시각 — 상태 화면이 보이고 정기 확인이 본다(대장 NC-10)", () => {
+  it("되돌릴 때마다 그 시각으로 바뀌고, 방문자가 고쳐도 바뀌지 않는다", async () => {
+    await resetToSample(db);
+    const first = await lastResetAt(db);
+    expect(first).toBeInstanceOf(Date);
+    await db.update(codes).set({ name: "방문자가 고침" }).where(eq(codes.code, "EA"));
+    expect(await lastResetAt(db)).toEqual(first);
+    await new Promise((r) => setTimeout(r, 5));
+    await resetToSample(db);
+    expect((await lastResetAt(db))!.getTime()).toBeGreaterThan(first!.getTime());
+  });
+
+  it("샘플이 없으면 null", async () => {
+    await db.execute(sql`truncate table ${sql.raw(RESET_TABLES.join(", "))} restart identity cascade`);
+    expect(await lastResetAt(db)).toBeNull();
+    await resetToSample(db);
   });
 });
 

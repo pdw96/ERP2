@@ -147,9 +147,12 @@ export const versionOf = (updatedAt: AnyPgColumn) =>
 /** 버전의 꼴 — 숫자만. 다르면 DB 에 묻지 않고 「다른 사람이 먼저 고쳤다」로 본다. */
 export const VERSION = /^[0-9]{1,20}$/;
 
-/** 그 행의 버전이 이것인가 — 고침의 WHERE 에 붙인다. */
+/**
+ * 그 행의 버전이 이것인가 — 고침의 WHERE 에 붙인다. 받은 값을 수로 바꾸지 않고 글자로 견준다 — bigint 를 넘는 20자리 수가
+ * 와도 DB 가 거절(22003)하지 않고 「다른 사람이 먼저 고쳤다」가 된다. 그렇지 않으면 시트 전체가 저장되지 않는다(대장 NC-9).
+ */
 export const versionIs = (updatedAt: AnyPgColumn, version: string) =>
-  sql`(extract(epoch from ${updatedAt}) * 1000000)::bigint = ${version}::bigint`;
+  sql`(extract(epoch from ${updatedAt}) * 1000000)::bigint::text = ${version}`;
 
 /** 고친 때 — 마이크로초까지 남겨 같은 밀리초의 두 고침도 버전이 갈린다. */
 export const touched = () => sql`clock_timestamp()`;
