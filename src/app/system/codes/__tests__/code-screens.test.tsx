@@ -134,6 +134,7 @@ describe("값 수정 화면", () => {
     render(
       <CodeForm
         mode="edit"
+        version="7"
         group={{ code: "COUNTRY", name: "국가" }}
         code="KR"
         alwaysActive
@@ -154,6 +155,7 @@ describe("값 수정 화면", () => {
     render(
       <CodeForm
         mode="edit"
+        version="7"
         group={unit}
         code="G"
         action={action}
@@ -170,5 +172,7 @@ describe("값 수정 화면", () => {
     const sent = action.mock.calls[0][1] as FormData;
     expect(sent.has("code")).toBe(false);
     expect([sent.get("name"), sent.get("sortOrder"), sent.get("active")]).toEqual(["그램", "40", "N"]);
+    // 화면을 연 때의 버전을 함께 보낸다 — 그 사이 다른 사람이 고쳤으면 서버가 막는다(PR J).
+    expect(sent.get("version")).toBe("7");
   });
 });

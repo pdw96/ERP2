@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, ne, or, type SQL } from "drizzle-orm";
+import { and, asc, count, eq, getTableColumns, ilike, inArray, ne, or, type SQL } from "drizzle-orm";
 import {
   parseNewPartner,
   parsePartnerUpdate,
@@ -8,20 +8,41 @@ import {
 } from "@/lib/partner-input";
 import {
   COLLIDED,
+  DUPLICATE_ROW,
   REGISTER_LOCK,
+  STALE,
+  STALE_ROW,
+  VERSION,
   constraintOf,
   first,
   likeLiteral,
   limitMessage,
   registerRowsWithCode,
   registerWithCode,
+  savedCode,
   searchText,
+  touched,
+  updateRowsWithVersion,
+  versionIs,
+  versionOf,
   type Params,
+  type RegisteredRow,
+  type UpdatedRow,
 } from "./master-shared";
 import { nextCode } from "./numbering";
 import { KOREA } from "@/lib/master-codes";
-import { ROW_ERROR, isBlankRow, type SheetResult, type SheetRow } from "@/lib/sheet";
-import { readPartnerRow } from "@/lib/sheet-input";
+import {
+  CODE_KEY,
+  ROW_ERROR,
+  SHEET_MAX_ROWS,
+  VERSION_KEY,
+  isBlankRow,
+  isLoadedRow,
+  type SheetErrors,
+  type SheetResult,
+  type SheetRow,
+} from "@/lib/sheet";
+import { partnerSheetRow, readPartnerEditRow, readPartnerRow } from "@/lib/sheet-input";
 import { codes, partners } from "./schema";
 import type { Db } from "./types";
 
@@ -32,6 +53,9 @@ import type { Db } from "./types";
 export const PARTNER_LIMIT = 1000;
 
 export type Partner = typeof partners.$inferSelect;
+/** 거래처와 그 버전(마지막으로 고친 때) — 고치는 화면 · 시트가 들고 있다가 저장할 때 돌려준다(PR J). */
+export type PartnerWithVersion = Partner & { version: string };
+const WITH_VERSION = { ...getTableColumns(partners), version: versionOf(partners.updatedAt) };
 
 /** 거래처 구분 — 한 거래처가 둘 다일 수 있다(ADR 0003). 주소의 거르기 값과 화면의 이름. */
 export const PARTNER_ROLES = [
@@ -107,24 +131,41 @@ export type SearchScope = keyof typeof SEARCHED;
  * 둘 다인 거래처는 어느 쪽으로 걸러도 보인다.
  */
 export async function listPartners(db: Db, filter: PartnerFilter, scope: SearchScope = "codeName"): Promise<Partner[]> {
+  return db.select().from(partners).where(partnerWhere(filter, scope)).orderBy(asc(partners.code));
+}
+
+function partnerWhere(filter: PartnerFilter, scope: SearchScope) {
   const where: SQL[] = [];
   if (filter.q) where.push(or(...SEARCHED[scope].map((c) => ilike(c, likeLiteral(filter.q))))!);
   if (filter.role === "supplier") where.push(eq(partners.isSupplier, true));
   if (filter.role === "customer") where.push(eq(partners.isCustomer, true));
   if (filter.country) where.push(eq(partners.country, filter.country));
   if (!filter.includeInactive) where.push(eq(partners.active, true));
-  return db
-    .select()
-    .from(partners)
-    .where(and(...where))
-    .orderBy(asc(partners.code));
+  return and(...where);
+}
+
+/**
+ * 시트에 불러오기(PR J) — 등록의 목록과 같은 찾기 · 거르기(국가 거르기도 받는다)로, 코드 순 앞 100건을 시트의 줄로.
+ * 찾은 건수(total)도 돌려준다 — 100건을 넘으면 화면이 「앞 100건만」을 알린다.
+ */
+export async function loadPartnersForSheet(
+  db: Db,
+  filter: PartnerFilter,
+): Promise<{ rows: SheetRow[]; total: number }> {
+  const where = partnerWhere(filter, "codeName");
+  const [found, [{ n }]] = await Promise.all([
+    db.select(WITH_VERSION).from(partners).where(where).orderBy(asc(partners.code)).limit(SHEET_MAX_ROWS),
+    db.select({ n: count() }).from(partners).where(where),
+  ]);
+  return { rows: found.map(partnerSheetRow), total: n };
 }
 
 export const PARTNER_CODE = /^BP-[0-9]{4,}$/;
 
-export async function getPartner(db: Db, code: string): Promise<Partner | undefined> {
+/** 거래처 하나와 그 버전 — 한 쿼리로 읽어, 보인 값과 버전이 어긋나지 않는다. */
+export async function getPartner(db: Db, code: string): Promise<PartnerWithVersion | undefined> {
   if (!PARTNER_CODE.test(code)) return undefined;
-  const [row] = await db.select().from(partners).where(eq(partners.code, code));
+  const [row] = await db.select(WITH_VERSION).from(partners).where(eq(partners.code, code));
   return row;
 }
 
@@ -270,11 +311,16 @@ export async function createPartner(db: Db, values: PartnerValues): Promise<Part
   }
 }
 
-/** 수정 — 코드는 바꾸지 않는다. 거래처명 · 구분 · 국가 · 번호 · 설명용 칸 · 사용 여부. */
+/**
+ * 수정 — 코드는 바꾸지 않는다. 거래처명 · 구분 · 국가 · 번호 · 설명용 칸 · 사용 여부.
+ * version 은 화면을 연 때의 버전이다 — 그 사이 다른 사람이 고쳤으면 저장하지 않는다(저자 판정 2026-11-05).
+ * 주지 않으면 버전을 보지 않는다(서버 안의 시험용 — 화면의 입구는 늘 준다).
+ */
 export async function updatePartner(
   db: Db,
   code: string,
   values: PartnerValues,
+  version?: string,
 ): Promise<PartnerSaveResult | { ok: false; notFound: true }> {
   const current = await getPartner(db, code);
   if (!current) return { ok: false, notFound: true };
@@ -282,8 +328,18 @@ export async function updatePartner(
   const errors: PartnerErrors = parsed.ok ? {} : { ...parsed.errors };
   await checkCountry(db, values, errors, current.country);
   if (!parsed.ok || Object.keys(errors).length) return { ok: false, errors, values };
+  if (version !== undefined && !VERSION.test(version)) return { ok: false, errors: {}, formError: STALE, values };
   try {
-    await db.update(partners).set(parsed.value).where(eq(partners.id, current.id));
+    const done = await db
+      .update(partners)
+      .set({ ...parsed.value, updatedAt: touched() })
+      .where(
+        version === undefined
+          ? eq(partners.id, current.id)
+          : and(eq(partners.id, current.id), versionIs(partners.updatedAt, version)),
+      )
+      .returning({ id: partners.id });
+    if (done.length === 0) return { ok: false, errors: {}, formError: STALE, values };
     return { ok: true, code };
   } catch (error) {
     return asRejection(error, values);
@@ -295,53 +351,108 @@ export async function updatePartner(
 // 시트의 거절 자리 — 사업자등록번호 · 해외 사업자번호는 한 칸(「사업자번호」)이다.
 const SHEET_PLACE: Partial<Record<PartnerErrorKey, string>> = { foreignBizNo: "bizNo" };
 
+/** 저장하지 못한 줄의 까닭 — 등록 상한 · 겹침 · 버전 · DB 제약. */
+function rowRejection(r: RegisteredRow | UpdatedRow): SheetErrors {
+  if (r.ok) return {};
+  if (r.reason === "limit") return { [ROW_ERROR]: limitMessage("거래처", PARTNER_LIMIT) };
+  if (r.reason === "collided") return { [ROW_ERROR]: COLLIDED };
+  if (r.reason === "stale") return { [ROW_ERROR]: STALE_ROW };
+  const field = CONSTRAINT_FIELD[constraintOf(r.error) ?? ""];
+  return { [field ? (SHEET_PLACE[field] ?? field) : ROW_ERROR]: "받을 수 없는 값입니다" };
+}
+
+/** 시트가 고치려는 거래처들 — 코드의 꼴이 맞는 것만 DB 에 묻는다. */
+async function partnersByCode(db: Db, rows: readonly SheetRow[]): Promise<Map<string, Partner>> {
+  const wanted = [...new Set(rows.map((r) => r[CODE_KEY]).filter((c) => PARTNER_CODE.test(c)))];
+  if (wanted.length === 0) return new Map();
+  const found = await db.select().from(partners).where(inArray(partners.code, wanted));
+  return new Map(found.map((p) => [p.code, p]));
+}
+
 /**
- * 시트형 등록 — 맞는 줄만 저장하고 코드를 줄 차례로 붙인다. 틀린 줄은 넣은 글자 그대로 까닭과 함께 돌려준다(성공 기준 11).
- * 빈 줄은 건너뛴다. 등록 상한(1,000)을 넘는 줄은 저장되지 않고 남는다. 저장한 줄마다 같은 사업자번호를 쓰는 다른 거래처를
- * 함께 돌려준다 — 막지 않고 경고만 한다(한 건 등록과 같다, 같은 시트의 줄끼리도). 그 확인은 저장과 한 트랜잭션에서 한다.
+ * 시트형 등록 · 고침(성공 기준 11 · 15) — 맞는 줄만 저장한다. 틀린 줄은 넣은 글자 그대로 까닭과 함께 돌려준다.
+ * 코드가 없는 줄은 새 등록이다 — 코드를 줄 차례로 붙이고, 등록 상한(1,000)을 넘는 줄은 남는다.
+ * 코드가 있는 줄(불러온 줄)은 고침이다 — 한 건 수정의 규칙으로 보고, 불러온 뒤 다른 사람이 고쳤으면 그 줄만 남는다.
+ * 저장한 줄마다 같은 사업자번호를 쓰는 다른 거래처를 함께 돌려준다 — 막지 않고 경고만 한다(한 건 등록과 같다, 같은 시트의
+ * 줄끼리도). 고침 · 등록 · 그 확인은 한 트랜잭션이다 — 제약 위반이 아닌 실패면 아무것도 저장되지 않는다.
  */
-export async function createPartnerRows(db: Db, rows: readonly SheetRow[]): Promise<SheetResult> {
-  const countries = await allCountries(db);
+export async function savePartnerRows(db: Db, rows: readonly SheetRow[]): Promise<SheetResult> {
   const filled = rows.filter((r) => !isBlankRow(r));
-  const read = filled.map((row) => ({ row, ...readPartnerRow(row, countries) }));
-  const valid = read.flatMap((r) => (r.ok ? [r] : []));
+  const [countries, currents] = await Promise.all([allCountries(db), partnersByCode(db, filled)]);
+  const seen = new Map<string, number>();
+  for (const r of filled) if (isLoadedRow(r)) seen.set(r[CODE_KEY], (seen.get(r[CODE_KEY]) ?? 0) + 1);
+
+  type Read =
+    | { row: SheetRow; kind: "rejected"; errors: SheetErrors }
+    | { row: SheetRow; kind: "new"; value: ReturnType<typeof readPartnerRow> & { ok: true } }
+    | { row: SheetRow; kind: "edit"; current: Partner; value: ReturnType<typeof readPartnerEditRow> & { ok: true } };
+  const read: Read[] = filled.map((row) => {
+    if (!isLoadedRow(row)) {
+      const r = readPartnerRow(row, countries);
+      return r.ok ? { row, kind: "new", value: r } : { row, kind: "rejected", errors: r.errors };
+    }
+    const current = currents.get(row[CODE_KEY]);
+    if (!current) return { row, kind: "rejected", errors: { [ROW_ERROR]: "없는 거래처입니다 — 이 행을 지우세요" } };
+    if (seen.get(row[CODE_KEY])! > 1) return { row, kind: "rejected", errors: { [ROW_ERROR]: DUPLICATE_ROW } };
+    if (!VERSION.test(row[VERSION_KEY] ?? "")) return { row, kind: "rejected", errors: { [ROW_ERROR]: STALE_ROW } };
+    const r = readPartnerEditRow(row, countries, current);
+    return r.ok ? { row, kind: "edit", current, value: r } : { row, kind: "rejected", errors: r.errors };
+  });
+  const edits = read.flatMap((r) => (r.kind === "edit" ? [r] : []));
+  const news = read.flatMap((r) => (r.kind === "new" ? [r] : []));
 
   // 같은 번호 확인은 저장과 같은 트랜잭션에서 — 같은 시트의 줄끼리도 보이고, 실패하면 아무것도 저장되지 않는다.
   const shared = new Map<string, SharedBizNo[]>();
-  const results = await registerRowsWithCode(db, {
-    table: partners,
-    lock: REGISTER_LOCK.partners,
-    limit: PARTNER_LIMIT,
-    uniqueConstraint: "partners_code_unique",
-    rows: valid.map((r) => ({
-      prefix: "BP" as const,
-      insert: (tx: Db, code: string) => tx.insert(partners).values({ ...r.value, code }),
-    })),
-    afterAll: async (tx, saved) => {
-      for (const [i, s] of saved.entries())
-        if (s.ok) shared.set(s.code, await partnersSharingBizNo(tx, { code: s.code, ...valid[i].value }));
-    },
+  const outcome = await db.transaction(async (tx) => {
+    const updated = await updateRowsWithVersion(
+      tx,
+      edits.map((r) => ({
+        update: async (sp: Db) =>
+          (
+            await sp
+              .update(partners)
+              .set({ ...r.value.value, updatedAt: touched() })
+              .where(and(eq(partners.id, r.current.id), versionIs(partners.updatedAt, r.row[VERSION_KEY])))
+              .returning({ id: partners.id })
+          ).length,
+      })),
+    );
+    const registered = news.length
+      ? await registerRowsWithCode(tx, {
+          table: partners,
+          lock: REGISTER_LOCK.partners,
+          limit: PARTNER_LIMIT,
+          uniqueConstraint: "partners_code_unique",
+          rows: news.map((r) => ({
+            prefix: "BP" as const,
+            insert: (sp: Db, code: string) => sp.insert(partners).values({ ...r.value.value, code }),
+          })),
+        })
+      : [];
+    for (const [i, u] of updated.entries())
+      if (u.ok) {
+        const code = edits[i].current.code;
+        shared.set(code, await partnersSharingBizNo(tx, { code, ...edits[i].value.value }));
+      }
+    for (const [i, s] of registered.entries())
+      if (s.ok) shared.set(s.code, await partnersSharingBizNo(tx, { code: s.code, ...news[i].value.value }));
+    return { updated, registered };
   });
 
   const result: SheetResult = { saved: [], rejected: [] };
-  const byRow = new Map(valid.map((r, i) => [r, results[i]]));
   for (const r of read) {
-    if (!r.ok) {
+    if (r.kind === "rejected") {
       result.rejected.push({ row: r.row, errors: r.errors });
       continue;
     }
-    const saved = byRow.get(r)!;
-    if (saved.ok) {
-      const sharedBizNo = shared.get(saved.code) ?? [];
-      result.saved.push({ code: saved.code, name: r.value.name, ...(sharedBizNo.length ? { sharedBizNo } : {}) });
-    } else if (saved.reason === "limit")
-      result.rejected.push({ row: r.row, errors: { [ROW_ERROR]: limitMessage("거래처", PARTNER_LIMIT) } });
-    else if (saved.reason === "collided") result.rejected.push({ row: r.row, errors: { [ROW_ERROR]: COLLIDED } });
-    else {
-      const field = CONSTRAINT_FIELD[constraintOf(saved.error) ?? ""];
-      const place = field ? (SHEET_PLACE[field] ?? field) : ROW_ERROR;
-      result.rejected.push({ row: r.row, errors: { [place]: "받을 수 없는 값입니다" } });
+    const done = r.kind === "edit" ? outcome.updated[edits.indexOf(r)] : outcome.registered[news.indexOf(r)];
+    if (!done.ok) {
+      result.rejected.push({ row: r.row, errors: rowRejection(done) });
+      continue;
     }
+    const saved = savedCode(r, done);
+    const sharedBizNo = shared.get(saved.code) ?? [];
+    result.saved.push({ ...saved, name: r.value.value.name, ...(sharedBizNo.length ? { sharedBizNo } : {}) });
   }
   return result;
 }

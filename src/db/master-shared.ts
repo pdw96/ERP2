@@ -1,6 +1,7 @@
 import { count, sql } from "drizzle-orm";
-import type { PgTable } from "drizzle-orm/pg-core";
+import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 import { eun } from "@/lib/josa";
+import { CODE_KEY, type SheetRow } from "@/lib/sheet";
 import { nextCode, type CodePrefix } from "./numbering";
 import type { Db } from "./types";
 
@@ -133,3 +134,59 @@ export async function registerRowsWithCode(
     return results;
   });
 }
+
+// ── 고침의 버전(PR J) ─────────────────────────────────────
+
+/**
+ * 행의 버전 — 마지막으로 고친 때(updated_at)를 마이크로초 정수 글자로. 불러온 화면 · 시트가 들고 있다가 저장할 때 돌려준다.
+ * 그 사이 다른 사람이 고쳤으면 버전이 달라 저장을 거절한다(저자 판정 2026-11-05 — 시트 · 한 건 수정 다 막음).
+ */
+export const versionOf = (updatedAt: AnyPgColumn) =>
+  sql<string>`(extract(epoch from ${updatedAt}) * 1000000)::bigint::text`;
+
+/** 버전의 꼴 — 숫자만. 다르면 DB 에 묻지 않고 「다른 사람이 먼저 고쳤다」로 본다. */
+export const VERSION = /^[0-9]{1,20}$/;
+
+/** 그 행의 버전이 이것인가 — 고침의 WHERE 에 붙인다. */
+export const versionIs = (updatedAt: AnyPgColumn, version: string) =>
+  sql`(extract(epoch from ${updatedAt}) * 1000000)::bigint = ${version}::bigint`;
+
+/** 고친 때 — 마이크로초까지 남겨 같은 밀리초의 두 고침도 버전이 갈린다. */
+export const touched = () => sql`clock_timestamp()`;
+
+export const STALE = "다른 사람이 먼저 고쳤습니다 — 화면을 새로 열어 다시 고치세요";
+export const STALE_ROW = "불러온 뒤 다른 사람이 먼저 고쳤습니다 — 이 행을 지우고 다시 불러오세요";
+
+export type UpdatedRow =
+  { ok: true } | { ok: false; reason: "stale" } | { ok: false; reason: "rejected"; error: unknown };
+
+/**
+ * 여러 줄의 고침(시트, PR J) — 부르는 쪽의 트랜잭션 안에서 줄마다 저장점(savepoint) 안에서 고친다. update 는 버전이 맞을 때만
+ * 고치고 고친 행 수를 돌려준다 — 0 이면 그 사이 다른 사람이 고친 것(「stale」). DB 제약에 걸린 줄은 「rejected」로 남고 앞뒤 줄은
+ * 그대로다. 제약 위반(23xxx)이 아닌 실패는 던진다 — 트랜잭션이 통째로 되돌아간다(시트형 등록과 같은 규칙).
+ */
+export async function updateRowsWithVersion(
+  tx: Db,
+  rows: readonly { update: (sp: Db) => Promise<number> }[],
+): Promise<UpdatedRow[]> {
+  const results: UpdatedRow[] = [];
+  for (const row of rows) {
+    try {
+      const n = await tx.transaction((sp) => row.update(sp));
+      results.push(n > 0 ? { ok: true } : { ok: false, reason: "stale" });
+    } catch (error) {
+      if (pgError(error).code?.startsWith("23")) results.push({ ok: false, reason: "rejected", error });
+      else throw error;
+    }
+  }
+  return results;
+}
+
+export const DUPLICATE_ROW = "같은 코드의 행이 시트에 둘 이상입니다 — 한 행만 남기세요";
+
+/** 저장한 줄의 코드 — 고침은 그 줄의 코드, 새 등록은 붙은 코드. */
+export const savedCode = (
+  r: { kind: "new" | "edit"; row: SheetRow },
+  done: { ok: true } | { ok: true; code: string },
+): { code: string; updated?: true } =>
+  r.kind === "edit" ? { code: r.row[CODE_KEY], updated: true } : { code: (done as { code: string }).code };

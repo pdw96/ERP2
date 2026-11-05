@@ -33,7 +33,16 @@ type Props = {
   /** 분류 묶음마다 고를 수 있는 값 — 사용 중인 것과, 수정이면 그 품목의 지금 값. */
   classes: ItemClassOptions;
   initial: ItemValues;
-} & ({ mode: "create"; previewCodes: Record<ItemType, string> } | { mode: "edit"; code: string; itemType: string });
+} & (
+  | { mode: "create"; previewCodes: Record<ItemType, string> }
+  | {
+      mode: "edit";
+      code: string;
+      itemType: string;
+      /** 화면을 연 때의 버전 — 그 사이 다른 사람이 고쳤으면 서버가 저장하지 않는다(PR J). */
+      version: string;
+    }
+);
 
 const LABEL: Partial<Record<ItemField, string>> = {
   itemType: "유형",
@@ -75,6 +84,7 @@ export function ItemForm(props: Props) {
   return (
     <form action={formAction} onSubmit={onSubmit} noValidate className="mt-6 max-w-3xl">
       <ErrorSummary errors={errorList} formError={failed?.formError} />
+      {props.mode === "edit" && <input type="hidden" name="version" value={props.version} />}
       <Fields key={attempt} {...props} values={v} errors={errors} />
       <FormActions pending={pending} cancelHref="/master/items" />
     </form>

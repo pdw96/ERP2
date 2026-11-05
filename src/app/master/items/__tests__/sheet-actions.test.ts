@@ -36,7 +36,7 @@ describe.each([
 
   it("101줄이면 DB 에 닿지 않고 나눠 저장하라고 알린다", async () => {
     const r = await action(null, sheet(Array.from({ length: 101 }, () => row)));
-    expect(r).toEqual({ saved: [], rejected: [], formError: "한 번에 100줄까지 받습니다 — 나눠서 저장하세요" });
+    expect(r).toEqual({ saved: [], rejected: [], formError: "한 번에 100행까지 받습니다 — 나눠서 저장하세요" });
     expect(h.withDb).not.toHaveBeenCalled();
   });
 

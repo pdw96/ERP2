@@ -94,7 +94,15 @@ describe("창고 등록 화면", () => {
 describe("창고 수정 화면", () => {
   it("코드는 보이기만 하고 보내지 않는다. 사용 여부를 「사용 안 함」으로 바꿔 보낸다", async () => {
     const action = vi.fn().mockResolvedValue(null);
-    render(<WarehouseForm mode="edit" code="WH-04" action={action} initial={{ name: "불량창고", active: "Y" }} />);
+    render(
+      <WarehouseForm
+        mode="edit"
+        code="WH-04"
+        version="7"
+        action={action}
+        initial={{ name: "불량창고", active: "Y" }}
+      />,
+    );
     expect(screen.getByText("WH-04")).toBeInTheDocument();
     expect(radio("사용").checked).toBe(true);
     fireEvent.click(radio("사용 안 함"));
@@ -105,5 +113,7 @@ describe("창고 수정 화면", () => {
     expect(sent.has("code")).toBe(false);
     expect(sent.get("active")).toBe("N");
     expect(sent.get("name")).toBe("불량창고");
+    // 화면을 연 때의 버전을 함께 보낸다 — 그 사이 다른 사람이 고쳤으면 서버가 막는다(PR J).
+    expect(sent.get("version")).toBe("7");
   });
 });

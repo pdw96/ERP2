@@ -80,6 +80,7 @@ async function EditPartner({ params }: Pick<PageProps<"/master/partners/[code]">
       <PartnerForm
         mode="edit"
         code={partner.code}
+        version={partner.version}
         action={updatePartnerAction.bind(null, partner.code)}
         initial={asValues(partner)}
         sharedBizNo={sharedBizNo}

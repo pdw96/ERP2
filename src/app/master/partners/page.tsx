@@ -31,7 +31,7 @@ export default function PartnersPage({ searchParams }: PageProps<"/master/partne
         <div>
           <h1 className="text-3xl leading-tight font-semibold">거래처 등록</h1>
           <p className="mt-1 text-muted">
-            매입처 · 매출처. 한 거래처가 둘 다일 수 있습니다. 모든 칸은{" "}
+            매입처 · 매출처. 한 거래처가 둘 다일 수 있습니다. 모든 열은{" "}
             <Link href="/master/partners/inquiry" className="underline underline-offset-4 hover:text-ink">
               거래처 조회
             </Link>

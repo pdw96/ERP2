@@ -26,11 +26,11 @@ export default function DesignModelPage() {
 
       <h2 className="mt-12 text-xl font-semibold">이 조각의 테이블</h2>
       <p className="mt-1 max-w-3xl text-sm text-muted">
-        조각 「{CURRENT_SLICE}」가 만드는 테이블 다섯과 그 칸입니다. PK 는 겹치지 않는 열쇠, UK 는 겹치지 않는 코드, FK
-        는 다른 테이블을 가리키는 칸입니다. 공통코드 값은 「묶음 + 코드」가 함께 열쇠입니다.
+        조각 「{CURRENT_SLICE}」가 만드는 테이블 다섯과 그 열입니다. PK 는 겹치지 않는 열쇠, UK 는 겹치지 않는 코드, FK
+        는 다른 테이블을 가리키는 열입니다. 공통코드 값은 「묶음 + 코드」가 함께 열쇠입니다.
       </p>
       <div className="mt-4 border border-rule bg-white p-4">
-        <MermaidDiagram source={DATA_MODEL} title={`조각 「${CURRENT_SLICE}」의 테이블과 그 칸`} />
+        <MermaidDiagram source={DATA_MODEL} title={`조각 「${CURRENT_SLICE}」의 테이블과 그 열`} />
       </div>
     </>
   );

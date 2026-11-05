@@ -40,6 +40,8 @@ type Props = {
   | {
       mode: "edit";
       code: string;
+      /** 화면을 연 때의 버전 — 그 사이 다른 사람이 고쳤으면 서버가 저장하지 않는다(PR J). */
+      version: string;
       /** 지금 저장된 번호를 같이 쓰는 다른 거래처 — 경고만 한다. */
       sharedBizNo?: SharedBizNo[];
     }
@@ -87,6 +89,7 @@ export function PartnerForm(props: Props) {
   return (
     <form action={formAction} onSubmit={onSubmit} noValidate className="mt-6 max-w-3xl">
       <ErrorSummary errors={errorList} formError={failed?.formError} />
+      {props.mode === "edit" && <input type="hidden" name="version" value={props.version} />}
       <div key={attempt} className="grid gap-8">
         <Fields {...props} v={v} errors={errors} />
       </div>

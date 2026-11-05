@@ -41,9 +41,11 @@ export async function updateCodeAction(
   form: FormData,
 ): Promise<CodeFormState> {
   const values = codeValues(form);
+  // 화면을 연 때의 버전 — 그 사이 다른 사람이 고쳤으면 저장하지 않는다(PR J).
+  const version = form.get("version");
   let result: CodeSaveResult | CodeNotFound;
   try {
-    result = await withDb((db) => updateCode(db, group, code, values));
+    result = await withDb((db) => updateCode(db, group, code, values, typeof version === "string" ? version : ""));
   } catch (error) {
     console.error(`공통코드 수정 실패: ${describeFailure(error, "code-only")}`);
     return { ok: false, errors: {}, formError: FAILED, values };

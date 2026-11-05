@@ -15,7 +15,15 @@ import type { WarehouseFormState } from "./actions";
 type Props = {
   action: (state: WarehouseFormState, form: FormData) => Promise<WarehouseFormState>;
   initial: WarehouseValues;
-} & ({ mode: "create"; previewCode: string } | { mode: "edit"; code: string });
+} & (
+  | { mode: "create"; previewCode: string }
+  | {
+      mode: "edit";
+      code: string;
+      /** 화면을 연 때의 버전 — 그 사이 다른 사람이 고쳤으면 서버가 저장하지 않는다(PR J). */
+      version: string;
+    }
+);
 
 const LABEL: Record<WarehouseField, string> = { name: "창고명", active: "사용 여부" };
 
@@ -39,6 +47,7 @@ export function WarehouseForm(props: Props) {
   return (
     <form action={formAction} onSubmit={onSubmit} noValidate className="mt-6 max-w-3xl">
       <ErrorSummary errors={errorList} formError={failed?.formError} />
+      {props.mode === "edit" && <input type="hidden" name="version" value={props.version} />}
       <div key={attempt} className="grid gap-8">
         <Section title="기본">
           {props.mode === "create" ? (

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  CODE_KEY,
   SHEET_MAX_ROWS,
+  VERSION_KEY,
+  isLoadedRow,
+  rowChanged,
   blankRow,
   clearChangedErrors,
   headerLine,
@@ -147,7 +151,7 @@ describe("서버가 받은 시트", () => {
     expect(readSheetPayload(at(SHEET_MAX_ROWS), cols)).toMatchObject({ ok: true });
     expect(readSheetPayload(at(SHEET_MAX_ROWS + 1), cols)).toEqual({
       ok: false,
-      formError: "한 번에 100줄까지 받습니다 — 나눠서 저장하세요",
+      formError: "한 번에 100행까지 받습니다 — 나눠서 저장하세요",
     });
   });
 
@@ -218,5 +222,55 @@ describe("리뷰 2회차 — 빨간 표시를 지우는 때(칸 고치기 · 붙
     const errors = { name: "x" };
     clearChangedErrors(roleCols, before, { ...before, name: "가" }, errors);
     expect(errors).toEqual({ name: "x" });
+  });
+});
+
+describe("불러온 줄(PR J)", () => {
+  const items = itemSheetColumns([]);
+  const loaded = {
+    ...blankRow(items),
+    [CODE_KEY]: "RM-0001",
+    [VERSION_KEY]: "1730000000000000",
+    itemType: "RM",
+    name: "웨이퍼",
+  };
+
+  it("코드 · 버전은 칸이 아니다 — 머리글 줄 · 칸 순서에 들지 않고, 사용 여부는 맨 뒤 칸이다", () => {
+    expect(headerLine(items).split("\t")).not.toContain("코드");
+    expect(items.at(-1)!.label).toBe("사용 여부");
+    expect(partnerSheetColumns([]).at(-1)!.label).toBe("사용 여부");
+    expect(items.filter((c) => c.fixed).map((c) => c.label)).toEqual(["유형"]);
+  });
+
+  it("코드가 있는 줄이 불러온 줄이다", () => {
+    expect(isLoadedRow(loaded)).toBe(true);
+    expect(isLoadedRow(blankRow(items))).toBe(false);
+    expect(isBlankRow(loaded)).toBe(false);
+  });
+
+  it("바뀐 줄은 칸만 견준다", () => {
+    expect(rowChanged(items, loaded, { ...loaded })).toBe(false);
+    expect(rowChanged(items, loaded, { ...loaded, name: "웨이퍼 8인치" })).toBe(true);
+  });
+
+  it("붙여넣기는 불러온 줄의 유형 칸을 건너뛰고 알린다 — 새 줄의 유형은 채운다", () => {
+    const r = pasteInto([loaded, blankRow(items)], items, 0, 0, "FG\t웨이퍼 고침\nRM\t새 품목");
+    expect(r.rows[0]).toMatchObject({ itemType: "RM", name: "웨이퍼 고침", [CODE_KEY]: "RM-0001" });
+    expect(r.rows[1]).toMatchObject({ itemType: "RM", name: "새 품목" });
+    expect(r.skippedFixed).toBe(true);
+    // 같은 값이면 버린 것이 아니다.
+    expect(pasteInto([loaded], items, 0, 0, "RM\t웨이퍼").skippedFixed).toBe(false);
+  });
+
+  it("서버는 숨은 칸(코드 · 버전)을 받는다 — 글자가 아니거나 너무 길면 시트를 거절한다", () => {
+    const ok = readSheetPayload(JSON.stringify([{ name: "x", [CODE_KEY]: "RM-0001", [VERSION_KEY]: "123" }]), items);
+    expect(ok).toEqual({
+      ok: true,
+      rows: [{ ...blankRow(items), name: "x", [CODE_KEY]: "RM-0001", [VERSION_KEY]: "123" }],
+    });
+    const none = readSheetPayload(JSON.stringify([{ name: "x", [CODE_KEY]: "" }]), items);
+    expect(none.ok && CODE_KEY in none.rows[0]).toBe(false);
+    expect(readSheetPayload(JSON.stringify([{ [CODE_KEY]: 1 }]), items).ok).toBe(false);
+    expect(readSheetPayload(JSON.stringify([{ [VERSION_KEY]: "9".repeat(31) }]), items).ok).toBe(false);
   });
 });

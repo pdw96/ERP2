@@ -6,6 +6,7 @@ import type { SheetColumn } from "./sheet";
 // 시트형 등록의 칸 — 순서는 한 건 등록 화면과 같다(저자 판정 2026-11-03). 붙여넣기는 이 순서대로 칸을 채운다.
 // 고르는 값은 이름 · 코드 둘 다 받고, 검사 대상 · 매입처 · 매출처는 Y/N · O/X · 예/아니오를 받는다.
 // PR H 의 설명용 칸은 지금 칸의 뒤에 붙는다 — PR F 의 칸 순서로 만든 표를 붙여넣어도 앞 칸이 어긋나지 않는다.
+// PR J 의 사용 여부도 맨 뒤에 붙는다. 코드는 칸이 아니다 — 불러온 줄의 숨은 칸이다(src/lib/sheet.ts 의 CODE_KEY).
 
 type Option = { code: string; name: string };
 
@@ -13,19 +14,38 @@ const listOf = (options: readonly Option[]) => options.map((o) => `${o.name}(${o
 
 export const YES_NO = "Y · N (O · X, 예 · 아니오도 됩니다)";
 
+/**
+ * 사용 여부(PR J) — 맨 뒤 칸이라 앞 PR 의 칸 순서로 만든 표를 붙여넣어도 앞 칸이 어긋나지 않는다(저자 판정 2026-11-05 — 시트에서 바꾼다).
+ * 새 줄은 한 건 등록처럼 「사용」으로만 등록한다.
+ */
+const ACTIVE_COLUMN: SheetColumn = {
+  key: "active",
+  label: "사용 여부",
+  rule: `Y(사용) · N(사용 안 함) — 비우면 Y. 새 행은 Y 로만 등록합니다`,
+  width: 6,
+};
+
 type ClassLists = Partial<Record<(typeof ITEM_CLASSES)[number]["field"], readonly Option[]>>;
 
 /** 품목 시트의 칸 — 단위 · 분류의 안내는 공통코드 `UNIT` · `ITEM_CLS1 ~ 3` 의 사용 중인 값으로 만든다. */
 export function itemSheetColumns(units: readonly Option[], classes: ClassLists = {}): SheetColumn[] {
   return [
-    { key: "itemType", label: "유형", rule: `${listOf(ITEM_TYPES)} — 꼭 넣습니다`, width: 8 },
-    { key: "name", label: "품명", rule: "100자까지 — 꼭 넣습니다", width: 18 },
+    {
+      key: "itemType",
+      label: "유형",
+      rule: `${listOf(ITEM_TYPES)} — 꼭 넣습니다. 불러온 행은 고칠 수 없습니다`,
+      width: 8,
+      required: true,
+      fixed: true,
+    },
+    { key: "name", label: "품명", rule: "100자까지 — 꼭 넣습니다", width: 18, required: true },
     { key: "spec", label: "규격", rule: "100자까지 — 비워도 됩니다", width: 14 },
     {
       key: "unit",
       label: "단위",
       rule: `${units.length ? listOf(units) : "공통코드 UNIT 의 값"} — 이름이나 코드, 꼭 넣습니다`,
       width: 7,
+      required: true,
     },
     { key: "procurement", label: "조달구분", rule: `${listOf(PROC_TYPES)} — 비우면 유형의 기본값`, width: 8 },
     { key: "inspectIn", label: "수입검사", rule: `${YES_NO} — 비우면 유형의 기본값`, width: 6 },
@@ -44,21 +64,30 @@ export function itemSheetColumns(units: readonly Option[], classes: ClassLists =
       };
     }),
     { key: "note", label: "비고", rule: `${NOTE_MAX}자까지 — 비워도 됩니다`, width: 16 },
+    ACTIVE_COLUMN,
   ];
 }
 
 /** 거래처 시트의 칸 — 국가의 안내는 공통코드 `COUNTRY` 의 사용 중인 값으로 만든다. */
 export function partnerSheetColumns(countries: readonly Option[]): SheetColumn[] {
   return [
-    { key: "name", label: "거래처명", rule: "100자까지 — 꼭 넣습니다", width: 20 },
+    { key: "name", label: "거래처명", rule: "100자까지 — 꼭 넣습니다", width: 20, required: true },
     {
       key: "isSupplier",
       label: "매입처",
       rule: `${YES_NO} — 매입처 · 매출처 가운데 하나 이상`,
       errorKey: "role",
       width: 6,
+      required: true,
     },
-    { key: "isCustomer", label: "매출처", rule: `${YES_NO} — 비우면 N`, errorKey: "role", width: 6 },
+    {
+      key: "isCustomer",
+      label: "매출처",
+      rule: `${YES_NO} — 비우면 N. 매입처 · 매출처 가운데 하나 이상`,
+      errorKey: "role",
+      width: 6,
+      required: true,
+    },
     {
       key: "country",
       label: "국가",
@@ -77,6 +106,7 @@ export function partnerSheetColumns(countries: readonly Option[]): SheetColumn[]
       rule: `${max}자까지${TEXT_RULE[field] ?? ""} — 비워도 됩니다`,
       width: TEXT_WIDTH[field] ?? 10,
     })),
+    ACTIVE_COLUMN,
   ];
 }
 

@@ -5,7 +5,7 @@ import { updateCode } from "@/db/codes";
 import {
   allItemClasses,
   createItem,
-  createItemRows,
+  saveItemRows,
   getItem,
   itemClassOptions,
   listItems,
@@ -13,7 +13,7 @@ import {
   updateItem,
   type ItemFilter,
 } from "@/db/items";
-import { createPartner, createPartnerRows, getPartner, updatePartner } from "@/db/partners";
+import { createPartner, savePartnerRows, getPartner, updatePartner } from "@/db/partners";
 import { resetToSample } from "@/db/reset";
 import { codes, items, partners } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -297,7 +297,7 @@ describe("DB 가 막는 것 — 화면 · 서버를 건너뛴 값", () => {
 
 describe("시트의 설명용 칸", () => {
   it("분류는 이름 · 코드로 받고, 거래처의 설명용 칸이 함께 저장된다", async () => {
-    const r = await createItemRows(db, [
+    const r = await saveItemRows(db, [
       { itemType: "원자재", name: "솔더 볼", unit: "EA", cls1: "화학재료", cls2: "common", note: "메모" },
     ]);
     expect(r.rejected).toEqual([]);
@@ -308,7 +308,7 @@ describe("시트의 설명용 칸", () => {
       note: "메모",
     });
 
-    const p = await createPartnerRows(db, [
+    const p = await savePartnerRows(db, [
       { name: "(가상) 바다솔더", isSupplier: "Y", ceo: "홍길동", phone: "02-0000-0009", contactName: "김철수" },
     ]);
     expect(p.rejected).toEqual([]);
@@ -321,22 +321,22 @@ describe("시트의 설명용 칸", () => {
   });
 
   it("PR F 꼴의 표(뒤 칸 없음)를 붙여넣어도 저장된다", async () => {
-    const r = await createItemRows(db, [{ itemType: "RM", name: "솔더 볼", unit: "EA" }]);
+    const r = await saveItemRows(db, [{ itemType: "RM", name: "솔더 볼", unit: "EA" }]);
     expect(r.saved).toHaveLength(1);
-    const p = await createPartnerRows(db, [{ name: "(가상) 바다솔더", isSupplier: "Y" }]);
+    const p = await savePartnerRows(db, [{ name: "(가상) 바다솔더", isSupplier: "Y" }]);
     expect(p.saved).toHaveLength(1);
   });
 
   it("「사용 안 함」 분류 · 꼴이 틀린 이메일의 줄은 남고, 다른 줄은 저장된다", async () => {
     await deactivate("ITEM_CLS3", "GENERAL", "범용");
-    const r = await createItemRows(db, [
+    const r = await saveItemRows(db, [
       { itemType: "RM", name: "A", unit: "EA", cls3: "범용" },
       { itemType: "RM", name: "B", unit: "EA" },
     ]);
     expect(r.saved.map((s) => s.name)).toEqual(["B"]);
     expect(r.rejected[0].errors).toEqual({ cls3: "「사용 안 함」인 소분류입니다 — 다른 값을 넣으세요" });
 
-    const p = await createPartnerRows(db, [
+    const p = await savePartnerRows(db, [
       { name: "(가상) 가", isSupplier: "Y", email: "틀림" },
       { name: "(가상) 나", isSupplier: "Y" },
     ]);

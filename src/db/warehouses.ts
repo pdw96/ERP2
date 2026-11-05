@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, or, type SQL } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, ilike, or, type SQL } from "drizzle-orm";
 import {
   parseNewWarehouse,
   parseWarehouseUpdate,
@@ -9,12 +9,17 @@ import {
 import {
   COLLIDED,
   REGISTER_LOCK,
+  STALE,
+  VERSION,
   constraintOf,
   first,
   likeLiteral,
   limitMessage,
   registerWithCode,
   searchText,
+  touched,
+  versionIs,
+  versionOf,
   type Params,
 } from "./master-shared";
 import { nextCode } from "./numbering";
@@ -28,6 +33,8 @@ import type { Db } from "./types";
 export const WAREHOUSE_LIMIT = 99;
 
 export type Warehouse = typeof warehouses.$inferSelect;
+/** 창고와 그 버전(마지막으로 고친 때) — 수정 화면이 들고 있다가 저장할 때 돌려준다(PR J). */
+export type WarehouseWithVersion = Warehouse & { version: string };
 
 // ── 목록 ─────────────────────────────────────────────
 
@@ -61,9 +68,13 @@ export async function listWarehouses(db: Db, filter: WarehouseFilter): Promise<W
 
 export const WAREHOUSE_CODE = /^WH-[0-9]{2,}$/;
 
-export async function getWarehouse(db: Db, code: string): Promise<Warehouse | undefined> {
+/** 창고 하나와 그 버전 — 한 쿼리로 읽어, 보인 값과 버전이 어긋나지 않는다. */
+export async function getWarehouse(db: Db, code: string): Promise<WarehouseWithVersion | undefined> {
   if (!WAREHOUSE_CODE.test(code)) return undefined;
-  const [row] = await db.select().from(warehouses).where(eq(warehouses.code, code));
+  const [row] = await db
+    .select({ ...getTableColumns(warehouses), version: versionOf(warehouses.updatedAt) })
+    .from(warehouses)
+    .where(eq(warehouses.code, code));
   return row;
 }
 
@@ -110,18 +121,33 @@ export async function createWarehouse(db: Db, values: WarehouseValues): Promise<
   }
 }
 
-/** 수정 — 코드는 바꾸지 않는다. 창고명 · 사용 여부만. */
+/**
+ * 수정 — 코드는 바꾸지 않는다. 창고명 · 사용 여부만.
+ * version 은 화면을 연 때의 버전이다 — 그 사이 다른 사람이 고쳤으면 저장하지 않는다(저자 판정 2026-11-05 — 품목 · 거래처와 같다).
+ * 주지 않으면 버전을 보지 않는다(서버 안의 시험용 — 화면의 입구는 늘 준다).
+ */
 export async function updateWarehouse(
   db: Db,
   code: string,
   values: WarehouseValues,
+  version?: string,
 ): Promise<WarehouseSaveResult | { ok: false; notFound: true }> {
   const current = await getWarehouse(db, code);
   if (!current) return { ok: false, notFound: true };
   const parsed = parseWarehouseUpdate(values);
   if (!parsed.ok) return { ok: false, errors: parsed.errors, values };
+  if (version !== undefined && !VERSION.test(version)) return { ok: false, errors: {}, formError: STALE, values };
   try {
-    await db.update(warehouses).set(parsed.value).where(eq(warehouses.id, current.id));
+    const done = await db
+      .update(warehouses)
+      .set({ ...parsed.value, updatedAt: touched() })
+      .where(
+        version === undefined
+          ? eq(warehouses.id, current.id)
+          : and(eq(warehouses.id, current.id), versionIs(warehouses.updatedAt, version)),
+      )
+      .returning({ id: warehouses.id });
+    if (done.length === 0) return { ok: false, errors: {}, formError: STALE, values };
     return { ok: true, code };
   } catch (error) {
     return asRejection(error, values);

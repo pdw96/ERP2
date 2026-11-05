@@ -1,8 +1,17 @@
-import { and, asc, count, eq, max, sql } from "drizzle-orm";
+import { and, asc, count, eq, getTableColumns, max, sql } from "drizzle-orm";
 import { GROUP_CODE, MINOR_CODE } from "@/lib/code-fields";
 import { parseCodeUpdate, parseNewCode, type CodeErrors, type CodeField, type CodeValues } from "@/lib/code-input";
 import { isAlwaysActive } from "@/lib/master-codes";
-import { REGISTER_LOCK, constraintOf, limitMessage } from "./master-shared";
+import {
+  REGISTER_LOCK,
+  STALE,
+  VERSION,
+  constraintOf,
+  limitMessage,
+  touched,
+  versionIs,
+  versionOf,
+} from "./master-shared";
 import { codeGroups, codes } from "./schema";
 import type { Db } from "./types";
 
@@ -15,6 +24,8 @@ export const CODE_LIMIT = 100;
 
 export type CodeGroup = typeof codeGroups.$inferSelect;
 export type Code = typeof codes.$inferSelect;
+/** 공통코드 값과 그 버전(마지막으로 고친 때) — 수정 화면이 들고 있다가 저장할 때 돌려준다(PR J). */
+export type CodeWithVersion = Code & { version: string };
 export type CodeGroupRow = Pick<CodeGroup, "code" | "name" | "isSystem"> & { values: number };
 
 // ── 목록 ─────────────────────────────────────────────
@@ -40,10 +51,10 @@ export async function listCodes(db: Db, group: string): Promise<Code[]> {
   return db.select().from(codes).where(eq(codes.groupCode, group)).orderBy(asc(codes.sortOrder), asc(codes.code));
 }
 
-export async function getCode(db: Db, group: string, code: string): Promise<Code | undefined> {
+export async function getCode(db: Db, group: string, code: string): Promise<CodeWithVersion | undefined> {
   if (!GROUP_CODE.test(group) || !MINOR_CODE.test(code)) return undefined;
   const [row] = await db
-    .select()
+    .select({ ...getTableColumns(codes), version: versionOf(codes.updatedAt) })
     .from(codes)
     .where(and(eq(codes.groupCode, group), eq(codes.code, code)));
   return row;
@@ -117,12 +128,15 @@ export async function createCode(db: Db, group: string, values: CodeValues): Pro
 /**
  * 수정 — 사용자 코드 묶음의 값만. 이름 · 정렬 순서 · 사용 여부를 바꾸고, 코드는 바꾸지 않는다.
  * 프로그램이 기대는 값(국가 KR — src/lib/master-codes.ts)은 「사용 안 함」으로 바꾸지 못한다.
+ * version 은 화면을 연 때의 버전이다 — 그 사이 다른 사람이 고쳤으면 저장하지 않는다(저자 판정 2026-11-05 — 품목 · 거래처와 같다).
+ * 주지 않으면 버전을 보지 않는다(서버 안의 시험용 — 화면의 입구는 늘 준다).
  */
 export async function updateCode(
   db: Db,
   group: string,
   code: string,
   values: CodeValues,
+  version?: string,
 ): Promise<CodeSaveResult | CodeNotFound> {
   const g = await getCodeGroup(db, group);
   const current = g && (await getCode(db, g.code, code));
@@ -133,8 +147,18 @@ export async function updateCode(
   if (!errors.active && values.active === "N" && isAlwaysActive(g.code, current.code))
     errors.active = ALWAYS_ACTIVE_MESSAGE;
   if (!parsed.ok || Object.keys(errors).length) return { ok: false, errors, values };
+  if (version !== undefined && !VERSION.test(version)) return { ok: false, errors: {}, formError: STALE, values };
   try {
-    await db.update(codes).set(parsed.value).where(eq(codes.id, current.id));
+    const done = await db
+      .update(codes)
+      .set({ ...parsed.value, updatedAt: touched() })
+      .where(
+        version === undefined
+          ? eq(codes.id, current.id)
+          : and(eq(codes.id, current.id), versionIs(codes.updatedAt, version)),
+      )
+      .returning({ id: codes.id });
+    if (done.length === 0) return { ok: false, errors: {}, formError: STALE, values };
     return { ok: true, code };
   } catch (error) {
     return asRejection(error, values);

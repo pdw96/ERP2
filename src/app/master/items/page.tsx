@@ -24,7 +24,7 @@ export default function ItemsPage({ searchParams }: PageProps<"/master/items">) 
         <div>
           <h1 className="text-3xl leading-tight font-semibold">품목 등록</h1>
           <p className="mt-1 text-muted">
-            원자재 · 반제품 · 완제품. 코드는 등록할 때 유형에 따라 붙습니다. 모든 칸은{" "}
+            원자재 · 반제품 · 완제품. 코드는 등록할 때 유형에 따라 붙습니다. 모든 열은{" "}
             <Link href="/master/items/inquiry" className="underline underline-offset-4 hover:text-ink">
               품목 조회
             </Link>

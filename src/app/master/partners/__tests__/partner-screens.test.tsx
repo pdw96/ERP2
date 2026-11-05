@@ -329,6 +329,7 @@ describe("거래처 수정 화면", () => {
       <PartnerForm
         countries={countries}
         mode="edit"
+        version="1"
         code="BP-0006"
         action={vi.fn()}
         initial={{ name: "(가상) 바다솔더", isSupplier: "on", bizNo: "000-00-00005", active: "Y" }}
@@ -343,7 +344,9 @@ describe("거래처 수정 화면", () => {
 
   it("코드는 보이기만 하고 보내지 않는다. 지금의 구분이 켜져 있다", async () => {
     const action = vi.fn().mockResolvedValue(null);
-    render(<PartnerForm mode="edit" code="BP-0005" countries={countries} action={action} initial={initial} />);
+    render(
+      <PartnerForm mode="edit" code="BP-0005" version="1" countries={countries} action={action} initial={initial} />,
+    );
     expect(screen.getByText("BP-0005")).toBeInTheDocument();
     expect(box(/매입처/).checked).toBe(true);
     expect(box(/매출처/).checked).toBe(true);
