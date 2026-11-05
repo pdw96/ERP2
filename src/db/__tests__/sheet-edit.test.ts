@@ -1,10 +1,11 @@
 // @vitest-environment node
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { updateCode } from "@/db/codes";
+import { getCode, updateCode } from "@/db/codes";
 import { getItem, loadItemsForSheet, parseItemFilter, saveItemRows, updateItem } from "@/db/items";
 import { STALE, STALE_ROW, DUPLICATE_ROW } from "@/db/master-shared";
 import { getPartner, loadPartnersForSheet, savePartnerRows, updatePartner } from "@/db/partners";
 import { resetToSample } from "@/db/reset";
+import { getWarehouse, updateWarehouse } from "@/db/warehouses";
 import type { Db } from "@/db/types";
 import { CODE_KEY, ROW_ERROR, VERSION_KEY } from "@/lib/sheet";
 import { migratedDb } from "./pglite";
@@ -302,5 +303,38 @@ describe("한 건 수정의 버전", () => {
       formError: STALE,
     });
     expect((await getPartner(db, "BP-0001"))!.note).toBe("먼저");
+  });
+
+  it("창고도 같다(저자 판정 2026-11-05 — 창고 · 공통코드에도)", async () => {
+    const w = (await getWarehouse(db, "WH-04"))!;
+    expect(await updateWarehouse(db, "WH-04", { name: "불량품 창고", active: "Y" }, w.version)).toMatchObject({
+      ok: true,
+    });
+    expect(await updateWarehouse(db, "WH-04", { name: "늦은 이름", active: "Y" }, w.version)).toEqual({
+      ok: false,
+      errors: {},
+      formError: STALE,
+      values: { name: "늦은 이름", active: "Y" },
+    });
+    expect(await updateWarehouse(db, "WH-04", { name: "늦은 이름", active: "Y" }, "")).toMatchObject({
+      formError: STALE,
+    });
+    expect((await getWarehouse(db, "WH-04"))!.name).toBe("불량품 창고");
+  });
+
+  it("공통코드도 같다", async () => {
+    const g = (await getCode(db, "UNIT", "G"))!;
+    expect(
+      await updateCode(db, "UNIT", "G", { name: "그램(g)", sortOrder: "40", active: "Y" }, g.version),
+    ).toMatchObject({
+      ok: true,
+    });
+    expect(
+      await updateCode(db, "UNIT", "G", { name: "늦은 이름", sortOrder: "40", active: "Y" }, g.version),
+    ).toMatchObject({ ok: false, formError: STALE });
+    expect(await updateCode(db, "UNIT", "G", { name: "늦은 이름", sortOrder: "40", active: "Y" }, "x")).toMatchObject({
+      formError: STALE,
+    });
+    expect((await getCode(db, "UNIT", "G"))!.name).toBe("그램(g)");
   });
 });

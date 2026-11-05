@@ -49,6 +49,7 @@ async function EditCode({ params }: Pick<PageProps<"/system/codes/[group]/[code]
         mode="edit"
         group={{ code: group.code, name: group.name }}
         code={code.code}
+        version={code.version}
         alwaysActive={isAlwaysActive(group.code, code.code)}
         action={updateCodeAction.bind(null, group.code, code.code)}
         initial={{ name: code.name, sortOrder: String(code.sortOrder), active: code.active ? "Y" : "N" }}

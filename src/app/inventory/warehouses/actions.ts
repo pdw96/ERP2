@@ -32,9 +32,11 @@ export async function updateWarehouseAction(
   form: FormData,
 ): Promise<WarehouseFormState> {
   const values = warehouseValues(form);
+  // 화면을 연 때의 버전 — 그 사이 다른 사람이 고쳤으면 저장하지 않는다(PR J).
+  const version = form.get("version");
   let result: Awaited<ReturnType<typeof updateWarehouse>>;
   try {
-    result = await withDb((db) => updateWarehouse(db, code, values));
+    result = await withDb((db) => updateWarehouse(db, code, values, typeof version === "string" ? version : ""));
   } catch (error) {
     console.error(`창고 수정 실패: ${describeFailure(error, "code-only")}`);
     return { ok: false, errors: {}, formError: FAILED, values };

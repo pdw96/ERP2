@@ -17,6 +17,8 @@ type Props = {
   | {
       mode: "edit";
       code: string;
+      /** 화면을 연 때의 버전 — 그 사이 다른 사람이 고쳤으면 서버가 저장하지 않는다(PR J). */
+      version: string;
       /** 프로그램이 기대는 값(국가 KR) — 「사용 안 함」으로 바꾸는 칸을 두지 않는다. 서버도 거절한다. */
       alwaysActive?: boolean;
     }
@@ -44,6 +46,7 @@ export function CodeForm(props: Props) {
   return (
     <form action={formAction} onSubmit={onSubmit} noValidate className="mt-6 max-w-3xl">
       <ErrorSummary errors={errorList} formError={failed?.formError} />
+      {props.mode === "edit" && <input type="hidden" name="version" value={props.version} />}
       <div key={attempt} className="grid gap-8">
         <Section title="값">
           <div className="grid gap-5 sm:grid-cols-2">

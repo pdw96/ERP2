@@ -9,6 +9,8 @@ const h = vi.hoisted(() => ({
   redirect: vi.fn(),
   updateItem: vi.fn(),
   updatePartner: vi.fn(),
+  updateWarehouse: vi.fn(),
+  updateCode: vi.fn(),
   loadItemsForSheet: vi.fn(),
   loadPartnersForSheet: vi.fn(),
 }));
@@ -27,7 +29,18 @@ vi.mock("@/db/partners", async (real) => ({
   allCountries: async () => [{ code: "JP", name: "일본", active: true }],
 }));
 
+vi.mock("@/db/warehouses", async (real) => ({
+  ...(await real<typeof import("@/db/warehouses")>()),
+  updateWarehouse: h.updateWarehouse,
+}));
+vi.mock("@/db/codes", async (real) => ({
+  ...(await real<typeof import("@/db/codes")>()),
+  updateCode: h.updateCode,
+}));
+
 import { loadItemSheetAction, updateItemAction } from "../actions";
+import { updateWarehouseAction } from "@/app/inventory/warehouses/actions";
+import { updateCodeAction } from "@/app/system/codes/actions";
 import { loadPartnerSheetAction, updatePartnerAction } from "../../partners/actions";
 
 const form = (values: Record<string, string>) => {
@@ -54,6 +67,16 @@ describe("한 건 수정의 버전", () => {
     update.mockResolvedValue({ ok: true, code });
     await call();
     expect(update).toHaveBeenCalledWith(db, code, expect.objectContaining({ name: "x" }), "123");
+  });
+
+  it("창고 · 공통코드도 보낸 버전을 넘긴다(저자 판정 2026-11-05)", async () => {
+    h.withDb.mockImplementation((work: (d: unknown) => unknown) => work(db));
+    h.updateWarehouse.mockResolvedValue({ ok: true, code: "WH-04" });
+    h.updateCode.mockResolvedValue({ ok: true, code: "G" });
+    await updateWarehouseAction("WH-04", null, form({ name: "x", version: "123" }));
+    await updateCodeAction("UNIT", "G", null, form({ name: "x", version: "123" }));
+    expect(h.updateWarehouse).toHaveBeenCalledWith(db, "WH-04", expect.objectContaining({ name: "x" }), "123");
+    expect(h.updateCode).toHaveBeenCalledWith(db, "UNIT", "G", expect.objectContaining({ name: "x" }), "123");
   });
 
   it("버전이 오지 않으면 빈 버전으로 넘긴다 — DB 층이 「다른 사람이 먼저 고쳤다」로 막는다", async () => {
