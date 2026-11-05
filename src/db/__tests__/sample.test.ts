@@ -2,7 +2,14 @@
 import { asc, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { resetToSample } from "@/db/reset";
-import { SAMPLE_CODE_GROUPS, SAMPLE_CODES, SAMPLE_ITEMS, SAMPLE_PARTNERS, SAMPLE_WAREHOUSES } from "@/db/sample";
+import {
+  SAMPLE_CODE_GROUPS,
+  SAMPLE_CODES,
+  SAMPLE_ITEMS,
+  SAMPLE_PARTNERS,
+  SAMPLE_UNIT_SPECS,
+  SAMPLE_WAREHOUSES,
+} from "@/db/sample";
 import { codeGroups, codes } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { SYSTEM_CODE_GROUPS } from "@/lib/master-codes";
@@ -58,7 +65,7 @@ describe("샘플 데이터 — 성공 기준 1", () => {
     }
   });
 
-  it("공통코드 묶음은 ITEM_TYPE · PROC_TYPE(시스템) · UNIT · COUNTRY · ITEM_CLS1 ~ 3(사용자) 일곱, 단위는 EA · M · KG · G 로 시작한다", () => {
+  it("공통코드 묶음은 ITEM_TYPE · PROC_TYPE(시스템) · UNIT · COUNTRY · ITEM_CLS1 ~ 3(사용자) 일곱, 단위는 EA · M · KG · G 와 MM · L · ML · MG", () => {
     expect(SAMPLE_CODE_GROUPS.map((g) => [g.code, g.isSystem])).toEqual([
       ["ITEM_TYPE", true],
       ["PROC_TYPE", true],
@@ -68,7 +75,42 @@ describe("샘플 데이터 — 성공 기준 1", () => {
       ["ITEM_CLS2", false],
       ["ITEM_CLS3", false],
     ]);
-    expect(SAMPLE_CODES.filter((c) => c.groupCode === "UNIT").map((c) => c.code)).toEqual(["EA", "M", "KG", "G"]);
+    expect(SAMPLE_CODES.filter((c) => c.groupCode === "UNIT").map((c) => c.code)).toEqual([
+      "EA",
+      "M",
+      "KG",
+      "G",
+      "MM",
+      "L",
+      "ML",
+      "MG",
+    ]);
+  });
+});
+
+describe("단위 사양의 샘플 — 조각 「재고 수불」 성공 기준 12(ADR 0017, 저자 인터뷰 2026-11-05)", () => {
+  it("샘플의 단위마다 사양이 하나씩 있다", () => {
+    const units = SAMPLE_CODES.filter((c) => c.groupCode === "UNIT").map((c) => c.code);
+    expect(SAMPLE_UNIT_SPECS.map((s) => s.unit)).toEqual(units);
+  });
+
+  it("ADR 0017 의 표 그대로 — 무게는 G, 길이는 M, 부피는 ML 이 기준이고, 개수 단위는 정수만", () => {
+    const table = Object.fromEntries(SAMPLE_UNIT_SPECS.map((s) => [s.unit, [s.baseUnit, s.factor, s.decimals]]));
+    expect(table).toEqual({
+      EA: ["EA", 1, 0],
+      M: ["M", 1, 3],
+      KG: ["G", 1000, 3],
+      G: ["G", 1, 0],
+      MM: ["M", 0.001, 0],
+      L: ["ML", 1000, 3],
+      ML: ["ML", 1, 0],
+      MG: ["G", 0.001, 0],
+    });
+  });
+
+  it("기준 단위는 자신이 기준인 단위다", () => {
+    const self = new Set(SAMPLE_UNIT_SPECS.filter((s) => s.unit === s.baseUnit).map((s) => s.unit));
+    for (const s of SAMPLE_UNIT_SPECS) expect(self.has(s.baseUnit)).toBe(true);
   });
 });
 

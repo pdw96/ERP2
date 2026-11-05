@@ -28,9 +28,9 @@ const item = (over: Partial<typeof items.$inferInsert> = {}) => ({
 });
 
 describe("테이블", () => {
-  it("스키마의 테이블은 다섯이다", () => {
+  it("스키마의 테이블은 여섯이다 — 기준정보 다섯과 단위 사양", () => {
     const names = Object.values(schema).filter(isTable).map(getTableName).sort();
-    expect(names).toEqual(["code_groups", "codes", "items", "partners", "warehouses"]);
+    expect(names).toEqual(["code_groups", "codes", "items", "partners", "unit_specs", "warehouses"]);
   });
 });
 

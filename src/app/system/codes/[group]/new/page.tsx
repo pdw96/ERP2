@@ -3,8 +3,9 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
-import { getCodeGroup, nextSortOrder } from "@/db/codes";
+import { baseUnitOptions, getCodeGroup, nextSortOrder } from "@/db/codes";
 import { withDb } from "@/db/request";
+import { UNIT_GROUP } from "@/lib/code-fields";
 import { createCodeAction } from "../../actions";
 import { CodeForm } from "../../code-form";
 import { Crumbs } from "../../crumbs";
@@ -29,13 +30,19 @@ async function NewCode({ params }: Pick<PageProps<"/system/codes/[group]/new">, 
   try {
     data = await withDb(async (db) => {
       const group = await getCodeGroup(db, decodeURIComponent(raw));
-      return group && { group, sortOrder: await nextSortOrder(db, group.code) };
+      return (
+        group && {
+          group,
+          sortOrder: await nextSortOrder(db, group.code),
+          bases: group.code === UNIT_GROUP ? await baseUnitOptions(db) : undefined,
+        }
+      );
     });
   } catch (error) {
     return <LoadFailed what="입력 화면" error={error} />;
   }
   if (!data || data.group.isSystem) notFound();
-  const { group, sortOrder } = data;
+  const { group, sortOrder, bases } = data;
   return (
     <>
       <Crumbs group={group} last="새 값" />
@@ -44,7 +51,8 @@ async function NewCode({ params }: Pick<PageProps<"/system/codes/[group]/new">, 
         mode="create"
         group={{ code: group.code, name: group.name }}
         action={createCodeAction.bind(null, group.code)}
-        initial={{ code: "", name: "", sortOrder: String(sortOrder) }}
+        initial={{ code: "", name: "", sortOrder: String(sortOrder), baseUnit: "", factor: "", decimals: "0" }}
+        unit={bases ? { mode: "create", bases } : undefined}
       />
     </>
   );

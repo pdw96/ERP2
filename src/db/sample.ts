@@ -1,5 +1,5 @@
 import { ITEM_TYPES, PROC_TYPES } from "@/lib/master-codes";
-import type { codeGroups, codes, items, partners, warehouses } from "./schema";
+import type { codeGroups, codes, items, partners, unitSpecs, warehouses } from "./schema";
 
 // 샘플 데이터 — 가상 반도체 후공정(패키징) 회사. 매일 밤 되돌림(ADR 0004)과 첫 배포가 이 값으로 테이블을 채운다.
 // 실제 회사명 · 실제 사람의 정보를 쓰지 않는다(CLAUDE.md). 거래처 이름은 「(가상)」으로 시작하고,
@@ -28,6 +28,11 @@ export const SAMPLE_CODES: New<typeof codes>[] = [
   { groupCode: "UNIT", code: "M", name: "미터", sortOrder: 20 },
   { groupCode: "UNIT", code: "KG", name: "킬로그램", sortOrder: 30 },
   { groupCode: "UNIT", code: "G", name: "그램", sortOrder: 40 },
+  // 조각 「재고 수불」 PR A 가 더한 단위(저자 인터뷰 2026-11-05) — 같은 기준의 단위로 바꿔 넣는다(ADR 0017).
+  { groupCode: "UNIT", code: "MM", name: "밀리미터", sortOrder: 50 },
+  { groupCode: "UNIT", code: "L", name: "리터", sortOrder: 60 },
+  { groupCode: "UNIT", code: "ML", name: "밀리리터", sortOrder: 70 },
+  { groupCode: "UNIT", code: "MG", name: "밀리그램", sortOrder: 80 },
   // 국가 — 국제 표준 두 글자(ADR 0011). 마이그레이션 0001(손으로 쓴 것)이 데이터가 있는 DB 에 같은 값을 넣는다(시험이 견준다).
   { groupCode: "COUNTRY", code: "KR", name: "한국", sortOrder: 10 },
   { groupCode: "COUNTRY", code: "US", name: "미국", sortOrder: 20 },
@@ -47,6 +52,21 @@ export const SAMPLE_CODES: New<typeof codes>[] = [
   { groupCode: "ITEM_CLS3", code: "POWER", name: "전원", sortOrder: 10 },
   { groupCode: "ITEM_CLS3", code: "SENSOR", name: "센서", sortOrder: 20 },
   { groupCode: "ITEM_CLS3", code: "GENERAL", name: "범용", sortOrder: 30 },
+];
+
+/**
+ * 단위 사양(ADR 0017) — 단위마다 기준 단위 · 배수 · 소수 자릿수. 샘플의 단위(UNIT 값) 하나하나에 하나씩 있다(시험이 견준다).
+ * 마이그레이션 0006 이 데이터가 있는 DB 에 넣는 값과 같다.
+ */
+export const SAMPLE_UNIT_SPECS: New<typeof unitSpecs>[] = [
+  { unit: "EA", baseUnit: "EA", factor: 1, decimals: 0 },
+  { unit: "M", baseUnit: "M", factor: 1, decimals: 3 },
+  { unit: "KG", baseUnit: "G", factor: 1000, decimals: 3 },
+  { unit: "G", baseUnit: "G", factor: 1, decimals: 0 },
+  { unit: "MM", baseUnit: "M", factor: 0.001, decimals: 0 },
+  { unit: "L", baseUnit: "ML", factor: 1000, decimals: 3 },
+  { unit: "ML", baseUnit: "ML", factor: 1, decimals: 0 },
+  { unit: "MG", baseUnit: "G", factor: 0.001, decimals: 0 },
 ];
 
 export const SAMPLE_WAREHOUSES: New<typeof warehouses>[] = [

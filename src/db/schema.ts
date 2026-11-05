@@ -1,7 +1,18 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, foreignKey, integer, numeric, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  foreignKey,
+  integer,
+  numeric,
+  pgTable,
+  smallint,
+  text,
+  timestamp,
+  unique,
+} from "drizzle-orm/pg-core";
 
-// 조각 「기준정보」의 테이블 다섯(docs/schema.md · 설계도의 「이 조각의 테이블」).
+// 조각 「기준정보」의 테이블 다섯과 조각 「재고 수불」의 테이블(docs/schema.md · 설계도의 「이 조각의 테이블」).
 // 코드의 꼴은 앵커볼트(ADR 0003 · 0009)라 DB 의 제약으로도 막는다 — 화면 · 서버를 건너뛴 값도 들어오지 않는다.
 // 이 파일을 바꾸면 `npx drizzle-kit generate` 로 drizzle/ 의 마이그레이션을 만들어 함께 올린다.
 
@@ -51,6 +62,42 @@ export const codes = pgTable(
     check("codes_code_format", sql`${t.code} ~ '^[A-Z0-9][A-Z0-9_]{0,19}$'`),
     check("codes_name_length", sql`char_length(${t.name}) between 1 and 50`),
     check("codes_sort_order_range", sql`${t.sortOrder} between 0 and 999`),
+  ],
+);
+
+/**
+ * 단위 사양(조각 「재고 수불」 PR A, ADR 0017) — 공통코드 UNIT 의 값마다 기준 단위 · 배수 · 소수 자릿수.
+ * 같은 기준의 단위 사이는 배수로 바꿔 넣는다(1 KG = 1000 G). 기준 단위는 그 자신이 기준인 단위(배수 1)여야 한다 —
+ * (기준 단위, 기준 단위)가 이 표의 (단위, 기준 단위)를 가리키게 해 DB 가 막는다. 기준 · 배수는 등록 뒤 바꾸지 않는다(서버가 막는다).
+ */
+export const unitSpecs = pgTable(
+  "unit_specs",
+  {
+    id: id(),
+    unitGroup: text("unit_group").notNull().default("UNIT"),
+    unit: text("unit").notNull(),
+    baseUnit: text("base_unit").notNull(),
+    factor: numeric("factor", { precision: 18, scale: 6, mode: "number" }).notNull(),
+    decimals: smallint("decimals").notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    unique("unit_specs_unit_unique").on(t.unit),
+    unique("unit_specs_unit_base_unique").on(t.unit, t.baseUnit),
+    foreignKey({
+      name: "unit_specs_unit_fk",
+      columns: [t.unitGroup, t.unit],
+      foreignColumns: [codes.groupCode, codes.code],
+    }),
+    foreignKey({
+      name: "unit_specs_base_fk",
+      columns: [t.baseUnit, t.baseUnit],
+      foreignColumns: [t.unit, t.baseUnit],
+    }),
+    check("unit_specs_unit_group_fixed", sql`${t.unitGroup} = 'UNIT'`),
+    check("unit_specs_factor_positive", sql`${t.factor} > 0`),
+    check("unit_specs_base_factor_one", sql`${t.unit} <> ${t.baseUnit} or ${t.factor} = 1`),
+    check("unit_specs_decimals_range", sql`${t.decimals} between 0 and 3`),
   ],
 );
 
