@@ -115,6 +115,13 @@ describe("단위 추가 — 사양을 함께 받는다", () => {
     expect(await getUnitSpec(db, "PCS")).toEqual({ unit: "PCS", baseUnit: "PCS", factor: 1, decimals: 3 });
   });
 
+  it("가장 큰 배수 999999999.999999 도 넣은 값 그대로 남는다 — 저장한 뒤 다시 읽어도 같다", async () => {
+    expect(
+      await createCode(db, "UNIT", newUnit({ code: "BIG", baseUnit: "G", factor: "999999999.999999" })),
+    ).toMatchObject({ ok: true });
+    expect((await getUnitSpec(db, "BIG"))!.factor.toFixed(6)).toBe("999999999.999999");
+  });
+
   it("배수는 소수 여섯째 자리까지 받는다", async () => {
     expect(await createCode(db, "UNIT", newUnit({ code: "UG", baseUnit: "G", factor: "0.000001" }))).toMatchObject({
       ok: true,

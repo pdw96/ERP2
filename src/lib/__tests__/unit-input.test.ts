@@ -23,6 +23,16 @@ describe("새 단위의 사양", () => {
     });
   });
 
+  it.each(["999999999.999999", "123456789.123456", "0.000001"])(
+    "배수 %s — 정수 아홉 자리 · 소수 여섯째 자리까지는 값이 바뀌지 않고 그대로 남는다",
+    (factor) => {
+      const r = parseNewUnitSpec({ baseUnit: "G", factor, decimals: "0" }, "BOX");
+      expect(r).toMatchObject({ ok: true });
+      if (r.ok) expect(r.value.factor.toFixed(6)).toBe(Number(factor).toFixed(6));
+      if (r.ok) expect(String(r.value.factor)).toBe(factor);
+    },
+  );
+
   it.each(["0", "1", "2", "3"])("자릿수 %s", (d) => {
     expect(parseNewUnitSpec({ decimals: d }, "BOX")).toMatchObject({ ok: true, value: { decimals: Number(d) } });
   });
@@ -38,6 +48,10 @@ describe("새 단위의 사양", () => {
     [{ baseUnit: "G", factor: "1e3", decimals: "0" }, "factor"],
     [{ baseUnit: "G", factor: "1,000", decimals: "0" }, "factor"],
     [{ baseUnit: "G", factor: "1234567890123", decimals: "0" }, "factor"],
+    // 정수 열 자리부터는 받지 않는다 — 소수 여섯째 자리와 합쳐 유효숫자 열다섯 자리를 넘으면 값이 바뀐다(PR A 리뷰 1회차).
+    [{ baseUnit: "G", factor: "1234567890", decimals: "0" }, "factor"],
+    [{ baseUnit: "G", factor: "123456789012.123456", decimals: "0" }, "factor"],
+    [{ baseUnit: "G", factor: "999999999999.999999", decimals: "0" }, "factor"],
     [{ baseUnit: "", factor: "0.5", decimals: "0" }, "factor"],
     [{ baseUnit: "g", factor: "1", decimals: "0" }, "baseUnit"],
   ])("%o 는 %s 칸을 거절한다", (v, field) => {

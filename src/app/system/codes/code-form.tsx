@@ -194,7 +194,7 @@ function UnitSpecSection({ unit, values, errors }: { unit: UnitSpecProps; values
           <Input
             field="factor"
             defaultValue={values.factor}
-            maxLength={19}
+            maxLength={16}
             inputMode="decimal"
             placeholder="예: 1000"
             invalid={!!errors.factor}

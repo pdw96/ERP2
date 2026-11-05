@@ -7,8 +7,11 @@ import { firstErrors } from "./input-common";
 
 export type UnitSpecInput = { baseUnit: string; factor: number; decimals: number };
 
-/** 배수의 꼴 — 0 보다 큰 수, 정수 열두 자리 · 소수 여섯째 자리까지(DB 는 numeric(18,6)). */
-const FACTOR = /^[0-9]{1,12}(\.[0-9]{1,6})?$/;
+/**
+ * 배수의 꼴 — 0 보다 큰 수, 정수 아홉 자리 · 소수 여섯째 자리까지. 모두 열다섯 자리 안이라 JavaScript 의 수로 바꿔도 값이 바뀌지 않는다
+ * (유효숫자 열다섯 자리까지 정확하다 — 열두 자리를 받던 때 123456789012.123456 이 …12346 으로 저장됐다, PR A 리뷰 1회차). DB 는 numeric(18,6).
+ */
+const FACTOR = /^[0-9]{1,9}(\.[0-9]{1,6})?$/;
 
 /** 소수 자릿수 — 0 ~ 3. 수불 수량이 이 자리까지만 들어간다. */
 const decimals = z
@@ -57,7 +60,7 @@ function newSpecSchema(code: string) {
           code: "custom",
           path: ["factor"],
           input: v.factor,
-          message: "0 보다 큰 수, 소수 여섯째 자리까지 — 예: 1000 · 0.001",
+          message: "0 보다 큰 수, 정수 아홉 자리 · 소수 여섯째 자리까지 — 예: 1000 · 0.001",
         });
       return { baseUnit: v.baseUnit, factor: Number(v.factor), decimals: v.decimals };
     });
