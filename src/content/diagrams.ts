@@ -153,7 +153,7 @@ export type MapTable = { id: string; name: string; table?: string; slice: string
 export type MapModule = { module: string; tables: readonly MapTable[] };
 
 /** 지금 짓는 조각 — 지도에서 이 조각의 테이블을 따로 표시한다. */
-export const CURRENT_SLICE = "기준정보";
+export const CURRENT_SLICE = "재고 수불";
 
 export const MODULE_MAP: readonly MapModule[] = [
   {
@@ -192,7 +192,7 @@ export const MODULE_MAP: readonly MapModule[] = [
       { id: "txn", name: "수불", slice: "재고 수불" },
       { id: "stock", name: "현재고 — 품목 × 창고 × LOT · 상태", slice: "재고 수불" },
       { id: "lot", name: "LOT", slice: "재고 수불" },
-      { id: "alloc", name: "할당", slice: "재고 수불" },
+      { id: "alloc", name: "할당", slice: "작업지시" },
       { id: "count", name: "실사", slice: "재고 수불" },
     ],
   },
@@ -236,6 +236,8 @@ export const MODULE_MAP: readonly MapModule[] = [
     tables: [
       { id: "code_groups", name: "공통코드 묶음", table: "code_groups", slice: "기준정보" },
       { id: "codes", name: "공통코드 값", table: "codes", slice: "기준정보" },
+      { id: "unit_specs", name: "단위 사양 — 기준 단위 · 배수 · 소수 자릿수", table: "unit_specs", slice: "재고 수불" },
+      { id: "number_rules", name: "번호 규칙 — LOT 번호", slice: "재고 수불" },
       { id: "company", name: "회사 정보", slice: "인사" },
       { id: "users", name: "사용자 · 메뉴 · 권한", slice: "인사" },
     ],
@@ -267,66 +269,22 @@ export const MODULE_FLOWS: readonly (readonly string[])[] = [
   ["dept", "emp", "users"],
 ];
 
-// 데이터 모델 ② 이 조각의 테이블 — 조각 「기준정보」가 만드는 다섯과 그 칸.
+// 데이터 모델 ② 이 조각의 테이블 — 조각 「재고 수불」이 지금까지 만든 테이블과 그 칸, 그리고 그것이 가리키는 테이블.
+// 이 조각의 PR 이 테이블을 더할 때마다 여기에 더한다(조각 「재고 수불」 설계 ⑥). 조각 「기준정보」의 다섯은 docs/schema.md 가 든다.
 export const DATA_MODEL = `erDiagram
-  ITEMS["품목 items"] {
-    text code UK "RM-0001 · SF-0001 · FG-0001"
-    text name "품명"
-    text spec "규격"
-    text item_type "공통코드 ITEM_TYPE — RM · SF · FG"
-    text procurement "공통코드 PROC_TYPE — 구매 · 생산"
-    text unit "공통코드 UNIT — EA · M · KG · G …"
-    boolean inspect_in "수입검사 대상"
-    boolean inspect_out "출하검사 대상"
-    int lead_time_days "리드타임(일)"
-    numeric safety_stock "안전재고"
-    numeric min_lot "최소 발주 · 생산량"
-    numeric lot_multiple "발주 · 생산 배수"
-    text cls1 "공통코드 ITEM_CLS1 — 대분류(종류) · 비워도 됨"
-    text cls2 "공통코드 ITEM_CLS2 — 중분류(패키지) · 비워도 됨"
-    text cls3 "공통코드 ITEM_CLS3 — 소분류(용도) · 비워도 됨"
-    text note "비고"
-    boolean active "사용 여부"
-  }
-  WAREHOUSES["창고 warehouses"] {
-    text code UK "WH-01"
-    text name "창고명"
-    boolean active "사용 여부"
-  }
-  PARTNERS["거래처 partners"] {
-    text code UK "BP-0001"
-    text name "거래처명"
-    boolean is_supplier "매입처"
-    boolean is_customer "매출처"
-    text country "공통코드 COUNTRY — KR · US · JP …"
-    text biz_no "사업자등록번호 — 한국"
-    text foreign_biz_no "해외 사업자번호 — 한국 밖"
-    text ceo "대표자"
-    text biz_type "업태"
-    text biz_item "종목"
-    text address "주소"
-    text phone "전화"
-    text email "이메일"
-    text contact_name "담당자"
-    text contact_phone "담당자 연락처"
-    text note "비고"
-    boolean active "사용 여부"
-  }
-  CODE_GROUPS["공통코드 묶음 code_groups (Major)"] {
-    text code UK "ITEM_TYPE · PROC_TYPE · UNIT · COUNTRY · ITEM_CLS1 ~ 3"
+  CODES["공통코드 값 codes (Minor) — 조각 「기준정보」"] {
+    text group_code FK "묶음 — 여기서는 UNIT"
+    text code "EA · M · KG · G · MM · L · ML · MG …"
     text name "이름"
-    boolean is_system "시스템 코드 — 화면에서 못 고침"
   }
-  CODES["공통코드 값 codes (Minor)"] {
-    text group_code FK "묶음 — 묶음 + 코드가 겹치지 않음(UK)"
-    text code "RM · BUY · EA · KR …"
-    text name "이름"
-    int sort_order "정렬 순서"
-    boolean active "사용 여부"
+  UNIT_SPECS["단위 사양 unit_specs"] {
+    text unit UK "공통코드 UNIT 의 값 — 단위마다 하나"
+    text base_unit FK "기준 단위 — 자신이 기준인 단위(KG → G)"
+    numeric factor "배수 — 기준 단위 몇 개(KG = 1000 G). 자신이면 1"
+    smallint decimals "소수 자릿수 0 ~ 3 — 수불 수량이 들어가는 자리"
   }
-  CODE_GROUPS ||--o{ CODES : "묶음의 값"
-  CODES ||--o{ ITEMS : "유형 · 조달구분 · 단위 · 분류"
-  CODES ||--o{ PARTNERS : "국가"`;
+  CODES ||--|| UNIT_SPECS : "단위의 사양"
+  UNIT_SPECS ||--o{ UNIT_SPECS : "기준 단위"`;
 
 // 시스템 구성 — 화면 · 서버 · DB · 자동 검사 · 알림.
 export const SYSTEM = `flowchart LR

@@ -3,8 +3,9 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
-import { getCode, getCodeGroup } from "@/db/codes";
+import { getCode, getCodeGroup, getUnitSpec } from "@/db/codes";
 import { withDb } from "@/db/request";
+import { UNIT_GROUP } from "@/lib/code-fields";
 import { isAlwaysActive } from "@/lib/master-codes";
 import { updateCodeAction } from "../../actions";
 import { CodeForm } from "../../code-form";
@@ -32,13 +33,14 @@ async function EditCode({ params }: Pick<PageProps<"/system/codes/[group]/[code]
     data = await withDb(async (db) => {
       const group = await getCodeGroup(db, decodeURIComponent(rawGroup));
       const code = group && (await getCode(db, group.code, decodeURIComponent(rawCode)));
-      return group && code && { group, code };
+      const spec = group?.code === UNIT_GROUP && code ? await getUnitSpec(db, code.code) : undefined;
+      return group && code && { group, code, spec };
     });
   } catch (error) {
     return <LoadFailed what="공통코드" error={error} />;
   }
   if (!data || data.group.isSystem) notFound();
-  const { group, code } = data;
+  const { group, code, spec } = data;
   return (
     <>
       <Crumbs group={group} last="수정" />
@@ -52,7 +54,13 @@ async function EditCode({ params }: Pick<PageProps<"/system/codes/[group]/[code]
         version={code.version}
         alwaysActive={isAlwaysActive(group.code, code.code)}
         action={updateCodeAction.bind(null, group.code, code.code)}
-        initial={{ name: code.name, sortOrder: String(code.sortOrder), active: code.active ? "Y" : "N" }}
+        initial={{
+          name: code.name,
+          sortOrder: String(code.sortOrder),
+          active: code.active ? "Y" : "N",
+          decimals: spec ? String(spec.decimals) : undefined,
+        }}
+        unit={spec ? { mode: "edit", baseUnit: spec.baseUnit, factor: spec.factor } : undefined}
       />
     </>
   );

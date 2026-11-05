@@ -16,8 +16,8 @@ describe("설계도의 Mermaid 글", () => {
     await expect(mermaid.parse("flowchart LR\n  A -- --> ")).rejects.toThrow();
   });
 
-  it("이 조각의 테이블 다섯은 상세 그림에 칸과 함께 있다", () => {
-    for (const table of ["items", "warehouses", "partners", "code_groups", "codes"]) {
+  it("이 조각이 만든 테이블은 상세 그림에 칸과 함께 있다", () => {
+    for (const table of ["unit_specs"]) {
       expect(DATA_MODEL).toContain(` ${table}`);
     }
   });
@@ -38,9 +38,12 @@ describe("모듈별 전체 지도", () => {
     ]);
   });
 
-  it("지금 짓는 조각의 테이블은 상세 그림의 다섯과 같다", () => {
-    const mine = MODULE_MAP.flatMap((m) => m.tables).filter((t) => t.slice === CURRENT_SLICE);
-    expect(mine.map((t) => t.table).sort()).toEqual(["code_groups", "codes", "items", "partners", "warehouses"]);
+  it("지금 짓는 조각이 만든 테이블(이름이 있는 것)은 상세 그림에 다 있다 — 아직 짓지 않은 것은 이름이 없다", () => {
+    const built = MODULE_MAP.flatMap((m) => m.tables)
+      .filter((t) => t.slice === CURRENT_SLICE && t.table)
+      .map((t) => t.table!);
+    expect(built.sort()).toEqual(["unit_specs"]);
+    for (const table of built) expect(DATA_MODEL).toContain(` ${table}`);
   });
 
   it("테이블 이름(id)은 겹치지 않고, 흐름은 지도에 있는 테이블만 가리킨다", () => {

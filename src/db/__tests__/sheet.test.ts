@@ -109,7 +109,7 @@ describe("품목 시트", () => {
 
   it("공통코드에 더한 단위를 이름으로 넣을 수 있다", async () => {
     const { createCode } = await import("@/db/codes");
-    await createCode(db, "UNIT", { code: "BOX", name: "상자", sortOrder: "50" });
+    await createCode(db, "UNIT", { code: "BOX", name: "상자", sortOrder: "50", decimals: "0" });
     const r = await saveItemRows(db, [item({ unit: "상자" })]);
     expect(r.saved).toEqual([{ code: "RM-0007", name: "솔더 볼" }]);
     expect(await getItem(db, "RM-0007")).toMatchObject({ unit: "BOX" });

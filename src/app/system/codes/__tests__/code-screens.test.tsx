@@ -176,3 +176,102 @@ describe("값 수정 화면", () => {
     expect(sent.get("version")).toBe("7");
   });
 });
+
+describe("단위 사양(조각 「재고 수불」 PR A, ADR 0017)", () => {
+  const specs = {
+    EA: { unit: "EA", baseUnit: "EA", factor: 1, decimals: 0 },
+    KG: { unit: "KG", baseUnit: "G", factor: 1000, decimals: 3 },
+    MG: { unit: "MG", baseUnit: "G", factor: 0.001, decimals: 0 },
+  };
+
+  it("단위 목록 — 기준 단위(같은 단위면 그 코드 그대로) · 배수 · 소수 자릿수 칸이 더 있다", () => {
+    render(
+      <CodeTable
+        group={group({})}
+        rows={[code({}), code({ id: 2, code: "KG", name: "킬로그램" }), code({ id: 3, code: "MG", name: "밀리그램" })]}
+        specs={specs}
+      />,
+    );
+    expect(screen.getByRole("columnheader", { name: "기준 단위" })).toBeInTheDocument();
+    const [ea, kg, mg] = screen
+      .getAllByRole("row")
+      .slice(1)
+      .map((r) => within(r));
+    // 기준 단위 칸에도 EA — 「자신」 같은 말 대신 같은 단위 코드를 그대로 적는다(저자 요청 2026-11-05).
+    expect(ea.getAllByText("EA")).toHaveLength(2);
+    expect(kg.getByText("G")).toBeInTheDocument();
+    expect(kg.getByText("1000")).toBeInTheDocument();
+    expect(kg.getByText("3")).toBeInTheDocument();
+    expect(mg.getByText("0.001")).toBeInTheDocument();
+  });
+
+  it("다른 묶음의 목록에는 사양 칸이 없다", () => {
+    render(<CodeTable group={group({ code: "COUNTRY", name: "국가" })} rows={[code({ groupCode: "COUNTRY" })]} />);
+    expect(screen.queryByRole("columnheader", { name: "기준 단위" })).toBeNull();
+  });
+
+  it("새 단위 — 기준 단위(기본은 「같은 단위」) · 배수 · 자릿수를 넣어 보낸다", async () => {
+    const action = vi.fn().mockResolvedValue(null);
+    render(
+      <CodeForm
+        mode="create"
+        group={unit}
+        action={action}
+        initial={{ code: "", name: "", sortOrder: "90", baseUnit: "", factor: "", decimals: "0" }}
+        unit={{
+          mode: "create",
+          bases: [
+            { code: "EA", name: "개" },
+            { code: "G", name: "그램" },
+          ],
+        }}
+      />,
+    );
+    const base = screen.getByLabelText(/^기준 단위/) as HTMLSelectElement;
+    expect(base.value).toBe("");
+    expect(
+      within(base)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["같은 단위(이 단위)", "EA 개", "G 그램"]);
+    fireEvent.change(screen.getByLabelText(/^코드/), { target: { value: "TON" } });
+    fireEvent.change(base, { target: { value: "G" } });
+    fireEvent.change(screen.getByLabelText(/^배수/), { target: { value: "1000000" } });
+    fireEvent.change(screen.getByLabelText(/^소수 자릿수/), { target: { value: "3" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    });
+    const sent = action.mock.calls[0][1] as FormData;
+    expect([sent.get("baseUnit"), sent.get("factor"), sent.get("decimals")]).toEqual(["G", "1000000", "3"]);
+  });
+
+  it("단위 수정 — 기준 · 배수는 보이기만 하고 보내지 않는다. 자릿수만 보낸다", async () => {
+    const action = vi.fn().mockResolvedValue(null);
+    render(
+      <CodeForm
+        mode="edit"
+        version="7"
+        group={unit}
+        code="KG"
+        action={action}
+        initial={{ name: "킬로그램", sortOrder: "30", active: "Y", decimals: "3" }}
+        unit={{ mode: "edit", baseUnit: "G", factor: 1000 }}
+      />,
+    );
+    expect(screen.getByText("1000")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^기준 단위/)).toBeNull();
+    expect(screen.queryByLabelText(/^배수/)).toBeNull();
+    fireEvent.change(screen.getByLabelText(/^소수 자릿수/), { target: { value: "1" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    });
+    const sent = action.mock.calls[0][1] as FormData;
+    expect(sent.has("baseUnit") || sent.has("factor")).toBe(false);
+    expect(sent.get("decimals")).toBe("1");
+  });
+
+  it("다른 묶음의 화면에는 사양 칸이 없다", () => {
+    render(<CodeForm mode="create" group={{ code: "COUNTRY", name: "국가" }} action={vi.fn()} initial={{}} />);
+    expect(screen.queryByLabelText(/^소수 자릿수/)).toBeNull();
+  });
+});

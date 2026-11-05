@@ -36,6 +36,20 @@
       "when": 1793782859629,
       "tag": "0004_master_descriptive",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793885704909,
+      "tag": "0005_unit_specs",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793885716537,
+      "tag": "0006_unit_spec_values",
+      "breakpoints": true
     }
   ]
 }

@@ -4,9 +4,16 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { nextCode } from "@/db/numbering";
 import { RESET_TABLES, resetToSample } from "@/db/reset";
 import { lastResetAt } from "@/db/status";
-import { SAMPLE_CODE_GROUPS, SAMPLE_CODES, SAMPLE_ITEMS, SAMPLE_PARTNERS, SAMPLE_WAREHOUSES } from "@/db/sample";
+import {
+  SAMPLE_CODE_GROUPS,
+  SAMPLE_CODES,
+  SAMPLE_ITEMS,
+  SAMPLE_PARTNERS,
+  SAMPLE_UNIT_SPECS,
+  SAMPLE_WAREHOUSES,
+} from "@/db/sample";
 import * as schema from "@/db/schema";
-import { codes, items, partners, warehouses } from "@/db/schema";
+import { codes, items, partners, unitSpecs, warehouses } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { migratedDb } from "./pglite";
 
@@ -31,6 +38,7 @@ async function snapshot() {
     warehouses: strip(await db.select().from(warehouses).orderBy(asc(warehouses.id))),
     partners: strip(await db.select().from(partners).orderBy(asc(partners.id))),
     codes: strip(await db.select().from(codes).orderBy(asc(codes.id))),
+    unitSpecs: strip(await db.select().from(unitSpecs).orderBy(asc(unitSpecs.id))),
   };
 }
 
@@ -45,6 +53,8 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
     const clean = await snapshot();
 
     await db.insert(codes).values({ groupCode: "UNIT", code: "BOX", name: "상자" });
+    await db.insert(unitSpecs).values({ unit: "BOX", baseUnit: "BOX", factor: 1, decimals: 0 });
+    await db.update(unitSpecs).set({ decimals: 3 }).where(eq(unitSpecs.unit, "EA"));
     await db.insert(items).values({ code: "RM-0007", name: "장난", itemType: "RM", procurement: "BUY", unit: "BOX" });
     await db.update(items).set({ name: "바꾼 이름", active: false }).where(eq(items.code, "RM-0001"));
     await db.insert(warehouses).values({ code: "WH-05", name: "장난 창고" });
@@ -56,6 +66,7 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
       items: SAMPLE_ITEMS.length,
       warehouses: SAMPLE_WAREHOUSES.length,
       partners: SAMPLE_PARTNERS.length,
+      unit_specs: SAMPLE_UNIT_SPECS.length,
       codes: SAMPLE_CODES.length,
       code_groups: SAMPLE_CODE_GROUPS.length,
     });

@@ -335,7 +335,7 @@ describe("입력 화면이 고르는 값", () => {
 
   it("단위 — 더한 단위가 바로 보인다", async () => {
     await db.insert(codes).values({ groupCode: "UNIT", code: "BOX", name: "상자", sortOrder: 15 });
-    expect((await unitOptions(db)).map((u) => u.code)).toEqual(["EA", "BOX", "M", "KG", "G"]);
+    expect((await unitOptions(db)).map((u) => u.code)).toEqual(["EA", "BOX", "M", "KG", "G", "MM", "L", "ML", "MG"]);
   });
 
   it("유형마다 등록하면 붙을 코드", async () => {

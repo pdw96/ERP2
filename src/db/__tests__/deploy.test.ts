@@ -6,8 +6,8 @@ import { asc, eq, sql } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { isPooled, prepareDatabase } from "@/db/deploy";
 import { describeFailure } from "@/db/status";
-import { SAMPLE_CODE_GROUPS, SAMPLE_CODES } from "@/db/sample";
-import { codeGroups, codes, items, partners, warehouses } from "@/db/schema";
+import { SAMPLE_CODE_GROUPS, SAMPLE_CODES, SAMPLE_UNIT_SPECS } from "@/db/sample";
+import { codeGroups, codes, items, partners, unitSpecs, warehouses } from "@/db/schema";
 import { emptyDb } from "./pglite";
 
 // 배포 빌드가 배포 전에 부르는 준비(ADR 0005) — 성공 기준 7.
@@ -30,13 +30,13 @@ async function tableNames(h: Awaited<ReturnType<typeof emptyDb>>) {
 }
 
 describe("마이그레이션과 첫 샘플 데이터", () => {
-  it("빈 DB 에 적용하면 테이블 다섯이 생기고 샘플 데이터가 들어간다", async () => {
+  it("빈 DB 에 적용하면 테이블 여섯이 생기고 샘플 데이터가 들어간다", async () => {
     const h = await fresh();
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
-    expect(await tableNames(h)).toEqual(["code_groups", "codes", "items", "partners", "warehouses"]);
+    expect(await tableNames(h)).toEqual(["code_groups", "codes", "items", "partners", "unit_specs", "warehouses"]);
     expect(await h.db.select().from(codeGroups)).toHaveLength(7);
-    expect(log[0]).toMatch(/^마이그레이션: 적용된 것 5개 — 이번에 5개 적용$/);
+    expect(log[0]).toMatch(/^마이그레이션: 적용된 것 7개 — 이번에 7개 적용$/);
     expect(log[1]).toMatch(/^샘플 데이터: 빈 DB 라 넣었다 — items 10 · /);
   });
 
@@ -49,10 +49,10 @@ describe("마이그레이션과 첫 샘플 데이터", () => {
     const log: string[] = [];
     await prepareDatabase(h.db, { ...quiet, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 5개 — 이번에 0개 적용",
+      "마이그레이션: 적용된 것 7개 — 이번에 0개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
-    expect(await tableNames(h)).toEqual(["code_groups", "codes", "items", "partners", "warehouses"]);
+    expect(await tableNames(h)).toEqual(["code_groups", "codes", "items", "partners", "unit_specs", "warehouses"]);
     expect(await h.db.select().from(warehouses)).toHaveLength(5);
   });
 
@@ -120,7 +120,7 @@ describe("마이그레이션 0001 · 0002 — 거래처의 국가(PR G)", () => 
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 5개 — 이번에 4개 적용",
+      "마이그레이션: 적용된 것 7개 — 이번에 6개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(
@@ -173,7 +173,7 @@ describe("마이그레이션 0003 · 0004 — 품목 · 거래처의 설명용 �
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 5개 — 이번에 2개 적용",
+      "마이그레이션: 적용된 것 7개 — 이번에 4개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(
@@ -239,6 +239,86 @@ describe("마이그레이션 0003 · 0004 — 품목 · 거래처의 설명용 �
         .from(items)
         .where(sql`${items.cls1} is not null`),
     ).toHaveLength(10);
+  });
+});
+
+describe("마이그레이션 0005 · 0006 — 단위 사양(조각 「재고 수불」 PR A, ADR 0017)", () => {
+  const specs = (h: Awaited<ReturnType<typeof emptyDb>>) =>
+    h.db
+      .select({
+        unit: unitSpecs.unit,
+        baseUnit: unitSpecs.baseUnit,
+        factor: unitSpecs.factor,
+        decimals: unitSpecs.decimals,
+      })
+      .from(unitSpecs)
+      .orderBy(asc(unitSpecs.unit));
+  const sorted = <T extends { unit: string }>(rows: T[]) => [...rows].sort((a, b) => a.unit.localeCompare(b.unit));
+
+  it("데이터가 있는 DB — 새 단위 넷이 들어가고 모든 단위에 사양이 생긴다. 아는 단위는 샘플과 같고, 방문자가 더한 단위는 자신이 기준 · 소수 셋째 자리", async () => {
+    const h = await fresh();
+    await h.migrate(firstMigrations(5));
+    // PR A 앞의 운영 DB — 샘플의 단위 넷에 방문자가 단위 BOX 를 더해 두었다.
+    await h.client.exec(`
+      insert into code_groups (code, name, is_system) values ('UNIT', '단위', false);
+      insert into codes (group_code, code, name, sort_order) values
+        ('UNIT', 'EA', '개', 10), ('UNIT', 'M', '미터', 20), ('UNIT', 'KG', '킬로그램', 30), ('UNIT', 'G', '그램', 40),
+        ('UNIT', 'BOX', '상자', 15);
+    `);
+
+    const log: string[] = [];
+    await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
+    expect(log).toEqual([
+      "마이그레이션: 적용된 것 7개 — 이번에 2개 적용",
+      "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
+    ]);
+    // 마이그레이션이 넣은 단위 · 사양은 샘플 데이터와 같다 — 매일 밤 되돌린 뒤와 어긋나지 않게.
+    const units = await h.db
+      .select({ code: codes.code, name: codes.name, sortOrder: codes.sortOrder })
+      .from(codes)
+      .where(eq(codes.groupCode, "UNIT"))
+      .orderBy(asc(codes.sortOrder));
+    expect(units.filter((u) => u.code !== "BOX")).toEqual(
+      SAMPLE_CODES.filter((c) => c.groupCode === "UNIT").map((c) => ({
+        code: c.code,
+        name: c.name,
+        sortOrder: c.sortOrder,
+      })),
+    );
+    expect(await specs(h)).toEqual(
+      sorted([...SAMPLE_UNIT_SPECS, { unit: "BOX", baseUnit: "BOX", factor: 1, decimals: 3 }]).map((s) => ({
+        unit: s.unit,
+        baseUnit: s.baseUnit,
+        factor: s.factor,
+        decimals: s.decimals,
+      })),
+    );
+  });
+
+  it("아는 단위의 기준이 공통코드에 없으면 그 단위 자신을 기준으로 둔다 — 참조가 실패해 배포가 멈추지 않는다", async () => {
+    const h = await fresh();
+    await h.migrate(firstMigrations(5));
+    // 단위가 KG 하나뿐인 DB — 기준 G 가 없다.
+    await h.client.exec(`
+      insert into code_groups (code, name, is_system) values ('UNIT', '단위', false);
+      insert into codes (group_code, code, name, sort_order) values ('UNIT', 'KG', '킬로그램', 30);
+    `);
+    await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: () => {} });
+    const rows = await specs(h);
+    expect(rows.find((r) => r.unit === "KG")).toEqual({ unit: "KG", baseUnit: "KG", factor: 1, decimals: 3 });
+    // 함께 들어간 새 단위는 기준이 있으면 ADR 0017 그대로 — MM 의 기준 M 은 없어 자신, MG 의 기준 G 도 없어 자신.
+    expect(rows.find((r) => r.unit === "MM")).toEqual({ unit: "MM", baseUnit: "MM", factor: 1, decimals: 0 });
+    expect(rows.find((r) => r.unit === "ML")).toEqual({ unit: "ML", baseUnit: "ML", factor: 1, decimals: 0 });
+    expect(rows.find((r) => r.unit === "L")).toEqual({ unit: "L", baseUnit: "ML", factor: 1000, decimals: 3 });
+  });
+
+  it("빈 DB — 마이그레이션은 단위 · 사양을 넣지 않고, 샘플 데이터가 넣는다", async () => {
+    const h = await fresh();
+    await h.migrate();
+    expect(await h.db.select().from(unitSpecs)).toHaveLength(0);
+    expect(await h.db.select().from(codes)).toHaveLength(0);
+    await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: () => {} });
+    expect(await h.db.select().from(unitSpecs)).toHaveLength(SAMPLE_UNIT_SPECS.length);
   });
 });
 

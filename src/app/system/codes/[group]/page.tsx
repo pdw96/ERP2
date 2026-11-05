@@ -4,9 +4,9 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
-import { getCodeGroup, listCodeGroups, listCodes } from "@/db/codes";
+import { getCodeGroup, listCodeGroups, listCodes, listUnitSpecs } from "@/db/codes";
 import { withDb } from "@/db/request";
-import { MINOR_CODE } from "@/lib/code-fields";
+import { MINOR_CODE, UNIT_GROUP } from "@/lib/code-fields";
 import { CodeTable, GroupPicker, Kind, SavedNotice } from "../code-list";
 import { Crumbs } from "../crumbs";
 
@@ -35,7 +35,12 @@ async function Group({ params, searchParams }: PageProps<"/system/codes/[group]"
     data = await withDb(async (db) => {
       const group = await getCodeGroup(db, code);
       if (!group) return undefined;
-      return { group, groups: await listCodeGroups(db), rows: await listCodes(db, group.code) };
+      return {
+        group,
+        groups: await listCodeGroups(db),
+        rows: await listCodes(db, group.code),
+        specs: group.code === UNIT_GROUP ? await listUnitSpecs(db) : undefined,
+      };
     });
   } catch (error) {
     return (
@@ -46,7 +51,7 @@ async function Group({ params, searchParams }: PageProps<"/system/codes/[group]"
     );
   }
   if (!data) notFound();
-  const { group, groups, rows } = data;
+  const { group, groups, rows, specs } = data;
   const saved = savedCode ? rows.find((r) => r.code === savedCode) : undefined;
 
   return (
@@ -75,7 +80,13 @@ async function Group({ params, searchParams }: PageProps<"/system/codes/[group]"
         )}
       </div>
       {saved && <SavedNotice code={saved} />}
-      <CodeTable group={group} rows={rows} savedCode={saved?.code} />
+      {specs && (
+        <p className="mt-4 text-sm text-muted">
+          같은 기준 단위끼리는 수불 등록에서 바꿔 넣습니다 — 예: KG 은 기준 G 의 1000 배. 소수 자릿수는 수불 수량이
+          들어가는 자리입니다.
+        </p>
+      )}
+      <CodeTable group={group} rows={rows} savedCode={saved?.code} specs={specs} />
     </>
   );
 }

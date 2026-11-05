@@ -1,7 +1,8 @@
 import { and, asc, count, eq, getTableColumns, max, sql } from "drizzle-orm";
-import { GROUP_CODE, MINOR_CODE } from "@/lib/code-fields";
+import { GROUP_CODE, MINOR_CODE, UNIT_GROUP } from "@/lib/code-fields";
 import { parseCodeUpdate, parseNewCode, type CodeErrors, type CodeField, type CodeValues } from "@/lib/code-input";
 import { isAlwaysActive } from "@/lib/master-codes";
+import { parseNewUnitSpec, parseUnitDecimals, type UnitSpecInput } from "@/lib/unit-input";
 import {
   REGISTER_LOCK,
   STALE,
@@ -12,7 +13,7 @@ import {
   versionIs,
   versionOf,
 } from "./master-shared";
-import { codeGroups, codes } from "./schema";
+import { codeGroups, codes, unitSpecs } from "./schema";
 import type { Db } from "./types";
 
 // 시스템 관리 › 공통코드의 목록 · 값 추가 · 수정(조각 「기준정보」 PR E). 화면(src/app/system/codes/)은 이 함수만 부른다.
@@ -27,6 +28,9 @@ export type Code = typeof codes.$inferSelect;
 /** 공통코드 값과 그 버전(마지막으로 고친 때) — 수정 화면이 들고 있다가 저장할 때 돌려준다(PR J). */
 export type CodeWithVersion = Code & { version: string };
 export type CodeGroupRow = Pick<CodeGroup, "code" | "name" | "isSystem"> & { values: number };
+export type UnitSpec = Pick<typeof unitSpecs.$inferSelect, "unit" | "baseUnit" | "factor" | "decimals">;
+/** 기준 단위로 고를 수 있는 단위 — 자신이 기준이고 「사용」인 단위. */
+export type BaseUnitOption = { code: string; name: string };
 
 // ── 목록 ─────────────────────────────────────────────
 
@@ -69,6 +73,46 @@ export async function nextSortOrder(db: Db, group: string): Promise<number> {
   return Math.min((row?.max ?? 0) + 10, 999);
 }
 
+// ── 단위 사양(조각 「재고 수불」 PR A, ADR 0017) ─────────────────
+
+const specColumns = {
+  unit: unitSpecs.unit,
+  baseUnit: unitSpecs.baseUnit,
+  factor: unitSpecs.factor,
+  decimals: unitSpecs.decimals,
+};
+
+/** 단위마다의 사양 — 단위 코드로 찾는다. 공통코드 화면의 UNIT 표가 쓴다. */
+export async function listUnitSpecs(db: Db): Promise<Record<string, UnitSpec>> {
+  const rows = await db.select(specColumns).from(unitSpecs);
+  return Object.fromEntries(rows.map((r) => [r.unit, r]));
+}
+
+export async function getUnitSpec(db: Db, unit: string): Promise<UnitSpec | undefined> {
+  if (!MINOR_CODE.test(unit)) return undefined;
+  const [row] = await db.select(specColumns).from(unitSpecs).where(eq(unitSpecs.unit, unit));
+  return row;
+}
+
+/** 새 단위의 기준으로 고를 수 있는 단위 — 자신이 기준(배수 1)이고 「사용」인 단위, 정렬 순서대로. */
+export async function baseUnitOptions(db: Db): Promise<BaseUnitOption[]> {
+  return db
+    .select({ code: codes.code, name: codes.name })
+    .from(unitSpecs)
+    .innerJoin(codes, and(eq(codes.groupCode, unitSpecs.unitGroup), eq(codes.code, unitSpecs.unit)))
+    .where(and(eq(unitSpecs.unit, unitSpecs.baseUnit), eq(codes.active, true)))
+    .orderBy(asc(codes.sortOrder), asc(codes.code));
+}
+
+const NOT_BASE = "기준이 될 수 없는 단위입니다 — 목록에 있는 「사용」 단위를 고르세요";
+
+/** 고른 기준 단위가 자신이 기준이고 「사용」인 단위인가 — 아니면 거절할 까닭. 자신이 기준이면 보지 않는다. */
+async function baseUnitProblem(db: Db, code: string, spec: UnitSpecInput): Promise<string | undefined> {
+  if (spec.baseUnit === code) return undefined;
+  const ok = (await baseUnitOptions(db)).some((b) => b.code === spec.baseUnit);
+  return ok ? undefined : NOT_BASE;
+}
+
 // ── 추가 · 수정 ─────────────────────────────────────────
 
 export type CodeSaveResult =
@@ -86,6 +130,10 @@ const CONSTRAINT_FIELD: Record<string, CodeField> = {
   codes_code_format: "code",
   codes_name_length: "name",
   codes_sort_order_range: "sortOrder",
+  unit_specs_base_fk: "baseUnit",
+  unit_specs_factor_positive: "factor",
+  unit_specs_base_factor_one: "factor",
+  unit_specs_decimals_range: "decimals",
 };
 
 /** 제약 위반이면 칸의 거절로 바꾸고, 아니면 그대로 던진다(부르는 쪽이 코드만 남기고 알린다). */
@@ -105,7 +153,17 @@ export async function createCode(db: Db, group: string, values: CodeValues): Pro
   if (!g) return { ok: false, notFound: true };
   if (g.isSystem) return { ok: false, errors: {}, formError: SYSTEM_LOCKED, values };
   const parsed = parseNewCode(values);
-  if (!parsed.ok) return { ok: false, errors: parsed.errors, values };
+  // 단위 묶음이면 사양(기준 단위 · 배수 · 소수 자릿수)도 함께 받는다 — 단위마다 사양이 하나씩 있다(ADR 0017).
+  const isUnit = g.code === UNIT_GROUP;
+  const spec = isUnit
+    ? parseNewUnitSpec(values, parsed.ok ? parsed.value.code : (values.code ?? "").trim())
+    : undefined;
+  const errors: CodeErrors = { ...(parsed.ok ? {} : parsed.errors), ...(spec && !spec.ok ? spec.errors : {}) };
+  if (parsed.ok && spec?.ok) {
+    const problem = await baseUnitProblem(db, parsed.value.code, spec.value);
+    if (problem) errors.baseUnit = problem;
+  }
+  if (!parsed.ok || (spec && !spec.ok) || Object.keys(errors).length) return { ok: false, errors, values };
 
   try {
     return await db.transaction(async (tx): Promise<CodeSaveResult> => {
@@ -114,6 +172,7 @@ export async function createCode(db: Db, group: string, values: CodeValues): Pro
       if (n >= CODE_LIMIT)
         return { ok: false, errors: {}, formError: limitMessage("한 묶음의 값", CODE_LIMIT), values };
       await tx.insert(codes).values({ ...parsed.value, groupCode: g.code });
+      if (spec?.ok) await tx.insert(unitSpecs).values({ unit: parsed.value.code, ...spec.value });
       return { ok: true, code: parsed.value.code };
     });
   } catch (error) {
@@ -143,23 +202,38 @@ export async function updateCode(
   if (!g || !current) return { ok: false, notFound: true };
   if (g.isSystem) return { ok: false, errors: {}, formError: SYSTEM_LOCKED, values };
   const parsed = parseCodeUpdate(values);
-  const errors: CodeErrors = parsed.ok ? {} : { ...parsed.errors };
+  // 단위 묶음이면 소수 자릿수도 고친다 — 기준 단위 · 배수는 등록 뒤 바뀌지 않는다(ADR 0017).
+  // 자릿수를 줄이는 것은 그 단위의 수불 수량이 다 맞을 때만이다 — 수불을 더하는 PR C 가 그 검사를 더한다(설계 「PR A 를 열기 전에 정한 것」).
+  // 자릿수를 보내지 않으면 그대로 둔다.
+  const decimals = g.code === UNIT_GROUP && values.decimals !== undefined ? parseUnitDecimals(values) : undefined;
+  const errors: CodeErrors = {
+    ...(parsed.ok ? {} : parsed.errors),
+    ...(decimals && !decimals.ok ? decimals.errors : {}),
+  };
   if (!errors.active && values.active === "N" && isAlwaysActive(g.code, current.code))
     errors.active = ALWAYS_ACTIVE_MESSAGE;
-  if (!parsed.ok || Object.keys(errors).length) return { ok: false, errors, values };
+  if (!parsed.ok || (decimals && !decimals.ok) || Object.keys(errors).length) return { ok: false, errors, values };
   if (version !== undefined && !VERSION.test(version)) return { ok: false, errors: {}, formError: STALE, values };
   try {
-    const done = await db
-      .update(codes)
-      .set({ ...parsed.value, updatedAt: touched() })
-      .where(
-        version === undefined
-          ? eq(codes.id, current.id)
-          : and(eq(codes.id, current.id), versionIs(codes.updatedAt, version)),
-      )
-      .returning({ id: codes.id });
-    if (done.length === 0) return { ok: false, errors: {}, formError: STALE, values };
-    return { ok: true, code };
+    // 값과 사양을 한 트랜잭션에서 고친다 — 버전이 어긋나면 둘 다 바뀌지 않는다.
+    return await db.transaction(async (tx): Promise<CodeSaveResult> => {
+      const done = await tx
+        .update(codes)
+        .set({ ...parsed.value, updatedAt: touched() })
+        .where(
+          version === undefined
+            ? eq(codes.id, current.id)
+            : and(eq(codes.id, current.id), versionIs(codes.updatedAt, version)),
+        )
+        .returning({ id: codes.id });
+      if (done.length === 0) return { ok: false, errors: {}, formError: STALE, values };
+      if (decimals?.ok)
+        await tx
+          .update(unitSpecs)
+          .set({ decimals: decimals.value.decimals, updatedAt: touched() })
+          .where(eq(unitSpecs.unit, current.code));
+      return { ok: true, code };
+    });
   } catch (error) {
     return asRejection(error, values);
   }

@@ -34,7 +34,9 @@ beforeEach(() => resetToSample(db));
 
 const codesOf = (rows: { code: string }[]) => rows.map((r) => r.code);
 const countIn = async (group: string) => (await db.select().from(codes).where(eq(codes.groupCode, group))).length;
-const box = { code: "BOX", name: "상자", sortOrder: "15" };
+// 단위 묶음의 새 값은 사양도 함께 받는다(ADR 0017) — 자신이 기준, 정수만.
+const box = { code: "BOX", name: "상자", sortOrder: "15", decimals: "0" };
+const UNITS = ["EA", "M", "KG", "G", "MM", "L", "ML", "MG"];
 // 품목 한 건 — 단위만 바꿔 넣는다.
 const newItem = (unit: string): ItemValues => ({
   itemType: "RM",
@@ -58,15 +60,15 @@ describe("목록", () => {
       { code: "ITEM_CLS3", name: "품목 소분류", isSystem: false, values: 3 },
       { code: "ITEM_TYPE", name: "품목 유형", isSystem: true, values: 3 },
       { code: "PROC_TYPE", name: "조달구분", isSystem: true, values: 2 },
-      { code: "UNIT", name: "단위", isSystem: false, values: 4 },
+      { code: "UNIT", name: "단위", isSystem: false, values: 8 },
     ]);
   });
 
   it("값 — 정렬 순서 · 코드 순으로, 「사용 안 함」까지", async () => {
     await updateCode(db, "UNIT", "M", { name: "미터", sortOrder: "20", active: "N" });
-    expect(codesOf(await listCodes(db, "UNIT"))).toEqual(["EA", "M", "KG", "G"]);
+    expect(codesOf(await listCodes(db, "UNIT"))).toEqual(UNITS);
     await db.insert(codes).values({ groupCode: "UNIT", code: "AA", name: "같은 순서", sortOrder: 20 });
-    expect(codesOf(await listCodes(db, "UNIT"))).toEqual(["EA", "AA", "M", "KG", "G"]);
+    expect(codesOf(await listCodes(db, "UNIT"))).toEqual(["EA", "AA", ...UNITS.slice(1)]);
   });
 
   it("주소로 받은 묶음 · 값이 꼴에 맞지 않으면 DB 에 묻지 않고 없다고 한다", async () => {
@@ -77,8 +79,8 @@ describe("목록", () => {
   });
 
   it("새 값의 정렬 순서 기본값 — 가장 큰 것 + 10, 999 까지, 값이 없으면 10", async () => {
-    expect(await nextSortOrder(db, "UNIT")).toBe(50);
-    await updateCode(db, "UNIT", "G", { name: "그램", sortOrder: "995", active: "Y" });
+    expect(await nextSortOrder(db, "UNIT")).toBe(90);
+    await updateCode(db, "UNIT", "MG", { name: "밀리그램", sortOrder: "995", active: "Y" });
     expect(await nextSortOrder(db, "UNIT")).toBe(999);
     await db
       .delete(codes)
@@ -96,7 +98,7 @@ describe("값 추가", () => {
 
   it("더한 단위는 품목 등록의 단위 목록에 바로 보이고, 품목에 쓸 수 있다", async () => {
     await createCode(db, "UNIT", box);
-    expect(codesOf(await unitOptions(db))).toEqual(["EA", "BOX", "M", "KG", "G"]);
+    expect(codesOf(await unitOptions(db))).toEqual(["EA", "BOX", ...UNITS.slice(1)]);
     const r = await createItem(db, newItem("BOX"));
     expect(r).toEqual({ ok: true, code: "RM-0007" });
     expect(await getItem(db, "RM-0007")).toMatchObject({ unit: "BOX" });
@@ -126,7 +128,7 @@ describe("값 추가", () => {
   it("묶음 안에서 겹치는 코드는 그 칸을 알린다", async () => {
     const r = await createCode(db, "UNIT", { ...box, code: "EA" });
     expect(r).toMatchObject({ ok: false, errors: { code: "이 묶음에 이미 있는 코드입니다" } });
-    expect(await countIn("UNIT")).toBe(4);
+    expect(await countIn("UNIT")).toBe(8);
   });
 
   it("「사용 안 함」인 값과 겹치면 그 값을 다시 쓰라고 알린다", async () => {
@@ -138,7 +140,7 @@ describe("값 추가", () => {
   it("틀린 값이면 저장되지 않고 칸을 알린다", async () => {
     const r = await createCode(db, "UNIT", { code: "box", name: "", sortOrder: "1000" });
     expect(r).toMatchObject({ ok: false, errors: { code: expect.any(String), name: expect.any(String) } });
-    expect(await countIn("UNIT")).toBe(4);
+    expect(await countIn("UNIT")).toBe(8);
   });
 
   it("동시에 같은 코드를 더하면 하나만 저장되고, 나머지는 겹친다고 알린다", async () => {
@@ -147,7 +149,7 @@ describe("값 추가", () => {
     expect(results.filter((r) => !r.ok)).toEqual(
       Array.from({ length: 2 }, () => expect.objectContaining({ errors: { code: "이 묶음에 이미 있는 코드입니다" } })),
     );
-    expect(await countIn("UNIT")).toBe(5);
+    expect(await countIn("UNIT")).toBe(9);
   });
 
   const fill = (n: number) =>
@@ -158,16 +160,18 @@ describe("값 추가", () => {
       );
 
   it(`한 묶음의 상한 ${CODE_LIMIT}개에 닿으면 저장하지 않는다`, async () => {
-    await fill(CODE_LIMIT - 4);
+    await fill(CODE_LIMIT - 8);
     const r = await createCode(db, "UNIT", box);
     expect(r).toMatchObject({ ok: false, formError: expect.stringContaining("100개까지") });
     expect(await countIn("UNIT")).toBe(CODE_LIMIT);
   });
 
   it(`동시에 더해도 상한 ${CODE_LIMIT}개를 넘지 않는다`, async () => {
-    await fill(CODE_LIMIT - 6);
+    await fill(CODE_LIMIT - 10);
     const results = await Promise.all(
-      Array.from({ length: 6 }, (_, i) => createCode(db, "UNIT", { code: `C${i}`, name: "동시", sortOrder: "1" })),
+      Array.from({ length: 6 }, (_, i) =>
+        createCode(db, "UNIT", { code: `C${i}`, name: "동시", sortOrder: "1", decimals: "0" }),
+      ),
     );
     expect(results.filter((r) => r.ok)).toHaveLength(2);
     expect(await countIn("UNIT")).toBe(CODE_LIMIT);
