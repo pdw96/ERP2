@@ -285,3 +285,108 @@ describe("품목의 분류 · 비고(PR H)", () => {
     expect(screen.getByLabelText("중분류")).toHaveAttribute("aria-invalid", "true");
   });
 });
+
+describe("품목의 재고 칸(재고 수불 PR B)", () => {
+  const create = () =>
+    render(
+      <ItemForm
+        mode="create"
+        action={vi.fn()}
+        units={units}
+        classes={classes}
+        rules={rules}
+        warehouses={warehouses}
+        initial={blank}
+        previewCodes={preview}
+      />,
+    );
+  const optionsOf = (label: RegExp) =>
+    Array.from((screen.getByLabelText(label) as HTMLSelectElement).options).map((o) => o.textContent);
+
+  it("유형을 고르면 LOT 관리의 기본값이 붙는다 — 원자재 켬, 부자재 · 소모품 끔", () => {
+    create();
+    fireEvent.click(radio("원자재"));
+    expect(box("LOT 관리").checked).toBe(true);
+    fireEvent.click(radio("부자재"));
+    expect(box("LOT 관리").checked).toBe(false);
+    expect(radio("구매").checked).toBe(true);
+    expect(screen.getByText(/지금 저장하면 SM-0003/)).toBeInTheDocument();
+    fireEvent.click(radio("소모품"));
+    expect(box("LOT 관리").checked).toBe(false);
+  });
+
+  it("LOT 번호 규칙은 반제품 · 완제품만 — 「유형의 기본」과 사용 중인 규칙을 번호의 예와 함께 고른다", () => {
+    create();
+    fireEvent.click(radio("원자재"));
+    expect(screen.queryByLabelText(/LOT 번호 규칙/)).toBeNull();
+    expect(screen.getByText(/사 오는 품목은 LOT 번호 규칙이 없습니다/)).toBeInTheDocument();
+    fireEvent.click(radio("완제품"));
+    expect(optionsOf(/LOT 번호 규칙/)).toEqual([
+      "유형의 기본 — LOT_FG (FG-261106-001)",
+      "LOT_FG — 완제품 LOT (FG-261106-001)",
+      "LOT_NUM — 숫자형 LOT (261106001)",
+    ]);
+  });
+
+  it("규칙을 고른 뒤 사 오는 유형으로 바꾸면 규칙을 보내지 않는다", async () => {
+    const action = vi.fn().mockResolvedValue({ ok: true });
+    render(
+      <ItemForm
+        mode="create"
+        action={action}
+        units={units}
+        classes={classes}
+        rules={rules}
+        warehouses={warehouses}
+        initial={blank}
+        previewCodes={preview}
+      />,
+    );
+    fireEvent.click(radio("완제품"));
+    fireEvent.change(screen.getByLabelText(/LOT 번호 규칙/), { target: { value: "LOT_NUM" } });
+    fireEvent.click(radio("원자재"));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "저장" })));
+    await waitFor(() => expect(action).toHaveBeenCalled());
+    const sent = action.mock.calls[0][1] as FormData;
+    expect(sent.get("lotRuleCode")).toBe("");
+    expect(sent.get("lotManaged")).toBe("on");
+  });
+
+  it("기본 창고는 「없음」과 사용 중이고 불량창고가 아닌 창고에서 고른다", () => {
+    create();
+    expect(optionsOf(/기본 입고 창고/)).toEqual(["없음", "WH-01 — 자재창고", "WH-02 — 생산현장"]);
+    expect(optionsOf(/기본 출고 창고/)).toEqual(["없음", "WH-01 — 자재창고", "WH-02 — 생산현장"]);
+  });
+
+  it("수정 — 그 품목의 지금 값인 「사용 안 함」 규칙 · 창고는 표시와 함께 고른 채로 보인다", () => {
+    render(
+      <ItemForm
+        mode="edit"
+        code="FG-0001"
+        itemType="FG"
+        version="1"
+        action={vi.fn()}
+        units={units}
+        classes={classes}
+        rules={rules}
+        warehouses={warehouses}
+        initial={{
+          ...blank,
+          unit: "EA",
+          procurement: "MAKE",
+          lotManaged: "on",
+          lotRuleCode: "LOT_OLD",
+          defaultInWarehouse: "WH-05",
+          defaultOutWarehouse: "",
+          active: "Y",
+        }}
+      />,
+    );
+    expect(screen.getByLabelText(/LOT 번호 규칙/)).toHaveValue("LOT_OLD");
+    expect(optionsOf(/LOT 번호 규칙/)).toContain("LOT_OLD — 옛 규칙 (OLD-001) (사용 안 함)");
+    expect(screen.getByLabelText(/기본 입고 창고/)).toHaveValue("WH-05");
+    expect(optionsOf(/기본 입고 창고/)).toContain("WH-05 — 옛 창고 (사용 안 함)");
+    expect(optionsOf(/기본 출고 창고/)).not.toContain("WH-05 — 옛 창고 (사용 안 함)");
+    expect(box("LOT 관리").checked).toBe(true);
+  });
+});

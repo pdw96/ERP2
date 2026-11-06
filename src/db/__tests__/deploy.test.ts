@@ -6,8 +6,8 @@ import { asc, eq, sql } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { isPooled, prepareDatabase } from "@/db/deploy";
 import { describeFailure } from "@/db/status";
-import { SAMPLE_CODE_GROUPS, SAMPLE_CODES, SAMPLE_ITEMS, SAMPLE_UNIT_SPECS } from "@/db/sample";
-import { codeGroups, codes, items, partners, unitSpecs, warehouses } from "@/db/schema";
+import { SAMPLE_CODE_GROUPS, SAMPLE_CODES, SAMPLE_ITEMS, SAMPLE_NUMBER_RULES, SAMPLE_UNIT_SPECS } from "@/db/sample";
+import { codeGroups, codes, items, numberRules, partners, unitSpecs, warehouses } from "@/db/schema";
 import { emptyDb } from "./pglite";
 
 // 배포 빌드가 배포 전에 부르는 준비(ADR 0005) — 성공 기준 7.
@@ -332,6 +332,152 @@ describe("마이그레이션 0005 · 0006 — 단위 사양(조각 「재고 수
     expect(await h.db.select().from(codes)).toHaveLength(0);
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: () => {} });
     expect(await h.db.select().from(unitSpecs)).toHaveLength(SAMPLE_UNIT_SPECS.length);
+  });
+});
+
+describe("마이그레이션 0007 · 0008 — 번호 규칙 · 품목의 재고 칸 · 불량창고 · 부자재 · 소모품(조각 「재고 수불」 PR B)", () => {
+  /** PR B 앞의 운영 DB — 샘플에 방문자가 원자재 하나(RM-0007)를 더하고 제품창고를 「사용 안 함」으로 바꿔 두었다. */
+  async function beforePrB() {
+    const h = await fresh();
+    await h.migrate(firstMigrations(7));
+    await h.client.exec(`
+      insert into code_groups (code, name, is_system) values
+        ('ITEM_TYPE', '품목 유형', true), ('PROC_TYPE', '조달구분', true), ('UNIT', '단위', false),
+        ('ITEM_CLS1', '품목 대분류', false), ('ITEM_CLS2', '품목 중분류', false);
+      insert into codes (group_code, code, name, sort_order) values
+        ('ITEM_TYPE', 'RM', '원자재', 10), ('ITEM_TYPE', 'SF', '반제품', 20), ('ITEM_TYPE', 'FG', '완제품', 30),
+        ('PROC_TYPE', 'BUY', '구매', 10), ('PROC_TYPE', 'MAKE', '생산', 20),
+        ('UNIT', 'EA', '개', 10), ('UNIT', 'M', '미터', 20), ('UNIT', 'L', '리터', 60),
+        ('ITEM_CLS1', 'CHEM', '화학재료', 40), ('ITEM_CLS2', 'SOP', 'SOP', 10), ('ITEM_CLS2', 'COMMON', '공용', 30);
+      insert into unit_specs (unit, base_unit, factor, decimals) values ('EA', 'EA', 1, 0), ('M', 'M', 1, 3), ('L', 'L', 1, 3);
+      insert into warehouses (code, name, active) values
+        ('WH-01', '자재창고', true), ('WH-02', '생산현장', true), ('WH-03', '제품창고', false), ('WH-04', '불량창고', true);
+      insert into items (code, name, item_type, procurement, unit) values
+        ('RM-0001', '웨이퍼', 'RM', 'BUY', 'EA'), ('SF-0001', '다이 본딩 완료품', 'SF', 'MAKE', 'EA'),
+        ('FG-0001', '전원 관리 IC', 'FG', 'MAKE', 'EA'), ('FG-0002', '센서 IC', 'FG', 'MAKE', 'EA'),
+        ('RM-0007', '방문자가 더한 원자재', 'RM', 'BUY', 'EA');
+    `);
+    return h;
+  }
+
+  it("데이터가 있는 DB — 유형 · 대분류 · 규칙 · 불량창고 · 부자재 · 소모품이 샘플과 같게 들어가고, 기존 품목은 LOT 관리 켬 · 유형대로의 기본 창고를 받는다", async () => {
+    const h = await beforePrB();
+    const log: string[] = [];
+    await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
+    expect(log).toEqual([
+      "마이그레이션: 적용된 것 9개 — 이번에 2개 적용",
+      "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
+    ]);
+
+    // 공통코드 — 샘플과 같다(매일 밤 되돌린 뒤와 어긋나지 않게).
+    const added = await h.db
+      .select({ group: codes.groupCode, code: codes.code, name: codes.name, sortOrder: codes.sortOrder })
+      .from(codes)
+      .where(sql`${codes.code} in ('SM', 'CS', 'PACK', 'TOOL')`)
+      .orderBy(asc(codes.groupCode), asc(codes.sortOrder));
+    expect(added).toEqual(
+      SAMPLE_CODES.filter((c) => ["SM", "CS", "PACK", "TOOL"].includes(c.code))
+        .map((c) => ({ group: c.groupCode, code: c.code, name: c.name, sortOrder: c.sortOrder }))
+        .sort((a, b) => a.group.localeCompare(b.group) || a.sortOrder! - b.sortOrder!),
+    );
+    // 규칙 — 샘플과 같다.
+    expect(
+      await h.db
+        .select({
+          code: numberRules.code,
+          name: numberRules.name,
+          prefix: numberRules.prefix,
+          separator: numberRules.separator,
+          dateFormat: numberRules.dateFormat,
+          seqDigits: numberRules.seqDigits,
+          defaultFor: numberRules.defaultFor,
+        })
+        .from(numberRules)
+        .orderBy(asc(numberRules.id)),
+    ).toEqual(SAMPLE_NUMBER_RULES.map((r) => ({ ...r, defaultFor: r.defaultFor ?? null })));
+    expect((await h.db.select().from(warehouses).where(eq(warehouses.isDefect, true))).map((w) => w.code)).toEqual([
+      "WH-04",
+    ]);
+
+    const rows = await h.db.select().from(items).orderBy(asc(items.code));
+    const wh = Object.fromEntries((await h.db.select().from(warehouses)).map((w) => [w.id, w.code]));
+    const view = rows.map((i) => [
+      i.code,
+      i.lotManaged,
+      i.lotRuleCode,
+      wh[i.defaultInWarehouseId ?? -1] ?? null,
+      wh[i.defaultOutWarehouseId ?? -1] ?? null,
+    ]);
+    // 부자재 · 소모품 넷 — 단위가 있는 것은 다 들어간다. 대분류 PACK · TOOL 은 이 마이그레이션이 넣었다.
+    // 제품창고(WH-03)는 「사용 안 함」이라 완제품의 기본 창고로 넣지 않는다.
+    expect(view).toEqual([
+      ["CS-0001", false, null, "WH-01", "WH-02"],
+      ["CS-0002", false, null, "WH-01", "WH-02"],
+      ["FG-0001", true, null, null, null],
+      ["FG-0002", true, "LOT_NUM", null, null],
+      ["RM-0001", true, null, "WH-01", "WH-02"],
+      ["RM-0007", true, null, "WH-01", "WH-02"],
+      ["SF-0001", true, null, "WH-02", "WH-02"],
+      ["SM-0001", false, null, "WH-01", "WH-02"],
+      ["SM-0002", false, null, "WH-01", "WH-02"],
+    ]);
+    // 들어간 부자재 · 소모품의 칸은 샘플과 같다.
+    for (const code of ["SM-0001", "SM-0002", "CS-0001", "CS-0002"]) {
+      const sample = SAMPLE_ITEMS.find((i) => i.code === code)!;
+      expect(
+        rows.find((i) => i.code === code),
+        code,
+      ).toMatchObject({
+        name: sample.name,
+        spec: sample.spec,
+        itemType: sample.itemType,
+        procurement: "BUY",
+        unit: sample.unit,
+        cls1: sample.cls1,
+        cls2: sample.cls2,
+        leadTimeDays: sample.leadTimeDays,
+        safetyStock: sample.safetyStock,
+        minLot: sample.minLot,
+        lotMultiple: sample.lotMultiple,
+        inspectIn: false,
+        inspectOut: false,
+      });
+    }
+  });
+
+  it("단위가 없는 부자재 · 소모품은 넣지 않고, 없는 분류는 비운다 — 참조가 실패해 배포가 멈추지 않는다", async () => {
+    const h = await beforePrB();
+    await h.client.exec(`
+      delete from unit_specs where unit = 'L';
+      delete from codes where group_code = 'UNIT' and code = 'L';
+      delete from codes where group_code = 'ITEM_CLS2' and code = 'COMMON';
+    `);
+    await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: () => {} });
+    const added = await h.db
+      .select({ code: items.code, cls2: items.cls2 })
+      .from(items)
+      .where(sql`${items.itemType} in ('SM', 'CS')`)
+      .orderBy(asc(items.code));
+    expect(added).toEqual([
+      { code: "CS-0001", cls2: null },
+      { code: "SM-0001", cls2: "SOP" },
+      { code: "SM-0002", cls2: null },
+    ]);
+  });
+
+  it("빈 DB — 마이그레이션은 아무것도 넣지 않고, 샘플 데이터가 넣는다", async () => {
+    const h = await fresh();
+    await h.migrate();
+    expect(await h.db.select().from(numberRules)).toHaveLength(0);
+    expect(await h.db.select().from(items)).toHaveLength(0);
+    await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: () => {} });
+    expect(await h.db.select().from(numberRules)).toHaveLength(SAMPLE_NUMBER_RULES.length);
+    expect(
+      await h.db
+        .select()
+        .from(items)
+        .where(sql`${items.itemType} in ('SM', 'CS')`),
+    ).toHaveLength(4);
   });
 });
 

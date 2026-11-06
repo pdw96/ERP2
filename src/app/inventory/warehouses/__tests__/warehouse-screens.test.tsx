@@ -66,6 +66,49 @@ describe("창고 목록", () => {
   });
 });
 
+describe("불량창고 표시(재고 수불 PR B, ADR 0015)", () => {
+  it("목록 — 불량창고에는 표시가 붙는다", () => {
+    render(
+      <WarehouseList
+        rows={[warehouse({}), warehouse({ id: 4, code: "WH-04", name: "불량창고", isDefect: true })]}
+        filter={none}
+      />,
+    );
+    const rows = screen.getAllByRole("row");
+    expect(within(rows[1]).queryByText("불량창고", { selector: "span.text-xs" })).toBeNull();
+    expect(within(rows[2]).getByText("불량창고", { selector: "span.text-xs" })).toBeInTheDocument();
+  });
+
+  it("등록 · 수정 화면에 「불량창고」 체크 상자 — 켜면 on 을 보내고, 거절되면 그 까닭을 보인다", async () => {
+    const rejected: WarehouseFormState = {
+      ok: false,
+      errors: {
+        isDefect:
+          "품목 3개의 기본 입고 · 출고 창고라 불량창고로 바꿀 수 없습니다 — 그 품목의 기본 창고를 먼저 바꾸세요",
+      },
+      values: { name: "자재창고", isDefect: "on", active: "Y" },
+    };
+    const action = vi.fn().mockResolvedValue(rejected);
+    render(
+      <WarehouseForm
+        mode="edit"
+        code="WH-01"
+        version="1"
+        action={action}
+        initial={{ name: "자재창고", isDefect: "off", active: "Y" }}
+      />,
+    );
+    const box = screen.getByRole("checkbox", { name: "불량창고" }) as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    fireEvent.click(box);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "저장" })));
+    await waitFor(() => expect(action).toHaveBeenCalled());
+    expect((action.mock.calls[0][1] as FormData).get("isDefect")).toBe("on");
+    expect(await screen.findByRole("alert")).toHaveTextContent("품목 3개의 기본 입고 · 출고 창고라");
+    expect((screen.getByRole("checkbox", { name: "불량창고" }) as HTMLInputElement).checked).toBe(true);
+  });
+});
+
 describe("창고 등록 화면", () => {
   it("붙을 코드를 보이고, 사용 여부 칸은 없다", () => {
     render(<WarehouseForm mode="create" action={vi.fn()} previewCode="WH-05" initial={{ name: "" }} />);
