@@ -40,6 +40,11 @@ async function NewWarehouseForm() {
     return <LoadFailed what="입력 화면" error={error} />;
   }
   return (
-    <WarehouseForm mode="create" action={createWarehouseAction} previewCode={previewCode} initial={{ name: "" }} />
+    <WarehouseForm
+      mode="create"
+      action={createWarehouseAction}
+      previewCode={previewCode}
+      initial={{ name: "", isDefect: "off" }}
+    />
   );
 }

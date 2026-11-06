@@ -1,7 +1,16 @@
 "use client";
 
 import { startTransition, useActionState, type FormEvent } from "react";
-import { ActiveSection, ErrorSummary, Field, FormActions, Input, ReadOnly, Section } from "@/components/form-parts";
+import {
+  ActiveSection,
+  Check,
+  ErrorSummary,
+  Field,
+  FormActions,
+  Input,
+  ReadOnly,
+  Section,
+} from "@/components/form-parts";
 import {
   WAREHOUSE_FIELDS,
   type WarehouseErrors,
@@ -25,7 +34,7 @@ type Props = {
     }
 );
 
-const LABEL: Record<WarehouseField, string> = { name: "창고명", active: "사용 여부" };
+const LABEL: Record<WarehouseField, string> = { name: "창고명", isDefect: "불량창고", active: "사용 여부" };
 
 export function WarehouseForm(props: Props) {
   const [state, formAction, pending] = useActionState(props.action, null);
@@ -63,9 +72,24 @@ export function WarehouseForm(props: Props) {
             <Input field="name" defaultValue={v.name} maxLength={50} invalid={!!errors.name} />
           </Field>
         </Section>
+        <DefectSection initial={v.isDefect === "on"} error={errors.isDefect} />
         {props.mode === "edit" && <ActiveSection what="창고" initial={v.active} error={errors.active} />}
       </div>
       <FormActions pending={pending} cancelHref="/inventory/warehouses" />
     </form>
+  );
+}
+
+/** 불량창고 표시(조각 「재고 수불」 PR B, ADR 0015) — 그 창고의 재고는 불량이라 가용에 들지 않는다. */
+function DefectSection({ initial, error }: { initial: boolean; error?: string }) {
+  return (
+    <Section
+      title="불량창고"
+      note="불량창고의 재고는 불량이라 가용재고에 들지 않고, 수불관리에서 내보내지 못합니다. 품목의 기본 창고로 고르지 못합니다."
+    >
+      <Check name="isDefect" defaultChecked={initial} error={error}>
+        불량창고
+      </Check>
+    </Section>
   );
 }

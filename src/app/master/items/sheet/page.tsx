@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
 import { SheetGrid } from "@/components/sheet-grid";
 import { SheetLoadFilters } from "@/components/sheet-load-filters";
-import { allItemClasses, itemClassOptions, unitOptions } from "@/db/items";
+import { allItemClasses, itemClassOptions, stockLists, unitOptions } from "@/db/items";
 import { withDb } from "@/db/request";
 import { ITEM_CLASSES } from "@/lib/item-fields";
 import { ITEM_TYPES, PROC_TYPES } from "@/lib/master-codes";
@@ -49,13 +49,17 @@ async function ItemSheet() {
       units: await unitOptions(db),
       classes: await itemClassOptions(db),
       allClasses: await allItemClasses(db),
+      stock: await stockLists(db),
     }));
   } catch (error) {
     return <LoadFailed what="입력 화면" error={error} />;
   }
   return (
     <SheetGrid
-      columns={itemSheetColumns(data.units, data.classes)}
+      columns={itemSheetColumns(data.units, data.classes, {
+        rules: data.stock.rules.filter((r) => r.active),
+        warehouses: data.stock.warehouses.filter((w) => w.active && !w.isDefect),
+      })}
       action={saveItemSheetAction}
       what="품목"
       listHref="/master/items"

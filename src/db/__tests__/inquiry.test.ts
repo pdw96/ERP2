@@ -38,7 +38,8 @@ describe("품목 조회의 찾기", () => {
   });
 
   it("찾을 글자의 % · _ 는 글자 그대로 찾는다", async () => {
-    expect(await listItems(db, { ...items, q: "%" }, "allText")).toEqual([]);
+    // 「%」는 세정용 IPA 의 규격(순도 99.9%)에만 든다 — 아무 글자로 읽으면 모든 품목이 나온다.
+    expect(codesOf(await listItems(db, { ...items, q: "%" }, "allText"))).toEqual(["CS-0002"]);
     expect(await listItems(db, { ...items, q: "_" }, "allText")).toEqual([]);
   });
 

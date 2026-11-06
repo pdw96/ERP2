@@ -102,6 +102,79 @@ export const unitSpecs = pgTable(
 );
 
 /**
+ * 창고. 위치(랙 · 선반)는 두지 않는다(ADR 0003).
+ * 불량창고(`is_defect`, 조각 「재고 수불」 PR B · ADR 0015) — 그 창고의 재고는 불량이라 가용에 들지 않고, 품목의 기본 창고로 고르지 못한다.
+ */
+export const warehouses = pgTable(
+  "warehouses",
+  {
+    id: id(),
+    code: text("code").notNull().unique(),
+    name: text("name").notNull(),
+    isDefect: boolean("is_defect").notNull().default(false),
+    active: boolean("active").notNull().default(true),
+    ...timestamps(),
+  },
+  (t) => [
+    check("warehouses_code_format", sql`${t.code} ~ '^WH-[0-9]{2,}$'`),
+    check("warehouses_name_length", sql`char_length(${t.name}) between 1 and 50`),
+  ],
+);
+
+/**
+ * LOT 번호 규칙(조각 「재고 수불」 PR B, ADR 0016) — 머리 · 구분자 · 날짜 꼴 · 일련 자릿수. 번호는 늘 머리 → 날짜 → 일련이고,
+ * 있는 조각 사이에 구분자를 넣는다(src/lib/number-rule.ts). 만드는 품목(반제품 · 완제품)에만 쓴다.
+ * 유형마다 기본 규칙이 하나다(`default_for`) — 기본 규칙은 「사용 안 함」이 아니다. 규칙은 지우지 않는다.
+ */
+export const numberRules = pgTable(
+  "number_rules",
+  {
+    id: id(),
+    code: text("code").notNull().unique(),
+    name: text("name").notNull(),
+    prefix: text("prefix").notNull().default(""),
+    separator: text("separator").notNull().default(""),
+    dateFormat: text("date_format").notNull().default(""),
+    seqDigits: smallint("seq_digits").notNull(),
+    defaultFor: text("default_for").unique(),
+    active: boolean("active").notNull().default(true),
+    ...timestamps(),
+  },
+  (t) => [
+    check("number_rules_code_format", sql`${t.code} ~ '^[A-Z][A-Z0-9_]{1,19}$'`),
+    check("number_rules_name_length", sql`char_length(${t.name}) between 1 and 50`),
+    check("number_rules_prefix_format", sql`${t.prefix} ~ '^[A-Z0-9]{0,6}$'`),
+    check("number_rules_separator_values", sql`${t.separator} in ('', '-', '_', '.')`),
+    check("number_rules_date_format_values", sql`${t.dateFormat} in ('', 'YYMMDD', 'YYYYMMDD', 'YYMM')`),
+    check("number_rules_seq_digits_range", sql`${t.seqDigits} between 2 and 6`),
+    check("number_rules_default_for_values", sql`${t.defaultFor} in ('SF', 'FG')`),
+    check("number_rules_default_active", sql`${t.defaultFor} is null or ${t.active}`),
+  ],
+);
+
+/**
+ * 번호 규칙의 일련 — 규칙 · 기간마다 마지막으로 낸 일련. 기간은 날짜 꼴로 쓴 날짜(`261105` · `20261105` · `2611`, 날짜 꼴이 없으면 빈 글자)라
+ * 날짜 꼴의 단위로 다시 센다. LOT 번호를 저절로 붙일 때만 행이 생긴다 — 사람이 넣는 입구가 없다.
+ */
+export const numberRuleSeqs = pgTable(
+  "number_rule_seqs",
+  {
+    id: id(),
+    ruleCode: text("rule_code")
+      .notNull()
+      .references(() => numberRules.code),
+    period: text("period").notNull().default(""),
+    lastSeq: integer("last_seq").notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    unique("number_rule_seqs_rule_period_unique").on(t.ruleCode, t.period),
+    check("number_rule_seqs_period_format", sql`${t.period} ~ '^([0-9]{4}|[0-9]{6}|[0-9]{8})?$'`),
+    check("number_rule_seqs_last_seq_positive", sql`${t.lastSeq} >= 1`),
+  ],
+);
+
+/**
  * 품목. 유형 · 조달구분 · 단위는 공통코드의 값만 받는다 — 묶음 칸(`*_group`)은 늘 같은 값이고, 묶음 + 코드로 공통코드를 가리킨다.
  * 코드는 유형 머리 + 네 자리 이상의 일련번호이고, 머리는 유형과 같다.
  */
@@ -132,10 +205,32 @@ export const items = pgTable(
     cls3Group: text("cls3_group").notNull().default("ITEM_CLS3"),
     cls3: text("cls3"),
     note: text("note").notNull().default(""),
+    // 재고 수불(PR B, ADR 0015 · 0016) — LOT 관리 여부, LOT 번호 규칙(반제품 · 완제품만, 비우면 유형의 기본 규칙),
+    // 기본 입고 · 출고 창고(비우면 없음, 수불 등록이 창고 칸을 미리 채운다).
+    lotManaged: boolean("lot_managed").notNull().default(true),
+    lotRuleCode: text("lot_rule_code"),
+    defaultInWarehouseId: integer("default_in_warehouse_id"),
+    defaultOutWarehouseId: integer("default_out_warehouse_id"),
     active: boolean("active").notNull().default(true),
     ...timestamps(),
   },
   (t) => [
+    foreignKey({
+      name: "items_lot_rule_fk",
+      columns: [t.lotRuleCode],
+      foreignColumns: [numberRules.code],
+    }),
+    foreignKey({
+      name: "items_default_in_warehouse_fk",
+      columns: [t.defaultInWarehouseId],
+      foreignColumns: [warehouses.id],
+    }),
+    foreignKey({
+      name: "items_default_out_warehouse_fk",
+      columns: [t.defaultOutWarehouseId],
+      foreignColumns: [warehouses.id],
+    }),
+    check("items_lot_rule_made_only", sql`${t.lotRuleCode} is null or ${t.itemType} in ('SF', 'FG')`),
     foreignKey({
       name: "items_item_type_fk",
       columns: [t.itemTypeGroup, t.itemType],
@@ -172,28 +267,12 @@ export const items = pgTable(
     check("items_cls1_group_fixed", sql`${t.cls1Group} = 'ITEM_CLS1'`),
     check("items_cls2_group_fixed", sql`${t.cls2Group} = 'ITEM_CLS2'`),
     check("items_cls3_group_fixed", sql`${t.cls3Group} = 'ITEM_CLS3'`),
-    check("items_code_format", sql`${t.code} ~ '^(RM|SF|FG)-[0-9]{4,}$' and left(${t.code}, 2) = ${t.itemType}`),
+    check("items_code_format", sql`${t.code} ~ '^(RM|SF|FG|SM|CS)-[0-9]{4,}$' and left(${t.code}, 2) = ${t.itemType}`),
     check("items_name_length", sql`char_length(${t.name}) between 1 and 100`),
     check("items_spec_length", sql`char_length(${t.spec}) <= 100`),
     check("items_lead_time_range", sql`${t.leadTimeDays} between 0 and 365`),
     check("items_quantities_not_negative", sql`${t.safetyStock} >= 0 and ${t.minLot} >= 0 and ${t.lotMultiple} >= 0`),
     check("items_note_length", sql`char_length(${t.note}) <= 500`),
-  ],
-);
-
-/** 창고. 위치(랙 · 선반)는 두지 않는다(ADR 0003). */
-export const warehouses = pgTable(
-  "warehouses",
-  {
-    id: id(),
-    code: text("code").notNull().unique(),
-    name: text("name").notNull(),
-    active: boolean("active").notNull().default(true),
-    ...timestamps(),
-  },
-  (t) => [
-    check("warehouses_code_format", sql`${t.code} ~ '^WH-[0-9]{2,}$'`),
-    check("warehouses_name_length", sql`char_length(${t.name}) between 1 and 50`),
   ],
 );
 

@@ -4,9 +4,12 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
-import { getItem, itemClassOptions, unitOptions, type Item } from "@/db/items";
+import { getItem, itemClassOptions, stockLists, unitOptions, type Item } from "@/db/items";
+import { ruleOptions } from "@/db/number-rules";
 import { withDb } from "@/db/request";
 import type { ItemValues } from "@/lib/item-input";
+import { warehouseCodeOf, type StockLists } from "@/lib/item-stock";
+import { koreaToday } from "@/lib/today";
 import { updateItemAction } from "../actions";
 import { ItemForm } from "../item-form";
 
@@ -33,13 +36,17 @@ export default function EditItemPage({ params }: PageProps<"/master/items/[code]
   );
 }
 
-const asValues = (item: Item): ItemValues => ({
+const asValues = (item: Item, lists: StockLists): ItemValues => ({
   procurement: item.procurement,
   name: item.name,
   spec: item.spec,
   unit: item.unit,
   inspectIn: item.inspectIn ? "on" : "off",
   inspectOut: item.inspectOut ? "on" : "off",
+  lotManaged: item.lotManaged ? "on" : "off",
+  lotRuleCode: item.lotRuleCode ?? "",
+  defaultInWarehouse: warehouseCodeOf(lists, item.defaultInWarehouseId),
+  defaultOutWarehouse: warehouseCodeOf(lists, item.defaultOutWarehouseId),
   leadTimeDays: String(item.leadTimeDays),
   safetyStock: String(item.safetyStock),
   minLot: String(item.minLot),
@@ -58,13 +65,21 @@ async function EditItem({ params }: Pick<PageProps<"/master/items/[code]">, "par
   try {
     data = await withDb(async (db) => {
       const item = await getItem(db, decodeURIComponent(code));
-      return item && { item, units: await unitOptions(db, item.unit), classes: await itemClassOptions(db, item) };
+      return (
+        item && {
+          item,
+          units: await unitOptions(db, item.unit),
+          classes: await itemClassOptions(db, item),
+          rules: await ruleOptions(db, koreaToday()),
+          stock: await stockLists(db),
+        }
+      );
     });
   } catch (error) {
     return <LoadFailed what="품목" error={error} />;
   }
   if (!data) notFound();
-  const { item, units, classes } = data;
+  const { item, units, classes, rules, stock } = data;
   return (
     <>
       <h1 className="mt-1 text-3xl leading-tight font-semibold wrap-anywhere">
@@ -78,7 +93,9 @@ async function EditItem({ params }: Pick<PageProps<"/master/items/[code]">, "par
         action={updateItemAction.bind(null, item.code)}
         units={units}
         classes={classes}
-        initial={asValues(item)}
+        rules={rules}
+        warehouses={stock.warehouses}
+        initial={asValues(item, stock)}
       />
     </>
   );

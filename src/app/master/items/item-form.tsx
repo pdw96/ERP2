@@ -1,9 +1,10 @@
 "use client";
 
-import { startTransition, useActionState, useState, type FormEvent, type ReactNode } from "react";
+import { startTransition, useActionState, useState, type FormEvent } from "react";
 import {
   ActiveSection,
   Check,
+  Choice,
   ErrorSummary,
   Field,
   FormActions,
@@ -13,6 +14,8 @@ import {
   inputClass,
 } from "@/components/form-parts";
 import type { ItemClassOptions, UnitOption } from "@/db/items";
+import type { RuleOption } from "@/db/number-rules";
+import type { WarehouseChoice } from "@/lib/item-stock";
 import {
   ITEM_CLASSES,
   ITEM_FIELDS,
@@ -21,17 +24,29 @@ import {
   type ItemField,
   type ItemValues,
 } from "@/lib/item-fields";
-import { ITEM_TYPE_DEFAULTS, ITEM_TYPES, PROC_TYPES, itemTypeName, type ItemType } from "@/lib/master-codes";
+import {
+  ITEM_TYPE_DEFAULTS,
+  ITEM_TYPES,
+  PROC_TYPES,
+  isMadeType,
+  itemTypeName,
+  type ItemType,
+} from "@/lib/master-codes";
 import type { ItemFormState } from "./actions";
 
 // 품목 등록 · 수정 화면의 입력 칸. 검사는 서버가 하고(설계 ②), 화면은 거절된 칸과 까닭을 칸 옆에 보인다.
-// 유형을 고르면 조달구분 · 검사 대상의 기본값이 붙는다(ADR 0003) — 그 뒤에 바꿀 수 있다.
+// 유형을 고르면 조달구분 · 검사 대상 · LOT 관리의 기본값이 붙는다(ADR 0003 · 0019) — 그 뒤에 바꿀 수 있다.
+// LOT 번호 규칙은 반제품 · 완제품만 고른다(ADR 0016). 기본 창고는 불량창고를 고르지 못한다(ADR 0015).
 
 type Props = {
   action: (state: ItemFormState, form: FormData) => Promise<ItemFormState>;
   units: UnitOption[];
   /** 분류 묶음마다 고를 수 있는 값 — 사용 중인 것과, 수정이면 그 품목의 지금 값. */
   classes: ItemClassOptions;
+  /** LOT 번호 규칙 — 「사용 안 함」까지(고르는 목록은 사용 중인 것과 그 품목의 지금 값). 번호의 예는 오늘의 첫 번호. */
+  rules: RuleOption[];
+  /** 창고 — 「사용 안 함」 · 불량창고까지(고르는 목록은 사용 중이고 불량창고가 아닌 것과 그 품목의 지금 값). */
+  warehouses: WarehouseChoice[];
   initial: ItemValues;
 } & (
   | { mode: "create"; previewCodes: Record<ItemType, string> }
@@ -52,6 +67,10 @@ const LABEL: Partial<Record<ItemField, string>> = {
   unit: "단위",
   inspectIn: "수입검사 대상",
   inspectOut: "출하검사 대상",
+  lotManaged: "LOT 관리",
+  lotRuleCode: "LOT 번호 규칙",
+  defaultInWarehouse: "기본 입고 창고",
+  defaultOutWarehouse: "기본 출고 창고",
   leadTimeDays: "리드타임",
   safetyStock: "안전재고",
   minLot: "최소 발주 · 생산량",
@@ -98,6 +117,8 @@ function Fields(props: Props & { values: ItemValues; errors: ItemErrors }) {
   const [inspectIn, setInspectIn] = useState(v.inspectIn === "on");
   const [inspectOut, setInspectOut] = useState(v.inspectOut === "on");
   const [unit, setUnit] = useState(v.unit ?? "");
+  const [lotManaged, setLotManaged] = useState(v.lotManaged === "on");
+  const [lotRule, setLotRule] = useState(v.lotRuleCode ?? "");
 
   function pickType(type: ItemType) {
     setItemType(type);
@@ -105,7 +126,15 @@ function Fields(props: Props & { values: ItemValues; errors: ItemErrors }) {
     setProcurement(d.procurement);
     setInspectIn(d.inspectIn);
     setInspectOut(d.inspectOut);
+    setLotManaged(d.lotManaged);
+    if (!isMadeType(type)) setLotRule("");
   }
+
+  // 수정이면 그 품목의 유형, 등록이면 고른 유형.
+  const type = props.mode === "edit" ? props.itemType : itemType;
+  const initialRule = props.initial.lotRuleCode ?? "";
+  const rules = props.rules.filter((r) => r.active || (props.mode === "edit" && r.code === initialRule));
+  const typeDefault = props.rules.find((r) => r.defaultFor === type);
 
   // 조달구분이 구매면 발주에, 생산이면 생산에 쓰인다(ADR 0003).
   const lot = procurement === "BUY" ? "발주" : procurement === "MAKE" ? "생산" : "발주 · 생산";
@@ -196,6 +225,94 @@ function Fields(props: Props & { values: ItemValues; errors: ItemErrors }) {
         </div>
       </Section>
 
+      <Section
+        title="재고"
+        note="수불 등록이 씁니다. 기본 창고는 품목을 고르면 창고 칸에 미리 채워지고, 수불 등록에서 바꿀 수 있습니다."
+      >
+        <div>
+          <Check name="lotManaged" checked={lotManaged} onChange={setLotManaged} error={errors.lotManaged}>
+            LOT 관리
+          </Check>
+          <p className="mt-1 text-sm text-muted">
+            켜면 수불마다 LOT 를 남깁니다. 원자재 · 반제품 · 완제품은 켬, 부자재 · 소모품은 끔이 기본입니다.
+          </p>
+        </div>
+        {isMadeType(type) ? (
+          <Field
+            field="lotRuleCode"
+            label="LOT 번호 규칙"
+            error={errors.lotRuleCode}
+            hint="입고에서 LOT 를 비우면 이 규칙으로 붙습니다"
+          >
+            <select
+              id="f-lotRuleCode"
+              name="lotRuleCode"
+              value={lotRule}
+              onChange={(e) => setLotRule(e.target.value)}
+              aria-invalid={!!errors.lotRuleCode || undefined}
+              aria-describedby={errors.lotRuleCode ? "e-lotRuleCode" : undefined}
+              className={inputClass(!!errors.lotRuleCode)}
+            >
+              <option value="">
+                {typeDefault ? `유형의 기본 — ${typeDefault.code} (${typeDefault.example})` : "유형의 기본"}
+              </option>
+              {rules.map((r) => (
+                <option key={r.code} value={r.code}>
+                  {r.code} — {r.name} ({r.example}){r.active ? "" : " (사용 안 함)"}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ) : (
+          <div>
+            <input type="hidden" name="lotRuleCode" value="" />
+            <p className="text-sm text-muted" id="f-lotRuleCode">
+              {type
+                ? "사 오는 품목은 LOT 번호 규칙이 없습니다 — 입고할 때 거래처 LOT 를 넣습니다."
+                : "LOT 번호 규칙은 반제품 · 완제품을 고르면 보입니다."}
+            </p>
+            {errors.lotRuleCode && (
+              <p id="e-lotRuleCode" className="mt-1 text-sm font-semibold text-red-700">
+                {errors.lotRuleCode}
+              </p>
+            )}
+          </div>
+        )}
+        <div className="grid gap-6 sm:grid-cols-2">
+          {(
+            [
+              ["defaultInWarehouse", "기본 입고 창고"],
+              ["defaultOutWarehouse", "기본 출고 창고"],
+            ] as const
+          ).map(([field, label]) => {
+            const now = props.initial[field] ?? "";
+            const options = props.warehouses.filter(
+              (w) => (w.active && !w.isDefect) || (props.mode === "edit" && w.code === now),
+            );
+            return (
+              <Field key={field} field={field} label={label} error={errors[field]}>
+                <select
+                  id={`f-${field}`}
+                  name={field}
+                  defaultValue={v[field] ?? ""}
+                  aria-invalid={!!errors[field] || undefined}
+                  aria-describedby={errors[field] ? `e-${field}` : undefined}
+                  className={inputClass(!!errors[field])}
+                >
+                  <option value="">없음</option>
+                  {options.map((w) => (
+                    <option key={w.code} value={w.code}>
+                      {w.code} — {w.name}
+                      {w.active ? "" : " (사용 안 함)"}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            );
+          })}
+        </div>
+      </Section>
+
       <Section title="계획 정보" note="MRP 가 씁니다. 수량은 품목의 단위로, 소수 셋째 자리까지.">
         <div className="grid gap-6 sm:grid-cols-2">
           <Field field="leadTimeDays" label="리드타임" error={errors.leadTimeDays} hint="0 ~ 365">
@@ -276,30 +393,5 @@ function Fields(props: Props & { values: ItemValues; errors: ItemErrors }) {
 
       {props.mode === "edit" && <ActiveSection what="품목" initial={v.active} error={errors.active} />}
     </div>
-  );
-}
-
-function Choice({
-  name,
-  value,
-  checked,
-  onChange,
-  children,
-}: {
-  name: string;
-  value: string;
-  checked: boolean;
-  onChange: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <label
-      className={`cursor-pointer rounded border px-4 py-2 has-focus-visible:outline-2 has-focus-visible:outline-machine ${
-        checked ? "border-machine bg-machine font-semibold text-white" : "border-rule bg-white hover:border-machine"
-      }`}
-    >
-      <input type="radio" name={name} value={value} checked={checked} onChange={onChange} className="sr-only" />
-      {children}
-    </label>
   );
 }

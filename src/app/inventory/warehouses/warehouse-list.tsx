@@ -121,6 +121,11 @@ export function WarehouseList({
               </td>
               <td className="px-3 py-2.5 wrap-anywhere">
                 <span className="font-semibold">{w.name}</span>
+                {w.isDefect && (
+                  <span className="ml-2 rounded border border-red-700 px-1.5 py-0.5 text-xs whitespace-nowrap text-red-700">
+                    불량창고
+                  </span>
+                )}
                 {!w.active && (
                   <span className="ml-2 rounded border border-rule px-1.5 py-0.5 text-xs whitespace-nowrap">
                     사용 안 함

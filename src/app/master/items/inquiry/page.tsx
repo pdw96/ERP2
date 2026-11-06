@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { allItemClasses, listItems, parseItemFilter } from "@/db/items";
+import { allItemClasses, listItems, parseItemFilter, stockLists } from "@/db/items";
 import { withDb } from "@/db/request";
 import { InquiryTable } from "@/components/inquiry-table";
 import { LoadFailed } from "@/components/load-failed";
@@ -47,7 +47,7 @@ async function Results({ searchParams }: Pick<PageProps<"/master/items/inquiry">
     data = await withDb(async (db) => {
       const classes = await allItemClasses(db);
       const { filter, notices } = parseItemFilter(params, classes);
-      return { classes, filter, notices, rows: await listItems(db, filter, "allText") };
+      return { classes, filter, notices, rows: await listItems(db, filter, "allText"), stock: await stockLists(db) };
     });
   } catch (error) {
     return <LoadFailed error={error} what="품목 조회" />;
@@ -67,7 +67,7 @@ async function Results({ searchParams }: Pick<PageProps<"/master/items/inquiry">
       </div>
       <InquiryTable
         rows={data.rows}
-        columns={itemInquiryColumns(classes)}
+        columns={itemInquiryColumns(classes, data.stock)}
         what="품목"
         nameLabel="품명"
         editHref={(code) => `/master/items/${code}`}

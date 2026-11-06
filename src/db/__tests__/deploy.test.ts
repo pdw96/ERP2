@@ -6,7 +6,7 @@ import { asc, eq, sql } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { isPooled, prepareDatabase } from "@/db/deploy";
 import { describeFailure } from "@/db/status";
-import { SAMPLE_CODE_GROUPS, SAMPLE_CODES, SAMPLE_UNIT_SPECS } from "@/db/sample";
+import { SAMPLE_CODE_GROUPS, SAMPLE_CODES, SAMPLE_ITEMS, SAMPLE_UNIT_SPECS } from "@/db/sample";
 import { codeGroups, codes, items, partners, unitSpecs, warehouses } from "@/db/schema";
 import { emptyDb } from "./pglite";
 
@@ -22,6 +22,18 @@ afterEach(async () => {
   while (handles.length) await handles.pop()!.close();
 });
 
+/** 마이그레이션이 만드는 테이블 — 기준정보 다섯과 재고 수불의 단위 사양 · 번호 규칙 · 번호 규칙의 일련. */
+const TABLES = [
+  "code_groups",
+  "codes",
+  "items",
+  "number_rule_seqs",
+  "number_rules",
+  "partners",
+  "unit_specs",
+  "warehouses",
+];
+
 async function tableNames(h: Awaited<ReturnType<typeof emptyDb>>) {
   const result = await h.client.query<{ name: string }>(
     "select table_name as name from information_schema.tables where table_schema = 'public' order by 1",
@@ -30,14 +42,14 @@ async function tableNames(h: Awaited<ReturnType<typeof emptyDb>>) {
 }
 
 describe("마이그레이션과 첫 샘플 데이터", () => {
-  it("빈 DB 에 적용하면 테이블 여섯이 생기고 샘플 데이터가 들어간다", async () => {
+  it("빈 DB 에 적용하면 테이블 여덟이 생기고 샘플 데이터가 들어간다", async () => {
     const h = await fresh();
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
-    expect(await tableNames(h)).toEqual(["code_groups", "codes", "items", "partners", "unit_specs", "warehouses"]);
+    expect(await tableNames(h)).toEqual(TABLES);
     expect(await h.db.select().from(codeGroups)).toHaveLength(7);
-    expect(log[0]).toMatch(/^마이그레이션: 적용된 것 7개 — 이번에 7개 적용$/);
-    expect(log[1]).toMatch(/^샘플 데이터: 빈 DB 라 넣었다 — items 10 · /);
+    expect(log[0]).toMatch(/^마이그레이션: 적용된 것 9개 — 이번에 9개 적용$/);
+    expect(log[1]).toMatch(/^샘플 데이터: 빈 DB 라 넣었다 — items 14 · /);
   });
 
   it("두 번 적용해도 그대로다 — 방문자가 바꾼 데이터도 지우지 않는다", async () => {
@@ -49,10 +61,10 @@ describe("마이그레이션과 첫 샘플 데이터", () => {
     const log: string[] = [];
     await prepareDatabase(h.db, { ...quiet, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 7개 — 이번에 0개 적용",
+      "마이그레이션: 적용된 것 9개 — 이번에 0개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
-    expect(await tableNames(h)).toEqual(["code_groups", "codes", "items", "partners", "unit_specs", "warehouses"]);
+    expect(await tableNames(h)).toEqual(TABLES);
     expect(await h.db.select().from(warehouses)).toHaveLength(5);
   });
 
@@ -86,7 +98,7 @@ describe("마이그레이션과 첫 샘플 데이터", () => {
       "select 1 from information_schema.columns where table_name = 'items' and column_name = 'x'",
     );
     expect(columns.rows).toHaveLength(0);
-    expect(await h.db.select().from(items)).toHaveLength(10);
+    expect(await h.db.select().from(items)).toHaveLength(SAMPLE_ITEMS.length);
     // 실패해도 잠금은 풀린다 — 다음 빌드가 기다리지 않는다.
     const locks = await h.db.execute(sql`select count(*)::int as n from pg_locks where locktype = 'advisory'`);
     expect((locks as unknown as { rows: { n: number }[] }).rows[0].n).toBe(0);
@@ -120,7 +132,7 @@ describe("마이그레이션 0001 · 0002 — 거래처의 국가(PR G)", () => 
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 7개 — 이번에 6개 적용",
+      "마이그레이션: 적용된 것 9개 — 이번에 8개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(
@@ -173,13 +185,14 @@ describe("마이그레이션 0003 · 0004 — 품목 · 거래처의 설명용 �
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 7개 — 이번에 4개 적용",
+      "마이그레이션: 적용된 것 9개 — 이번에 6개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(
       await h.db
         .select({ cls1: items.cls1, cls2: items.cls2, cls3: items.cls3, note: items.note, group: items.cls1Group })
-        .from(items),
+        .from(items)
+        .where(eq(items.code, "RM-0001")),
     ).toEqual([{ cls1: null, cls2: null, cls3: null, note: "", group: "ITEM_CLS1" }]);
     const [p] = await h.db.select().from(partners);
     expect(p).toMatchObject({
@@ -232,13 +245,13 @@ describe("마이그레이션 0003 · 0004 — 품목 · 거래처의 설명용 �
         .select()
         .from(codes)
         .where(sql`${codes.groupCode} like 'ITEM_CLS%'`),
-    ).toHaveLength(12);
+    ).toHaveLength(SAMPLE_CODES.filter((c) => c.groupCode.startsWith("ITEM_CLS")).length);
     expect(
       await h.db
         .select({ code: items.code })
         .from(items)
         .where(sql`${items.cls1} is not null`),
-    ).toHaveLength(10);
+    ).toHaveLength(SAMPLE_ITEMS.length);
   });
 });
 
@@ -269,7 +282,7 @@ describe("마이그레이션 0005 · 0006 — 단위 사양(조각 「재고 수
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 7개 — 이번에 2개 적용",
+      "마이그레이션: 적용된 것 9개 — 이번에 4개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     // 마이그레이션이 넣은 단위 · 사양은 샘플 데이터와 같다 — 매일 밤 되돌린 뒤와 어긋나지 않게.

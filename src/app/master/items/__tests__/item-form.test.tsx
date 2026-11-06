@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ItemClassOptions, UnitOption } from "@/db/items";
+import type { RuleOption } from "@/db/number-rules";
+import type { WarehouseChoice } from "@/lib/item-stock";
 import type { ItemFormState } from "../actions";
 import { ItemForm } from "../item-form";
 
@@ -19,7 +21,19 @@ const classes: ItemClassOptions = {
   cls3: [],
 };
 const blank = { name: "", spec: "", unit: "", leadTimeDays: "0", safetyStock: "0", minLot: "0", lotMultiple: "0" };
-const preview = { RM: "RM-0007", SF: "SF-0003", FG: "FG-0003" } as const;
+const preview = { RM: "RM-0007", SF: "SF-0003", FG: "FG-0003", SM: "SM-0003", CS: "CS-0003" } as const;
+// 재고 칸(재고 수불 PR B) — 규칙 셋(하나는 「사용 안 함」)과 창고 넷(불량창고 · 「사용 안 함」 하나씩).
+const rules: RuleOption[] = [
+  { code: "LOT_FG", name: "완제품 LOT", example: "FG-261106-001", active: true, defaultFor: "FG" },
+  { code: "LOT_NUM", name: "숫자형 LOT", example: "261106001", active: true, defaultFor: null },
+  { code: "LOT_OLD", name: "옛 규칙", example: "OLD-001", active: false, defaultFor: null },
+];
+const warehouses: WarehouseChoice[] = [
+  { id: 1, code: "WH-01", name: "자재창고", active: true, isDefect: false },
+  { id: 2, code: "WH-02", name: "생산현장", active: true, isDefect: false },
+  { id: 4, code: "WH-04", name: "불량창고", active: true, isDefect: true },
+  { id: 5, code: "WH-05", name: "옛 창고", active: false, isDefect: false },
+];
 
 const radio = (name: string) => screen.getByRole("radio", { name }) as HTMLInputElement;
 const box = (name: string) => screen.getByRole("checkbox", { name }) as HTMLInputElement;
@@ -32,6 +46,8 @@ describe("품목 등록 화면", () => {
         action={vi.fn()}
         units={units}
         classes={classes}
+        rules={rules}
+        warehouses={warehouses}
         initial={blank}
         previewCodes={preview}
       />,
@@ -59,6 +75,8 @@ describe("품목 등록 화면", () => {
         action={vi.fn()}
         units={units}
         classes={classes}
+        rules={rules}
+        warehouses={warehouses}
         initial={blank}
         previewCodes={preview}
       />,
@@ -78,7 +96,16 @@ describe("품목 등록 화면", () => {
     };
     const action = vi.fn().mockResolvedValue(rejected);
     render(
-      <ItemForm mode="create" action={action} units={units} classes={classes} initial={blank} previewCodes={preview} />,
+      <ItemForm
+        mode="create"
+        action={action}
+        units={units}
+        classes={classes}
+        rules={rules}
+        warehouses={warehouses}
+        initial={blank}
+        previewCodes={preview}
+      />,
     );
     fireEvent.click(radio("반제품"));
     fireEvent.change(screen.getByLabelText(/규격/), { target: { value: "몰딩 전" } });
@@ -107,7 +134,16 @@ describe("품목 등록 화면", () => {
       .fn()
       .mockResolvedValue({ ok: false, errors: {}, formError: "저장하지 못했습니다", values: blank });
     render(
-      <ItemForm mode="create" action={action} units={units} classes={classes} initial={blank} previewCodes={preview} />,
+      <ItemForm
+        mode="create"
+        action={action}
+        units={units}
+        classes={classes}
+        rules={rules}
+        warehouses={warehouses}
+        initial={blank}
+        previewCodes={preview}
+      />,
     );
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "저장" }));
@@ -131,6 +167,8 @@ describe("품목 수정 화면", () => {
         action={action}
         units={withInactive}
         classes={classes}
+        rules={rules}
+        warehouses={warehouses}
         initial={initial}
       />,
     );
@@ -159,6 +197,8 @@ describe("품목 수정 화면", () => {
         action={vi.fn()}
         units={withInactive}
         classes={classes}
+        rules={rules}
+        warehouses={warehouses}
         initial={initial}
       />,
     );
@@ -175,6 +215,8 @@ describe("품목 수정 화면", () => {
         action={vi.fn()}
         units={withInactive}
         classes={classes}
+        rules={rules}
+        warehouses={warehouses}
         initial={initial}
       />,
     );
@@ -188,7 +230,16 @@ describe("품목의 분류 · 비고(PR H)", () => {
   it("분류는 「없음」에서 시작하는 고르는 칸 셋이고, 고른 값과 비고를 보낸다", async () => {
     const action = vi.fn().mockResolvedValue(null);
     render(
-      <ItemForm mode="create" action={action} units={units} classes={classes} initial={blank} previewCodes={preview} />,
+      <ItemForm
+        mode="create"
+        action={action}
+        units={units}
+        classes={classes}
+        rules={rules}
+        warehouses={warehouses}
+        initial={blank}
+        previewCodes={preview}
+      />,
     );
     const cls1 = screen.getByLabelText("대분류") as HTMLSelectElement;
     expect(cls1).toHaveDisplayValue("없음");
@@ -215,7 +266,16 @@ describe("품목의 분류 · 비고(PR H)", () => {
       values: { ...blank, cls2: "SOP" },
     });
     render(
-      <ItemForm mode="create" action={action} units={units} classes={classes} initial={blank} previewCodes={preview} />,
+      <ItemForm
+        mode="create"
+        action={action}
+        units={units}
+        classes={classes}
+        rules={rules}
+        warehouses={warehouses}
+        initial={blank}
+        previewCodes={preview}
+      />,
     );
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "저장" }));

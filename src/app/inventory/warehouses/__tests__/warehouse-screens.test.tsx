@@ -12,6 +12,7 @@ const warehouse = (over: Partial<Warehouse>): Warehouse => ({
   id: 1,
   code: "WH-01",
   name: "자재창고",
+  isDefect: false,
   active: true,
   createdAt: new Date(),
   updatedAt: new Date(),

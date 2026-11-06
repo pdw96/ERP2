@@ -55,10 +55,10 @@ describe("목록", () => {
   it("묶음 — 코드 순으로, 가름과 값의 수", async () => {
     expect(await listCodeGroups(db)).toEqual([
       { code: "COUNTRY", name: "국가", isSystem: false, values: 5 },
-      { code: "ITEM_CLS1", name: "품목 대분류", isSystem: false, values: 6 },
+      { code: "ITEM_CLS1", name: "품목 대분류", isSystem: false, values: 8 },
       { code: "ITEM_CLS2", name: "품목 중분류", isSystem: false, values: 3 },
       { code: "ITEM_CLS3", name: "품목 소분류", isSystem: false, values: 3 },
-      { code: "ITEM_TYPE", name: "품목 유형", isSystem: true, values: 3 },
+      { code: "ITEM_TYPE", name: "품목 유형", isSystem: true, values: 5 },
       { code: "PROC_TYPE", name: "조달구분", isSystem: true, values: 2 },
       { code: "UNIT", name: "단위", isSystem: false, values: 8 },
     ]);

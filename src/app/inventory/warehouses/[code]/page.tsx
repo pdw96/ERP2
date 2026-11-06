@@ -52,7 +52,11 @@ async function EditWarehouse({ params }: Pick<PageProps<"/inventory/warehouses/[
         code={warehouse.code}
         version={warehouse.version}
         action={updateWarehouseAction.bind(null, warehouse.code)}
-        initial={{ name: warehouse.name, active: warehouse.active ? "Y" : "N" }}
+        initial={{
+          name: warehouse.name,
+          isDefect: warehouse.isDefect ? "on" : "off",
+          active: warehouse.active ? "Y" : "N",
+        }}
       />
     </>
   );

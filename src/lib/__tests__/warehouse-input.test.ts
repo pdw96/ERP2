@@ -6,7 +6,7 @@ import { parseNewWarehouse, parseWarehouseUpdate, warehouseValues } from "@/lib/
 
 describe("창고 등록의 입력", () => {
   it("맞는 꼴 — 앞뒤 빈칸을 지운 창고명", () => {
-    expect(parseNewWarehouse({ name: "  외주창고 " })).toEqual({ ok: true, value: { name: "외주창고" } });
+    expect(parseNewWarehouse({ name: "  외주창고 " })).toEqual({ ok: true, value: { name: "외주창고", isDefect: false } });
   });
 
   it("창고명 50자를 받는다 — 글자로 센다", () => {
@@ -22,7 +22,10 @@ describe("창고 등록의 입력", () => {
   });
 
   it("사용 여부는 받지 않는다 — 새 창고는 사용 중", () => {
-    expect(parseNewWarehouse({ name: "외주창고", active: "N" })).toEqual({ ok: true, value: { name: "외주창고" } });
+    expect(parseNewWarehouse({ name: "외주창고", active: "N" })).toEqual({
+      ok: true,
+      value: { name: "외주창고", isDefect: false },
+    });
   });
 });
 
@@ -30,7 +33,7 @@ describe("창고 수정의 입력", () => {
   it("맞는 꼴 — 창고명 · 사용 여부", () => {
     expect(parseWarehouseUpdate({ name: "자재창고", active: "N" })).toEqual({
       ok: true,
-      value: { name: "자재창고", active: false },
+      value: { name: "자재창고", isDefect: false, active: false },
     });
   });
 

@@ -5,6 +5,7 @@ import { getItem, loadItemsForSheet, parseItemFilter, saveItemRows, updateItem }
 import { STALE, STALE_ROW, DUPLICATE_ROW } from "@/db/master-shared";
 import { getPartner, loadPartnersForSheet, savePartnerRows, updatePartner } from "@/db/partners";
 import { resetToSample } from "@/db/reset";
+import { SAMPLE_ITEMS } from "@/db/sample";
 import { getWarehouse, updateWarehouse } from "@/db/warehouses";
 import type { Db } from "@/db/types";
 import { CODE_KEY, ROW_ERROR, VERSION_KEY } from "@/lib/sheet";
@@ -89,9 +90,9 @@ describe("시트에 불러오기", () => {
     );
     expect(r.saved).toHaveLength(95);
     const { rows, total } = await loadItemsForSheet(db, { q: "", includeInactive: false });
-    expect(total).toBe(105);
+    expect(total).toBe(95 + SAMPLE_ITEMS.length);
     expect(rows).toHaveLength(100);
-    expect(rows[0][CODE_KEY]).toBe("FG-0001");
+    expect(rows[0][CODE_KEY]).toBe("CS-0001");
   });
 
   it("거래처는 사업자번호를 한국 · 해외 가운데 있는 것으로, 구분 · 사용 여부를 Y/N 으로", async () => {

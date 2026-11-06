@@ -13,6 +13,7 @@ export const REGISTER_LOCK = {
   warehouses: 2026110302,
   partners: 2026110303,
   codes: 2026110304,
+  numberRules: 2026110601,
 } as const;
 
 export type Params = Record<string, string | string[] | undefined>;
