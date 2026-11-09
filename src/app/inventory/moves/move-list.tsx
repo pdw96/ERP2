@@ -17,13 +17,13 @@ export function MoveList({ rows }: { rows: MoveSummary[] }) {
           <thead className="border-b-2 border-machine text-sm">
             <tr>
               <th scope="col" className="w-28 px-3 py-2">
-                일자
+                수불일자
               </th>
               <th scope="col" className="w-44 px-3 py-2">
-                전표 번호
+                전표번호
               </th>
               <th scope="col" className="w-32 px-3 py-2">
-                유형
+                수불구분
               </th>
               <th scope="col" className="w-16 px-3 py-2 text-right">
                 줄

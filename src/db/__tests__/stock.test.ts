@@ -232,12 +232,12 @@ describe("수불 저장 — 성공 기준 2 · 3 · 12", () => {
     expect(r.errors.lines[1].warehouse).toContain("사용 안 함");
   });
 
-  it("이동 — 받는 창고가 없거나 보내는 창고와 같으면 거절", async () => {
+  it("이동 — 입고창고가 없거나 출고창고와 같으면 거절", async () => {
     await ok(save({ lines: [wire("10")] }));
     const r = await expectRejected(() =>
       save({ moveType: "XFER", lines: [wire("1"), wire("1", { toWarehouse: "WH-01" })] }),
     );
-    expect(r.errors.lines[0].toWarehouse).toBe("받는 창고를 고르세요");
+    expect(r.errors.lines[0].toWarehouse).toBe("입고창고를 고르세요");
     expect(r.errors.lines[1].toWarehouse).toContain("다른 창고");
   });
 });

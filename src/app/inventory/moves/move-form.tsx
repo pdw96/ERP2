@@ -31,7 +31,7 @@ const reduces = (type: MoveType, qty: string | undefined) =>
 const TYPE_NOTE: Record<MoveType, string> = {
   IN: "창고로 들어온 것 — 구매 · 생산이 아닌 입고(기초 재고 따위)",
   OUT: "창고에서 나간 것 — 판매 · 생산 투입이 아닌 출고(소모 · 견본 따위)",
-  XFER: "보내는 창고에서 받는 창고로 옮긴 것 — 재고의 합은 그대로",
+  XFER: "출고창고에서 입고창고로 옮긴 것 — 재고의 합은 그대로",
   ADJ: "장부를 실물에 맞춘 것 — 늘리면 +, 줄이면 − 를 붙입니다",
 };
 
@@ -131,7 +131,7 @@ export function MoveForm({ options, today }: Props) {
       <div className="grid max-w-3xl gap-8">
         <Section title="전표">
           <div className="grid gap-5 sm:grid-cols-[12rem_1fr]">
-            <Field field="moveDate" label="일자" error={header.moveDate} hint="오늘이나 지난 날">
+            <Field field="moveDate" label="수불일자" error={header.moveDate} hint="오늘이나 지난 날">
               <input
                 id="f-moveDate"
                 name="moveDate"
@@ -142,7 +142,7 @@ export function MoveForm({ options, today }: Props) {
                 className={inputClass(!!header.moveDate)}
               />
             </Field>
-            <Field field="moveType" label="유형" error={header.moveType} as="fieldset">
+            <Field field="moveType" label="수불구분" error={header.moveType} as="fieldset">
               <div className="flex flex-wrap gap-2">
                 {MOVE_TYPES.map((t) => (
                   <Choice
@@ -160,7 +160,7 @@ export function MoveForm({ options, today }: Props) {
             </Field>
           </div>
           {isAdj && (
-            <Field field="reason" label="사유" error={header.reason} hint="조정은 꼭 고릅니다">
+            <Field field="reason" label="조정사유" error={header.reason} hint="조정은 꼭 고릅니다">
               <select
                 id="f-reason"
                 name="reason"
@@ -218,15 +218,15 @@ export function MoveForm({ options, today }: Props) {
                   품목
                 </th>
                 <th scope="col" className="min-w-44 px-2 py-2">
-                  {isXfer ? "보내는 창고" : "창고"}
+                  {isXfer ? "출고창고" : "창고"}
                 </th>
                 {isXfer && (
                   <th scope="col" className="min-w-44 px-2 py-2">
-                    받는 창고
+                    입고창고
                   </th>
                 )}
                 <th scope="col" className="min-w-48 px-2 py-2">
-                  LOT
+                  LOT번호
                 </th>
                 <th scope="col" className="w-32 px-2 py-2">
                   수량{isAdj ? " (+ · −)" : ""}
@@ -341,7 +341,7 @@ function LineRow({
     lotCell = (
       <select
         name={name("lot")}
-        aria-label={`줄 ${n} LOT`}
+        aria-label={`줄 ${n} LOT번호`}
         value={line.lot}
         onChange={(ev) => onChange({ lot: ev.target.value })}
         aria-invalid={!!e.lot || undefined}
@@ -368,7 +368,7 @@ function LineRow({
       <>
         <input
           name={name("lot")}
-          aria-label={`줄 ${n} LOT`}
+          aria-label={`줄 ${n} LOT번호`}
           value={line.lot}
           onChange={(ev) => onChange({ lot: ev.target.value })}
           maxLength={30}
@@ -431,12 +431,12 @@ function LineRow({
           {message("item")}
         </td>
         <td className="px-2 py-2">
-          {warehouseSelect("warehouse", isXfer ? "보내는 창고" : "창고")}
+          {warehouseSelect("warehouse", isXfer ? "출고창고" : "창고")}
           {message("warehouse")}
         </td>
         {isXfer && (
           <td className="px-2 py-2">
-            {warehouseSelect("toWarehouse", "받는 창고")}
+            {warehouseSelect("toWarehouse", "입고창고")}
             {message("toWarehouse")}
           </td>
         )}

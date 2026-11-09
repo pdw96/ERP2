@@ -88,8 +88,8 @@ export const AREAS: readonly Area[] = [
         menus: [
           { label: "수불 등록", slice: "재고 수불", href: "/inventory/moves" },
           { label: "재고 실사", slice: "재고 수불" },
-          { label: "수불 이력", slice: "재고 수불" },
-          { label: "수불부", slice: "재고 수불" },
+          { label: "수불 이력", slice: "재고 수불", href: "/inventory/history" },
+          { label: "수불부", slice: "재고 수불", href: "/inventory/ledger" },
         ],
       },
       {
