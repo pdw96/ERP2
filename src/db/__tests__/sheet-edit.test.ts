@@ -4,12 +4,11 @@ import { getCode, updateCode } from "@/db/codes";
 import { getItem, loadItemsForSheet, parseItemFilter, saveItemRows, updateItem } from "@/db/items";
 import { STALE, STALE_ROW, DUPLICATE_ROW } from "@/db/master-shared";
 import { getPartner, loadPartnersForSheet, savePartnerRows, updatePartner } from "@/db/partners";
-import { resetToSample } from "@/db/reset";
 import { SAMPLE_ITEMS } from "@/db/sample";
 import { getWarehouse, updateWarehouse } from "@/db/warehouses";
 import type { Db } from "@/db/types";
 import { CODE_KEY, ROW_ERROR, VERSION_KEY } from "@/lib/sheet";
-import { migratedDb } from "./pglite";
+import { migratedDb, resetWithoutStock } from "./pglite";
 
 // 시트에서 기존 데이터 고치기(PR J, 성공 기준 15)와 버전 확인(저자 판정 2026-11-05 — 시트 · 한 건 수정 다 막음).
 // PGlite 에서 실제 SQL 로(설계 ⑤).
@@ -21,7 +20,7 @@ beforeAll(async () => {
   db = handle.db;
 });
 afterAll(() => handle.close());
-beforeEach(() => resetToSample(db));
+beforeEach(() => resetWithoutStock(db));
 
 const all = { q: "", includeInactive: true };
 const loadItems = async (q = "") => (await loadItemsForSheet(db, { ...all, q })).rows;

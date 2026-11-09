@@ -68,7 +68,7 @@ describe("샘플 데이터 — 성공 기준 1", () => {
     }
   });
 
-  it("공통코드 묶음은 ITEM_TYPE · PROC_TYPE(시스템) · UNIT · COUNTRY · ITEM_CLS1 ~ 3(사용자) 일곱, 단위는 EA · M · KG · G 와 MM · L · ML · MG", () => {
+  it("공통코드 묶음은 ITEM_TYPE · PROC_TYPE · MOVE_TYPE(시스템) · UNIT · COUNTRY · ITEM_CLS1 ~ 3 · ADJ_REASON(사용자) 아홉, 단위는 EA · M · KG · G 와 MM · L · ML · MG", () => {
     expect(SAMPLE_CODE_GROUPS.map((g) => [g.code, g.isSystem])).toEqual([
       ["ITEM_TYPE", true],
       ["PROC_TYPE", true],
@@ -77,6 +77,8 @@ describe("샘플 데이터 — 성공 기준 1", () => {
       ["ITEM_CLS1", false],
       ["ITEM_CLS2", false],
       ["ITEM_CLS3", false],
+      ["MOVE_TYPE", true],
+      ["ADJ_REASON", false],
     ]);
     expect(SAMPLE_CODES.filter((c) => c.groupCode === "UNIT").map((c) => c.code)).toEqual([
       "EA",

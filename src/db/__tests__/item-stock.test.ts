@@ -2,7 +2,6 @@
 import { asc, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createItem, getItem, loadItemsForSheet, saveItemRows, stockLists, updateItem } from "@/db/items";
-import { resetToSample } from "@/db/reset";
 import { SAMPLE_DEFAULT_WAREHOUSES, SAMPLE_ITEMS } from "@/db/sample";
 import { items, numberRules, warehouses } from "@/db/schema";
 import type { Db } from "@/db/types";
@@ -10,7 +9,7 @@ import { createWarehouse, getWarehouse, updateWarehouse } from "@/db/warehouses"
 import type { ItemValues } from "@/lib/item-input";
 import { ITEM_TYPE_DEFAULTS, type ItemType } from "@/lib/master-codes";
 import { CODE_KEY, ROW_ERROR, VERSION_KEY, type SheetRow } from "@/lib/sheet";
-import { migratedDb, rejection } from "./pglite";
+import { migratedDb, rejection, resetWithoutStock } from "./pglite";
 
 // 조각 「재고 수불」 PR B — 품목의 재고 칸 넷(설계 ③ 「품목의 새 칸」), 품목 유형 부자재 · 소모품(ADR 0019),
 // 창고의 불량창고 표시(③ 「창고의 새 칸」). 거절 시험은 거절 뒤 품목 · 창고가 거절 전과 같은지와 거절한 칸을 본다.
@@ -22,7 +21,7 @@ beforeAll(async () => {
   db = handle.db;
 });
 afterAll(() => handle.close());
-beforeEach(() => resetToSample(db));
+beforeEach(() => resetWithoutStock(db));
 
 const allItems = () => db.select().from(items).orderBy(asc(items.code));
 const whId = async (code: string) => (await getWarehouse(db, code))!.id;

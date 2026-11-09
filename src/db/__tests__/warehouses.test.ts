@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { resetToSample } from "@/db/reset";
 import { items, warehouses } from "@/db/schema";
 import type { Db } from "@/db/types";
 import {
@@ -15,7 +14,7 @@ import {
   type WarehouseFilter,
 } from "@/db/warehouses";
 import type { WarehouseValues } from "@/lib/warehouse-input";
-import { migratedDb } from "./pglite";
+import { migratedDb, resetWithoutStock } from "./pglite";
 
 // 창고의 목록 · 등록 · 수정 — PGlite 에서 실제 SQL 로(설계 ⑤).
 
@@ -26,7 +25,7 @@ beforeAll(async () => {
   db = handle.db;
 });
 afterAll(() => handle.close());
-beforeEach(() => resetToSample(db));
+beforeEach(() => resetWithoutStock(db));
 
 const all: WarehouseFilter = { q: "", includeInactive: false };
 const codesOf = (rows: { code: string }[]) => rows.map((r) => r.code);

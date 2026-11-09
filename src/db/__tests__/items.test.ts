@@ -12,13 +12,12 @@ import {
   updateItem,
   type ItemFilter,
 } from "@/db/items";
-import { resetToSample } from "@/db/reset";
 import { codes, items } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { ItemValues } from "@/lib/item-input";
 import { ITEM_TYPE_DEFAULTS } from "@/lib/master-codes";
 import { SAMPLE_CODES, SAMPLE_ITEMS } from "@/db/sample";
-import { migratedDb } from "./pglite";
+import { migratedDb, resetWithoutStock } from "./pglite";
 
 // 품목의 목록 · 등록 · 수정 — PGlite 에서 실제 SQL 로(설계 ⑤).
 
@@ -29,7 +28,7 @@ beforeAll(async () => {
   db = handle.db;
 });
 afterAll(() => handle.close());
-beforeEach(() => resetToSample(db));
+beforeEach(() => resetWithoutStock(db));
 
 const all: ItemFilter = { q: "", includeInactive: false };
 const codesOf = (rows: { code: string }[]) => rows.map((r) => r.code);

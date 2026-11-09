@@ -13,13 +13,12 @@ import {
   updateCode,
 } from "@/db/codes";
 import { createItem, getItem, unitOptions, updateItem } from "@/db/items";
-import { resetToSample } from "@/db/reset";
 import { codes } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { CodeValues } from "@/lib/code-input";
 import type { ItemValues } from "@/lib/item-input";
 import { SYSTEM_CODE_GROUPS } from "@/lib/master-codes";
-import { migratedDb } from "./pglite";
+import { migratedDb, resetWithoutStock } from "./pglite";
 
 // 공통코드의 목록 · 값 추가 · 수정 — PGlite 에서 실제 SQL 로(설계 ⑤ 「공통코드(PR B · E)」).
 
@@ -30,7 +29,7 @@ beforeAll(async () => {
   db = handle.db;
 });
 afterAll(() => handle.close());
-beforeEach(() => resetToSample(db));
+beforeEach(() => resetWithoutStock(db));
 
 const codesOf = (rows: { code: string }[]) => rows.map((r) => r.code);
 const countIn = async (group: string) => (await db.select().from(codes).where(eq(codes.groupCode, group))).length;
@@ -54,11 +53,13 @@ const newItem = (unit: string): ItemValues => ({
 describe("목록", () => {
   it("묶음 — 코드 순으로, 가름과 값의 수", async () => {
     expect(await listCodeGroups(db)).toEqual([
+      { code: "ADJ_REASON", name: "조정 사유", isSystem: false, values: 5 },
       { code: "COUNTRY", name: "국가", isSystem: false, values: 5 },
       { code: "ITEM_CLS1", name: "품목 대분류", isSystem: false, values: 8 },
       { code: "ITEM_CLS2", name: "품목 중분류", isSystem: false, values: 3 },
       { code: "ITEM_CLS3", name: "품목 소분류", isSystem: false, values: 3 },
       { code: "ITEM_TYPE", name: "품목 유형", isSystem: true, values: 5 },
+      { code: "MOVE_TYPE", name: "수불 유형", isSystem: true, values: 4 },
       { code: "PROC_TYPE", name: "조달구분", isSystem: true, values: 2 },
       { code: "UNIT", name: "단위", isSystem: false, values: 8 },
     ]);
