@@ -106,10 +106,29 @@ describe("수불 이력 — 거르기", () => {
     const [orig, cancel] = page.rows;
     expect(orig.canceledBy).toBe(cancel.code);
     expect(cancel.cancels).toBe(orig.code);
-    expect(cancel).toMatchObject({ from: expect.stringMatching(/^WH-01/), to: null });
+    // 취소 전표는 원래 전표와 같은 쪽(입고창고)에 「−20」 — 수불부와 같은 셈.
+    expect(orig).toMatchObject({ from: null, to: expect.stringMatching(/^WH-01/), inQty: "20", outQty: null });
+    expect(cancel).toMatchObject({ from: null, to: expect.stringMatching(/^WH-01/), inQty: "−20", outQty: null });
     await ok(save({ lines: [{ item: "RM-0004", lot: "SR-K3108", warehouse: "WH-01", qty: "500", unit: "G" }] }));
     const [g] = (await history({ item: "RM-0004", from: TODAY, to: TODAY })).rows;
-    expect(g).toMatchObject({ qty: "0.5", unit: "KG", entered: "500 G" });
+    expect(g).toMatchObject({ inQty: "0.5", outQty: null, unit: "KG", entered: "500 G" });
+  });
+
+  it("입고수량 · 출고수량 — 이동은 창고를 고르지 않으면 두 칸에 다, 고르면 그 창고 쪽만", async () => {
+    const xfer = (p: Awaited<ReturnType<typeof history>>) =>
+      p.rows.filter((r) => r.moveTypeName === "이동").map((r) => [r.inQty, r.outQty]);
+    expect(xfer(await history({ item: "RM-0003" }))).toEqual([["2,000", "2,000"]]);
+    expect(xfer(await history({ item: "RM-0003", wh: "WH-01" }))).toEqual([[null, "2,000"]]);
+    expect(xfer(await history({ item: "RM-0003", wh: "WH-02" }))).toEqual([["2,000", null]]);
+    const out = (await history({ type: "OUT" })).rows;
+    expect(out.every((r) => r.inQty === null && r.outQty !== null)).toBe(true);
+    const adj = (await history({ type: "ADJ" })).rows.map((r) => [r.reasonName, r.inQty, r.outQty]);
+    expect(adj).toEqual(
+      expect.arrayContaining([
+        ["파손", null, "50"],
+        ["발견", "20", null],
+      ]),
+    );
   });
 
   it("틀린 주소 값은 버리고 알린다", () => {
@@ -138,7 +157,8 @@ const HISTORY_VALUE: Record<HistorySort, (r: HistoryRow) => string | number | nu
   lot: (r) => r.lot || null,
   from: (r) => r.from,
   to: (r) => r.to,
-  qty: (r) => num(r.qty),
+  inQty: (r) => num(r.inQty),
+  outQty: (r) => num(r.outQty),
   unit: (r) => r.unit,
   entered: (r) => (r.entered ? num(r.entered.split(" ")[0]) : null),
   cancel: (r) => (r.cancels ? 1 : r.canceledBy ? 2 : null),

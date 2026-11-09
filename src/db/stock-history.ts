@@ -46,9 +46,12 @@ export type HistoryRow = {
   itemCode: string;
   itemName: string;
   lot: string;
+  /** 출고창고 · 입고창고 — 취소 전표는 원래 전표의 쪽(두 창고를 되돌린 쪽)으로 보인다. */
   from: string | null;
   to: string | null;
-  qty: string;
+  /** 입고수량 · 출고수량 — 취소 전표는 원래 쪽 칸에 「−20」. 이동은 창고로 거르면 그 창고 쪽만, 아니면 둘 다. */
+  inQty: string | null;
+  outQty: string | null;
   unit: string;
   /** 품목 단위와 다른 단위로 넣었으면 「500 G」. */
   entered: string | null;
@@ -60,8 +63,19 @@ export type HistoryRow = {
 
 export type Page<Row> = { rows: Row[]; total: number; page: number; pages: number };
 
+/** 부호 있는 수량 — 취소 줄은 원래 쪽 칸에서 뺀다(수불부와 같은 셈). */
+const signedQty = sql`(case when m.is_cancel then -ml.qty else ml.qty end)`;
+/**
+ * 입고수량 · 출고수량 — 원래 쪽(취소 줄은 두 창고를 되돌린 쪽)의 입고창고가 있으면 입고, 출고창고가 있으면 출고.
+ * 창고로 거르면 그 창고 쪽 칸만 채운다 — 이동은 출고창고에서는 출고, 입고창고에서는 입고다(저자 판정).
+ */
+const inQtyOf = (warehouse?: string) =>
+  sql`(case when tw.id is not null ${warehouse ? sql`and tw.code = ${warehouse}` : sql``} then ${signedQty} end)`;
+const outQtyOf = (warehouse?: string) =>
+  sql`(case when fw.id is not null ${warehouse ? sql`and fw.code = ${warehouse}` : sql``} then ${signedQty} end)`;
+
 /** 칸 머리로 세우는 값 — 빈 값은 null 로 두어 어느 방향이든 맨 뒤다. */
-const HISTORY_KEY: Record<Exclude<HistorySort, "date" | "code">, SQL> = {
+const HISTORY_KEY: Record<Exclude<HistorySort, "date" | "code" | "inQty" | "outQty">, SQL> = {
   type: sql`mt.sort_order`,
   reason: sql`rc.name`,
   item: sql`i.code`,
@@ -69,7 +83,6 @@ const HISTORY_KEY: Record<Exclude<HistorySort, "date" | "code">, SQL> = {
   lot: sql`nullif(ml.lot, '')`,
   from: sql`fw.code`,
   to: sql`tw.code`,
-  qty: sql`ml.qty`,
   unit: sql`i.unit`,
   entered: sql`case when ml.entered_unit <> i.unit then ml.entered_qty end`,
   cancel: sql`case when m.is_cancel then 1 when cb.id is not null then 2 end`,
@@ -77,18 +90,20 @@ const HISTORY_KEY: Record<Exclude<HistorySort, "date" | "code">, SQL> = {
   note: sql`nullif(m.note, '')`,
 };
 
-function historyOrder(sort: HistorySort, dir: SortDir): SQL {
+function historyOrder(q: HistoryQuery): SQL {
+  const { sort, dir } = q;
   // 일자 · 전표 번호는 줄의 차례 그 자체다(전표 번호가 일자를 든다).
   if (sort === "date" || sort === "code") return lineOrder(dir);
-  return sql`${HISTORY_KEY[sort]} ${sql.raw(dir)} nulls last, ${lineOrder("asc")}`;
+  const key = sort === "inQty" ? inQtyOf(q.warehouse) : sort === "outQty" ? outQtyOf(q.warehouse) : HISTORY_KEY[sort];
+  return sql`${key} ${sql.raw(dir)} nulls last, ${lineOrder("asc")}`;
 }
 
 const HISTORY_FROM = sql`
   from stock_move_lines ml
   join stock_moves m on m.id = ml.move_id
   join items i on i.id = ml.item_id
-  left join warehouses fw on fw.id = ml.from_warehouse_id
-  left join warehouses tw on tw.id = ml.to_warehouse_id
+  left join warehouses fw on fw.id = (case when m.is_cancel then ml.to_warehouse_id else ml.from_warehouse_id end)
+  left join warehouses tw on tw.id = (case when m.is_cancel then ml.from_warehouse_id else ml.to_warehouse_id end)
   left join codes mt on mt.group_code = m.move_type_group and mt.code = m.move_type
   left join codes rc on rc.group_code = m.reason_group and rc.code = m.reason
   left join stock_moves cb on cb.cancels_move_id = m.id
@@ -131,7 +146,8 @@ export async function listHistory(db: Db, q: HistoryQuery): Promise<Page<History
     from_name: string | null;
     to_code: string | null;
     to_name: string | null;
-    qty: string;
+    in_qty: string | null;
+    out_qty: string | null;
     unit: string;
     entered_qty: string;
     entered_unit: string;
@@ -143,11 +159,11 @@ export async function listHistory(db: Db, q: HistoryQuery): Promise<Page<History
       select ml.id, ml.move_date::text as move_date, m.code, m.move_type, rc.name as reason_name,
         i.code as item_code, i.name as item_name, ml.lot,
         fw.code as from_code, fw.name as from_name, tw.code as to_code, tw.name as to_name,
-        ml.qty::text as qty, i.unit, ml.entered_qty::text as entered_qty, ml.entered_unit,
+        ${inQtyOf(q.warehouse)}::text as in_qty, ${outQtyOf(q.warehouse)}::text as out_qty, i.unit, ml.entered_qty::text as entered_qty, ml.entered_unit,
         og.code as cancels, cb.code as canceled_by, m.note
       ${HISTORY_FROM}
       where ${where}
-      order by ${historyOrder(q.sort, q.dir)}
+      order by ${historyOrder(q)}
       limit ${PAGE_SIZE} offset ${(page - 1) * PAGE_SIZE}`),
   );
   return {
@@ -165,7 +181,8 @@ export async function listHistory(db: Db, q: HistoryQuery): Promise<Page<History
       lot: r.lot,
       from: r.from_code === null ? null : `${r.from_code} ${r.from_name}`,
       to: r.to_code === null ? null : `${r.to_code} ${r.to_name}`,
-      qty: fmt(r.qty)!,
+      inQty: fmt(r.in_qty),
+      outQty: fmt(r.out_qty),
       unit: r.unit,
       entered: r.entered_unit === r.unit ? null : `${fmt(r.entered_qty)} ${r.entered_unit}`,
       cancels: r.cancels,

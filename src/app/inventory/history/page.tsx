@@ -131,7 +131,8 @@ const COLUMNS: { key: HistorySort; label: string; numeric?: boolean }[] = [
   { key: "lot", label: "LOT번호" },
   { key: "from", label: "출고창고" },
   { key: "to", label: "입고창고" },
-  { key: "qty", label: "수량", numeric: true },
+  { key: "inQty", label: "입고수량", numeric: true },
+  { key: "outQty", label: "출고수량", numeric: true },
   { key: "unit", label: "단위" },
   { key: "entered", label: "입력수량", numeric: true },
   { key: "cancel", label: "취소구분" },
@@ -196,7 +197,8 @@ function HistoryTable({ rows, query, filters }: { rows: HistoryRow[]; query: His
               <td className="px-3 py-2 font-mono whitespace-nowrap">{dash(r.lot)}</td>
               <td className="px-3 py-2 whitespace-nowrap">{dash(r.from)}</td>
               <td className="px-3 py-2 whitespace-nowrap">{dash(r.to)}</td>
-              <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">{r.qty}</td>
+              <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">{r.inQty ?? ""}</td>
+              <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">{r.outQty ?? ""}</td>
               <td className="px-3 py-2 whitespace-nowrap">{r.unit}</td>
               <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">{dash(r.entered)}</td>
               <td className="px-3 py-2 whitespace-nowrap">
