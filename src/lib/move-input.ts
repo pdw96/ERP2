@@ -104,21 +104,21 @@ export function parseMove(values: MoveValues, today: string): ParseResult {
   const errors: MoveErrors = { header: {}, lines: {} };
 
   const moveDate = t(values.moveDate);
-  if (!moveDate) errors.header.moveDate = "일자를 넣으세요";
-  else if (!isCalendarDate(moveDate)) errors.header.moveDate = "일자는 YYYY-MM-DD 꼴의 날짜입니다";
-  else if (moveDate > today) errors.header.moveDate = "미래 일자는 넣지 못합니다 — 오늘이나 지난 날을 넣으세요";
+  if (!moveDate) errors.header.moveDate = "수불일자를 넣으세요";
+  else if (!isCalendarDate(moveDate)) errors.header.moveDate = "수불일자는 YYYY-MM-DD 꼴의 날짜입니다";
+  else if (moveDate > today) errors.header.moveDate = "미래 수불일자는 넣지 못합니다 — 오늘이나 지난 날을 넣으세요";
 
   const typeText = t(values.moveType);
   const moveType = isMoveType(typeText) ? typeText : undefined;
-  if (!moveType) errors.header.moveType = "유형을 고르세요";
+  if (!moveType) errors.header.moveType = "수불구분을 고르세요";
 
   const reasonText = t(values.reason);
   let reason: string | null = null;
   if (moveType === "ADJ") {
-    if (!reasonText) errors.header.reason = "조정은 사유를 고르세요";
-    else if (!MINOR_CODE.test(reasonText)) errors.header.reason = "목록에서 사유를 고르세요";
+    if (!reasonText) errors.header.reason = "조정은 조정사유를 고르세요";
+    else if (!MINOR_CODE.test(reasonText)) errors.header.reason = "목록에서 조정사유를 고르세요";
     else reason = reasonText;
-  } else if (reasonText && moveType) errors.header.reason = "사유는 조정에만 넣습니다";
+  } else if (reasonText && moveType) errors.header.reason = "조정사유는 조정에만 넣습니다";
 
   const note = t(values.note);
   if (length(note) > MOVE_NOTE_MAX) errors.header.note = `비고는 ${MOVE_NOTE_MAX}자까지입니다`;
@@ -138,17 +138,17 @@ export function parseMove(values: MoveValues, today: string): ParseResult {
 
     const warehouse = t(line.warehouse);
     const isXfer = moveType === "XFER";
-    if (!warehouse) e.warehouse = isXfer ? "보내는 창고를 고르세요" : "창고를 고르세요";
+    if (!warehouse) e.warehouse = isXfer ? "출고창고를 고르세요" : "창고를 고르세요";
     else if (!WAREHOUSE_CODE.test(warehouse)) e.warehouse = "목록에서 창고를 고르세요";
 
     const toText = t(line.toWarehouse);
     let toWarehouse: string | null = null;
     if (isXfer) {
-      if (!toText) e.toWarehouse = "받는 창고를 고르세요";
+      if (!toText) e.toWarehouse = "입고창고를 고르세요";
       else if (!WAREHOUSE_CODE.test(toText)) e.toWarehouse = "목록에서 창고를 고르세요";
-      else if (toText === warehouse) e.toWarehouse = "보내는 창고와 다른 창고를 고르세요";
+      else if (toText === warehouse) e.toWarehouse = "출고창고와 다른 창고를 고르세요";
       else toWarehouse = toText;
-    } else if (toText && moveType) e.toWarehouse = "받는 창고는 이동에만 넣습니다";
+    } else if (toText && moveType) e.toWarehouse = "입고창고는 이동에만 넣습니다";
 
     const qtyText = t(line.qty);
     const q = qtyText ? parseQty(qtyText) : null;

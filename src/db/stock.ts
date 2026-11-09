@@ -500,7 +500,11 @@ export async function saveMove(db: Db, values: MoveValues, today: string): Promi
           return {
             ok: false,
             errors: {
-              header: { reason: r ? "「사용 안 함」인 사유입니다 — 다른 사유를 고르세요" : "목록에서 사유를 고르세요" },
+              header: {
+                reason: r
+                  ? "「사용 안 함」인 조정사유입니다 — 다른 조정사유를 고르세요"
+                  : "목록에서 조정사유를 고르세요",
+              },
               lines: {},
             },
             values,

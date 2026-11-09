@@ -75,7 +75,7 @@ async function Results({ searchParams }: Pick<PageProps<"/inventory/history">, "
         <CodeSelect name="item" label="품목" value={query.item} options={data.options.items} />
         <CodeSelect name="wh" label="창고" value={query.warehouse} options={data.options.warehouses} />
         <label className="grid gap-1 text-sm">
-          <span className="font-semibold">LOT</span>
+          <span className="font-semibold">LOT번호</span>
           <input
             type="search"
             name="lot"
@@ -86,7 +86,7 @@ async function Results({ searchParams }: Pick<PageProps<"/inventory/history">, "
           />
         </label>
         <label className="grid gap-1 text-sm">
-          <span className="font-semibold">유형</span>
+          <span className="font-semibold">수불구분</span>
           <select
             name="type"
             defaultValue={query.moveType ?? ""}
@@ -122,20 +122,20 @@ async function Results({ searchParams }: Pick<PageProps<"/inventory/history">, "
 }
 
 const COLUMNS: { key: HistorySort; label: string; numeric?: boolean }[] = [
-  { key: "date", label: "일자" },
-  { key: "code", label: "전표 번호" },
-  { key: "type", label: "유형" },
-  { key: "reason", label: "사유" },
-  { key: "item", label: "품목 코드" },
+  { key: "date", label: "수불일자" },
+  { key: "code", label: "전표번호" },
+  { key: "type", label: "수불구분" },
+  { key: "reason", label: "조정사유" },
+  { key: "item", label: "품목코드" },
   { key: "itemName", label: "품명" },
-  { key: "lot", label: "LOT" },
-  { key: "from", label: "보내는 창고" },
-  { key: "to", label: "받는 창고" },
+  { key: "lot", label: "LOT번호" },
+  { key: "from", label: "출고창고" },
+  { key: "to", label: "입고창고" },
   { key: "qty", label: "수량", numeric: true },
   { key: "unit", label: "단위" },
-  { key: "entered", label: "넣은 수량", numeric: true },
-  { key: "cancel", label: "취소" },
-  { key: "ref", label: "가리키는 문서" },
+  { key: "entered", label: "입력수량", numeric: true },
+  { key: "cancel", label: "취소구분" },
+  { key: "ref", label: "관련전표" },
   { key: "note", label: "비고" },
 ];
 

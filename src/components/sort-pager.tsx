@@ -128,7 +128,7 @@ function PageLink({ href, children }: { href: string; children: ReactNode }) {
 export function PeriodFields({ from, to }: { from: string; to: string }) {
   return (
     <fieldset className="grid grid-cols-[1fr_auto_1fr] items-end gap-2 sm:col-span-2">
-      <legend className="mb-1 text-sm font-semibold">기간</legend>
+      <legend className="mb-1 text-sm font-semibold">조회기간</legend>
       <label className="grid gap-1 text-sm">
         <span className="sr-only">시작일</span>
         <input

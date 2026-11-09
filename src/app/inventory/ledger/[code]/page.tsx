@@ -96,10 +96,10 @@ async function Detail({
 
       <dl className="mt-4 grid max-w-xl grid-cols-2 gap-px border border-rule bg-rule text-sm sm:grid-cols-4">
         {[
-          ["기초", d.opening],
-          ["입고 계", d.inTotal],
-          ["출고 계", d.outTotal],
-          ["기말", d.closing],
+          ["기초재고", d.opening],
+          ["입고계", d.inTotal],
+          ["출고계", d.outTotal],
+          ["기말재고", d.closing],
         ].map(([label, value]) => (
           <div key={label} className="bg-white px-3 py-2">
             <dt className="text-muted">{label}</dt>
@@ -123,27 +123,27 @@ async function Detail({
           >
             <table className="w-full min-w-[36rem] border-collapse text-left text-sm">
               <caption className="sr-only">
-                {d.item.code} 의 거래 — 일자 차례, 잔량은 기초 {d.opening} 에서 시작
+                {d.item.code} 의 거래 — 수불일자 차례, 재고수량은 기초재고 {d.opening} 에서 시작
               </caption>
               <thead className="border-b-2 border-machine">
                 <tr>
                   <th scope="col" className="px-3 py-2">
-                    일자
+                    수불일자
                   </th>
                   <th scope="col" className="px-3 py-2">
-                    전표 번호
+                    전표번호
                   </th>
                   <th scope="col" className="px-3 py-2">
-                    유형
+                    수불구분
                   </th>
                   <th scope="col" className="px-3 py-2 text-right">
-                    입고
+                    입고수량
                   </th>
                   <th scope="col" className="px-3 py-2 text-right">
-                    출고
+                    출고수량
                   </th>
                   <th scope="col" className="px-3 py-2 text-right">
-                    잔량
+                    재고수량
                   </th>
                 </tr>
               </thead>
@@ -152,7 +152,7 @@ async function Detail({
                   <tr className="border-b border-rule text-muted">
                     <td className="px-3 py-2 font-mono whitespace-nowrap">{query.from}</td>
                     <td className="px-3 py-2" colSpan={4}>
-                      기초
+                      기초재고
                     </td>
                     <td className={num}>{d.opening}</td>
                   </tr>

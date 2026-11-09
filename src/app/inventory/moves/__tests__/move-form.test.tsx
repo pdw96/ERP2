@@ -61,32 +61,32 @@ describe("수불 등록 화면", () => {
     render(<MoveForm options={options} today="2026-11-09" />);
     pick(1, "RM-0003 금 와이어");
     expect(field("줄 1 창고")).toHaveValue("WH-01");
-    expect(field("줄 1 LOT")).toHaveAttribute("placeholder", "거래처 LOT");
+    expect(field("줄 1 LOT번호")).toHaveAttribute("placeholder", "거래처 LOT");
     const units = [...(field("줄 1 단위") as unknown as HTMLSelectElement).options].map((o) => o.value);
     expect(units).toEqual(["", "MM"]);
-    expect(screen.queryByLabelText("줄 1 받는 창고")).toBeNull();
-    expect(screen.queryByLabelText("사유")).toBeNull();
+    expect(screen.queryByLabelText("줄 1 입고창고")).toBeNull();
+    expect(screen.queryByLabelText("조정사유")).toBeNull();
   });
 
   it("만드는 품목의 LOT 는 비우면 번호 규칙으로, LOT 를 끈 품목은 LOT 칸이 없다", () => {
     render(<MoveForm options={options} today="2026-11-09" />);
     pick(1, "FG-0001 전원 관리 IC");
-    expect(field("줄 1 LOT")).toHaveAttribute("placeholder", "비우면 번호 규칙으로");
+    expect(field("줄 1 LOT번호")).toHaveAttribute("placeholder", "비우면 번호 규칙으로");
     pick(1, "SM-0002 방습백");
-    expect(screen.queryByLabelText("줄 1 LOT")).toBeNull();
+    expect(screen.queryByLabelText("줄 1 LOT번호")).toBeNull();
     expect(screen.getByText("LOT 관리 안 함")).toBeInTheDocument();
   });
 
-  it("이동 — 받는 창고 칸이 생기고 입고 창고 → 출고 창고로 채워진다. 같은 품목은 받는 쪽을 비운다", async () => {
+  it("이동 — 입고창고 칸이 생기고 품목의 기본 입고 창고 → 기본 출고 창고로 채워진다. 같은 품목은 입고창고를 비운다", async () => {
     h.onHand.mockResolvedValue([{ lot: "NW-25-0701", qty: "6,000" }]);
     render(<MoveForm options={options} today="2026-11-09" />);
     fireEvent.click(screen.getByRole("radio", { name: "이동" }));
     pick(1, "RM-0003 금 와이어");
-    expect([field("줄 1 보내는 창고").value, field("줄 1 받는 창고").value]).toEqual(["WH-01", "WH-02"]);
+    expect([field("줄 1 출고창고").value, field("줄 1 입고창고").value]).toEqual(["WH-01", "WH-02"]);
     expect(await screen.findByRole("option", { name: "NW-25-0701 · 가용 6,000 M" })).toBeInTheDocument();
     expect(h.onHand).toHaveBeenCalledWith("RM-0003", "WH-01");
     pick(1, "FG-0001 전원 관리 IC");
-    expect([field("줄 1 보내는 창고").value, field("줄 1 받는 창고").value]).toEqual(["WH-03", ""]);
+    expect([field("줄 1 출고창고").value, field("줄 1 입고창고").value]).toEqual(["WH-03", ""]);
   });
 
   it("조정 — 사유 칸이 생기고 수량에 + · − 를 붙인다. 줄을 더하고 지운다", () => {

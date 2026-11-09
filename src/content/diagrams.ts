@@ -192,7 +192,7 @@ export const MODULE_MAP: readonly MapModule[] = [
       { id: "txn", name: "수불 전표 — 유형 · 사유 · 취소", table: "stock_moves", slice: "재고 수불" },
       {
         id: "txn_lines",
-        name: "수불 줄 — 품목 · LOT · 보내는 → 받는 창고",
+        name: "수불 줄 — 품목 · LOT번호 · 출고창고 → 입고창고",
         table: "stock_move_lines",
         slice: "재고 수불",
       },
@@ -331,8 +331,8 @@ export const DATA_MODEL = `erDiagram
     integer item_id FK "품목"
     text lot "LOT — 끈 품목은 빈 글자"
     text status "상태 — 가용 · 검사대기"
-    integer from_warehouse_id FK "보내는 창고 — 출고 · 이동 · 줄이는 조정"
-    integer to_warehouse_id FK "받는 창고 — 입고 · 이동 · 늘리는 조정"
+    integer from_warehouse_id FK "출고창고 — 출고 · 이동 · 줄이는 조정"
+    integer to_warehouse_id FK "입고창고 — 입고 · 이동 · 늘리는 조정"
     numeric qty "품목 단위의 수량 — 늘 0 보다 큼"
     numeric entered_qty "넣은 수량"
     text entered_unit FK "넣은 단위 — 같은 기준이면 바꿔 쌓음"
@@ -352,7 +352,7 @@ export const DATA_MODEL = `erDiagram
   STOCK_MOVES ||--|{ STOCK_MOVE_LINES : "줄 1 ~ 100"
   STOCK_MOVES |o--o| STOCK_MOVES : "취소"
   ITEMS ||--o{ STOCK_MOVE_LINES : "품목"
-  WAREHOUSES |o--o{ STOCK_MOVE_LINES : "보내는 · 받는 창고"
+  WAREHOUSES |o--o{ STOCK_MOVE_LINES : "출고창고 · 입고창고"
   ITEMS ||--o{ STOCK_BALANCES : "품목"
   WAREHOUSES ||--o{ STOCK_BALANCES : "창고"
   CODES ||--o{ STOCK_MOVES : "수불 유형 · 조정 사유"`;

@@ -57,12 +57,12 @@ async function Move({ params, searchParams }: Pick<PageProps<"/inventory/moves/[
         <span className="font-mono">{move.code}</span>
       </h1>
       <dl className="mt-3 grid max-w-3xl gap-x-6 gap-y-1 sm:grid-cols-[8rem_1fr]">
-        <dt className="text-muted">일자</dt>
+        <dt className="text-muted">수불일자</dt>
         <dd className="font-mono">{move.moveDate}</dd>
-        <dt className="text-muted">유형</dt>
+        <dt className="text-muted">수불구분</dt>
         <dd>
           {move.moveTypeName}
-          {move.reasonName && ` — 사유 ${move.reasonName}`}
+          {move.reasonName && ` — 조정사유 ${move.reasonName}`}
           {move.canceledBy && <Tag>취소됨</Tag>}
           {move.cancels && <Tag>취소 전표</Tag>}
         </dd>
@@ -106,10 +106,10 @@ async function Move({ params, searchParams }: Pick<PageProps<"/inventory/moves/[
                 품목
               </th>
               <th scope="col" className="px-3 py-2">
-                LOT
+                LOT번호
               </th>
               <th scope="col" className="px-3 py-2">
-                {isXfer ? "보내는 창고 → 받는 창고" : "창고"}
+                {isXfer ? "출고창고 → 입고창고" : "창고"}
               </th>
               <th scope="col" className="px-3 py-2 text-right">
                 수량

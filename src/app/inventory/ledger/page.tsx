@@ -28,8 +28,8 @@ export default function LedgerPage({ searchParams }: PageProps<"/inventory/ledge
       </p>
       <h1 className="mt-1 text-3xl leading-tight font-semibold">수불부</h1>
       <p className="mt-1 max-w-3xl text-muted">
-        기간의 기초 · 입고 · 출고 · 기말을 품목마다 봅니다. 기초 + 입고 계 − 출고 계 = 기말입니다. 품목 코드를 누르면 그
-        기간의 거래가 잔량과 함께 보입니다.
+        조회기간의 기초재고 · 입고 · 출고 · 기말재고를 품목마다 봅니다. 기초재고 + 입고계 − 출고계 = 기말재고입니다.
+        품목코드를 누르면 그 기간의 거래가 재고수량과 함께 보입니다.
       </p>
       <Suspense fallback={<p className="mt-8 text-muted">불러오는 중입니다.</p>}>
         <Results searchParams={searchParams} />
@@ -93,15 +93,15 @@ type Col = { key: LedgerSort; label: string };
 // 입고 · 출고의 칸은 수불 유형의 이름이다 — 뒤 조각이 유형(구매입고 · 생산입고 따위)을 더하면 칸이 는다.
 const IN_COLS: Col[] = [
   { key: "inIn", label: "기타입고" },
-  { key: "inXfer", label: "이동" },
-  { key: "inAdj", label: "조정" },
-  { key: "inTotal", label: "입고 계" },
+  { key: "inXfer", label: "이동입고" },
+  { key: "inAdj", label: "조정입고" },
+  { key: "inTotal", label: "입고계" },
 ];
 const OUT_COLS: Col[] = [
   { key: "outOut", label: "기타출고" },
-  { key: "outXfer", label: "이동" },
-  { key: "outAdj", label: "조정" },
-  { key: "outTotal", label: "출고 계" },
+  { key: "outXfer", label: "이동출고" },
+  { key: "outAdj", label: "조정출고" },
+  { key: "outTotal", label: "출고계" },
 ];
 
 function LedgerTable({ rows, query, filters }: { rows: LedgerRow[]; query: LedgerQuery; filters: Filters }) {
@@ -145,20 +145,20 @@ function LedgerTable({ rows, query, filters }: { rows: LedgerRow[]; query: Ledge
             <td className="border-l border-rule" />
           </tr>
           <tr className="border-b-2 border-machine">
-            {th({ key: "item", label: "품목 코드" }, false)}
+            {th({ key: "item", label: "품목코드" }, false)}
             {th({ key: "itemName", label: "품명" }, false)}
             {th({ key: "unit", label: "단위" }, false)}
-            {th({ key: "opening", label: "기초" })}
+            {th({ key: "opening", label: "기초재고" })}
             {inCols.map((c, i) => th(c, true, i === 0 ? "border-l border-rule" : ""))}
             {outCols.map((c, i) => th(c, true, i === 0 ? "border-l border-rule" : ""))}
-            {th({ key: "closing", label: "기말" }, true, "border-l border-rule")}
+            {th({ key: "closing", label: "기말재고" }, true, "border-l border-rule")}
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 && (
             <tr>
               <td colSpan={4 + inCols.length + outCols.length + 1} className="px-5 py-8 text-muted">
-                이 기간 · 거르기에 기초 · 입고 · 출고가 있는 품목이 없습니다.
+                이 기간 · 거르기에 기초재고 · 입고 · 출고가 있는 품목이 없습니다.
               </td>
             </tr>
           )}
