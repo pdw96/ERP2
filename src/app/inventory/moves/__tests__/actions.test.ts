@@ -8,7 +8,7 @@ vi.mock("@/db/request", () => ({ withDb: h.withDb }));
 vi.mock("next/navigation", () => ({ redirect: h.redirect }));
 vi.mock("next/cache", () => ({ refresh: h.refresh }));
 
-import { cancelMoveAction, onHandAction, saveMoveAction } from "../actions";
+import { cancelMoveAction, onHandAction, saveMoveAction, warehouseStockAction } from "../actions";
 
 const visitorText = "방문자가넣은LOT-비밀";
 const form = () => {
@@ -62,6 +62,7 @@ describe("수불 등록 · 취소의 입구", () => {
     ["등록", () => saveMoveAction(null, form())],
     ["취소", () => cancelMoveAction("IV-20261109-001")],
     ["가용 재고", () => onHandAction("RM-0003", "WH-01")],
+    ["창고 현재고", () => warehouseStockAction("WH-01")],
   ])("%s 중 DB 가 실패하면 로그에 코드만 남기고 넣은 글자는 남기지 않는다", async (_, run) => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     h.withDb.mockRejectedValue(serverError());

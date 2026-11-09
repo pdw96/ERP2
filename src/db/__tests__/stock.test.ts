@@ -14,6 +14,7 @@ import {
   listRecentMoves,
   onHand,
   saveMove,
+  warehouseStock,
   type MoveSaveResult,
 } from "@/db/stock";
 import type { Db } from "@/db/types";
@@ -665,5 +666,41 @@ describe("등록 메뉴의 최근 전표 — 그 수불구분만(ADR 0020, PR F)
     expect((await listRecentMoves(db, 1, "XFER")).map((m) => m.code)).toEqual([xfer]);
     expect((await listRecentMoves(db, 1, "ADJ")).map((m) => m.code)).toEqual([adj]);
     expect((await listRecentMoves(db, 50, "XFER")).some((m) => [inCode, cancel.code].includes(m.code))).toBe(false);
+  });
+});
+
+describe("창고 현재고 — 등록 화면의 현재고 표(설계 「PR F 검토 중 정한 것」)", () => {
+  it("잔액이 0 보다 큰 품목 · LOT 만 품목코드 · LOT 차례로, 가용이고 「사용」인 품목만 고를 수 있다", async () => {
+    await ok(save({ lines: [wire("100"), wire("30", { lot: "T-2" })] }));
+    await ok(save({ moveType: "OUT", lines: [wire("30", { lot: "T-2" })] }));
+    const list = await warehouseStock(db, "WH-01");
+    const wires = list.filter((r) => r.itemCode === "RM-0003");
+    expect(wires.map((r) => [r.lot, r.qty, r.status, r.pickable])).toContainEqual(["T-1", "100", "AVAILABLE", true]);
+    expect(wires.some((r) => r.lot === "T-2")).toBe(false); // 다 나가 0 이면 빠진다
+    const keys = list.map((r) => `${r.itemCode}|${r.lot}`);
+    expect(keys).toEqual([...keys].sort());
+    expect(list.every((r) => Number(r.qty.replaceAll(",", "")) > 0)).toBe(true);
+    // 그 창고의 잔액 행과 같다 — 다른 창고의 재고는 섞이지 않는다.
+    const [{ n }] = rows<{ n: number }>(
+      await db.execute(sql`select count(*)::int as n from stock_balances b join warehouses w on w.id = b.warehouse_id
+        where w.code = 'WH-01' and b.qty > 0`),
+    );
+    expect(list).toHaveLength(n);
+  });
+
+  it("검사대기 · 「사용 안 함」 품목은 보이되 고르지 못하고, 모르는 창고 꼴은 빈 목록이다", async () => {
+    await ok(save({ lines: [wire("100")] }));
+    const [wh] = await db.select().from(warehouses).where(eq(warehouses.code, "WH-01"));
+    const [wireItem] = await db.select().from(items).where(eq(items.code, "RM-0003"));
+    await db
+      .insert(stockBalances)
+      .values({ itemId: wireItem.id, warehouseId: wh.id, lot: "Q-1", status: "QC", qty: 7 });
+    let rows = await warehouseStock(db, "WH-01");
+    expect(rows.find((r) => r.lot === "Q-1")).toMatchObject({ status: "QC", pickable: false, qty: "7" });
+    await db.update(items).set({ active: false }).where(eq(items.id, wireItem.id));
+    rows = await warehouseStock(db, "WH-01");
+    expect(rows.find((r) => r.lot === "T-1")).toMatchObject({ status: "AVAILABLE", pickable: false });
+    expect(await warehouseStock(db, "WH-01' or '1'='1")).toEqual([]);
+    expect(await warehouseStock(db, "WH-99")).toEqual([]);
   });
 });

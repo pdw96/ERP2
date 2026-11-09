@@ -717,6 +717,49 @@ export async function onHand(db: Db, itemCode: string, warehouseCode: string): P
   return rows.map((r) => ({ lot: r.lot, qty: formatMilli(milliOf(r.qty)) }));
 }
 
+/** 창고 현재고의 한 줄 — 품목 · LOT · 상태마다. `pickable` 은 등록 화면이 줄로 넣을 수 있는가(가용이고 「사용」인 품목). */
+export type WarehouseStockRow = {
+  itemCode: string;
+  itemName: string;
+  unit: string;
+  lot: string;
+  status: "AVAILABLE" | "QC";
+  qty: string;
+  pickable: boolean;
+};
+
+/**
+ * 한 창고의 현재고 — 잔액이 0 보다 큰 품목 · LOT · 상태마다 한 줄, 품목코드 · LOT 차례(ADR 0020 의 「PR F 검토 중 정한 것」).
+ * 기타출고 · 재고이동 · 재고조정 등록이 그 창고의 재고를 보며 골라 줄로 넣는다. 읽기만 한다 — 상태별 · 창고별로 보는 메뉴는 조각 「재고 현황」이다.
+ */
+export async function warehouseStock(db: Db, warehouseCode: string): Promise<WarehouseStockRow[]> {
+  if (!WAREHOUSE_CODE.test(warehouseCode)) return [];
+  const rows = await db
+    .select({
+      itemCode: items.code,
+      itemName: items.name,
+      unit: items.unit,
+      active: items.active,
+      lot: stockBalances.lot,
+      status: stockBalances.status,
+      qty: stockBalances.qty,
+    })
+    .from(stockBalances)
+    .innerJoin(items, eq(items.id, stockBalances.itemId))
+    .innerJoin(warehouses, eq(warehouses.id, stockBalances.warehouseId))
+    .where(and(eq(warehouses.code, warehouseCode), gt(stockBalances.qty, 0)))
+    .orderBy(asc(items.code), asc(stockBalances.lot), asc(stockBalances.status));
+  return rows.map((r) => ({
+    itemCode: r.itemCode,
+    itemName: r.itemName,
+    unit: r.unit,
+    lot: r.lot,
+    status: r.status === "QC" ? "QC" : "AVAILABLE",
+    qty: formatMilli(milliOf(r.qty)),
+    pickable: r.status === "AVAILABLE" && r.active,
+  }));
+}
+
 export type MoveSummary = {
   code: string;
   moveDate: string;

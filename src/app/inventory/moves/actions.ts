@@ -4,7 +4,15 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { withDb } from "@/db/request";
 import { describeFailure } from "@/db/status";
-import { cancelMove, onHand, saveMove, type MoveSaveResult, type OnHand } from "@/db/stock";
+import {
+  cancelMove,
+  onHand,
+  saveMove,
+  warehouseStock,
+  type MoveSaveResult,
+  type OnHand,
+  type WarehouseStockRow,
+} from "@/db/stock";
 import { moveValues } from "@/lib/move-input";
 import { koreaToday } from "@/lib/today";
 
@@ -51,6 +59,17 @@ export async function onHandAction(itemCode: string, warehouseCode: string): Pro
     return await withDb((db) => onHand(db, itemCode, warehouseCode));
   } catch (error) {
     console.error(`가용 재고 불러오기 실패: ${describeFailure(error, "code-only")}`);
+    return null;
+  }
+}
+
+/** 한 창고의 현재고 — 기타출고 · 재고이동 · 재고조정 등록의 현재고 표가 부른다. 읽기만 한다. */
+export async function warehouseStockAction(warehouseCode: string): Promise<WarehouseStockRow[] | null> {
+  if (typeof warehouseCode !== "string" || warehouseCode.length > 20) return null;
+  try {
+    return await withDb((db) => warehouseStock(db, warehouseCode));
+  } catch (error) {
+    console.error(`창고 현재고 불러오기 실패: ${describeFailure(error, "code-only")}`);
     return null;
   }
 }
