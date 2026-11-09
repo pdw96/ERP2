@@ -170,7 +170,7 @@ function UnitSpecSection({ unit, values, errors }: { unit: UnitSpecProps; values
   return (
     <Section
       title="단위 사양"
-      note="같은 기준의 단위끼리는 수불 등록에서 바꿔 넣습니다 — 예: 기준 G, 배수 1000 이면 1 KG = 1000 G. 기준 단위 · 배수는 저장한 뒤 바뀌지 않습니다."
+      note="같은 기준의 단위끼리는 수불관리의 등록 화면에서 바꿔 넣습니다 — 예: 기준 G, 배수 1000 이면 1 KG = 1000 G. 기준 단위 · 배수는 저장한 뒤 바뀌지 않습니다."
     >
       <div className="grid gap-5 sm:grid-cols-3">
         <Field field="baseUnit" label="기준 단위" error={errors.baseUnit}>

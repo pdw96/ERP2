@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { startTransition, useActionState, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Choice, Field, inputClass, Section } from "@/components/form-parts";
-import type { MoveFormOptions, MoveItemOption, OnHand } from "@/db/stock";
-import { MOVE_TYPES, isMadeType, type MoveType } from "@/lib/master-codes";
+import { startTransition, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Field, inputClass, Section } from "@/components/form-parts";
+import type { MoveFormOptions, MoveItemOption, MoveWarehouseOption, OnHand, WarehouseStockRow } from "@/db/stock";
+import { isMadeType, type MoveType } from "@/lib/master-codes";
 import {
   MOVE_MAX_LINES,
   MOVE_NOTE_MAX,
@@ -12,14 +11,30 @@ import {
   type MoveLineErrors,
   type MoveLineValues,
 } from "@/lib/move-input";
-import { onHandAction, saveMoveAction, type MoveFormState } from "./actions";
+import { onHandAction, type MoveFormState } from "./actions";
+import { StockPanel } from "./stock-panel";
 
-// 수불 등록 화면(성공 기준 2 ~ 6 · 12) — 일자 · 유형 · 비고를 한 번 쓰고 줄을 「줄 더하기」로 한 줄씩 늘린다(설계 「2026-11-09 — PR C 를 열기 전에
-// 정한 것」). 유형을 고르면 그 유형의 칸만 보인다. 품목을 고르면 기본 창고가 미리 채워지고(이동은 입고 창고 → 출고 창고), 출고 · 이동은 그 창고의
-// LOT 를 가용 수량과 함께 고른다. 검사는 서버가 하고 — 줄이 하나라도 틀리면 아무 줄도 저장되지 않는다 — 화면은 틀린 칸 · 줄과 까닭을 보인다.
+// 수불 등록의 입력(성공 기준 2 ~ 6 · 12) — 일자 · 비고를 한 번 쓰고 줄을 「줄 더하기」로 한 줄씩 늘린다(설계 「2026-11-09 — PR C 를 열기 전에
+// 정한 것」). 수불구분은 메뉴가 정하고(ADR 0020) 그 구분의 칸만 보인다. 품목을 고르면 기본 창고가 미리 채워지고(이동은 입고 창고 → 출고 창고),
+// 출고 · 이동은 그 창고의 LOT 를 가용 수량과 함께 고른다. 검사는 서버가 하고 — 줄이 하나라도 틀리면 아무 줄도 저장되지 않는다 — 화면은 틀린
+// 칸 · 줄과 까닭을 보인다. 저장 상태는 부르는 쪽(move-entry.tsx)이 쥐고, 저장되면 이 입력을 새로 그려 비운다.
+// 기타출고 · 재고이동 · 재고조정은 창고를 전표 머리에서 고르고(이동은 출고창고 → 입고창고) 모든 줄이 그 창고이며, 그 창고의 현재고 표에서
+// 골라 줄로 넣는다(설계 「2026-11-09 — PR F 검토 중 정한 것」). 기타입고는 줄마다 창고를 고른다. 머리의 창고도 부르는 쪽이 쥐어 저장 뒤에도 남는다.
 // 휴대폰 폭에서는 머리 칸이 세로로 쌓이고 줄 표는 옆으로 민다.
 
-type Props = { options: MoveFormOptions; today: string };
+/** 전표 머리의 창고 — 기타출고 · 재고조정은 warehouse 하나, 재고이동은 warehouse(출고창고) → toWarehouse(입고창고). */
+export type MoveHeader = { warehouse: string; toWarehouse: string };
+
+type Props = {
+  options: MoveFormOptions;
+  today: string;
+  moveType: MoveType;
+  state: MoveFormState;
+  formAction: (form: FormData) => void;
+  pending: boolean;
+  head: MoveHeader;
+  onHead: (head: MoveHeader) => void;
+};
 
 const blankLine = (): MoveLineValues => ({ item: "", lot: "", warehouse: "", toWarehouse: "", qty: "", unit: "" });
 const codeOf = (text: string | undefined) => (text ?? "").trim().split(/\s+/)[0] ?? "";
@@ -28,16 +43,20 @@ const handKey = (item: string, warehouse: string) => `${item}|${warehouse}`;
 const reduces = (type: MoveType, qty: string | undefined) =>
   type === "OUT" || type === "XFER" || (type === "ADJ" && (qty ?? "").trim().startsWith("-"));
 
-const TYPE_NOTE: Record<MoveType, string> = {
-  IN: "창고로 들어온 것 — 구매 · 생산이 아닌 입고(기초 재고 따위)",
-  OUT: "창고에서 나간 것 — 판매 · 생산 투입이 아닌 출고(소모 · 견본 따위)",
-  XFER: "출고창고에서 입고창고로 옮긴 것 — 재고의 합은 그대로",
-  ADJ: "장부를 실물에 맞춘 것 — 늘리면 +, 줄이면 − 를 붙입니다",
-};
-
-export function MoveForm({ options, today }: Props) {
-  const [state, formAction, pending] = useActionState<MoveFormState, FormData>(saveMoveAction, null);
-  const [moveType, setMoveType] = useState<MoveType>((state?.values.moveType as MoveType) ?? "IN");
+export function MoveForm({ options, today, moveType, state, formAction, pending, head, onHead }: Props) {
+  const rejected = state && !state.ok ? state : null;
+  /** 창고를 머리에서 고르는가 — 기타입고만 줄마다 고른다. */
+  const fixed = moveType !== "IN";
+  /**
+   * 줄이 실제로 보내는 값 — 머리에서 고르면 창고 칸은 머리의 창고다. 아무것도 넣지 않은 줄은 창고도 비워 둔다 — 서버는 칸이 모두 빈 줄을 없는 줄로
+   * 치므로(src/lib/move-input.ts), 창고만 붙으면 쓰지 않은 줄이 전표를 막는다.
+   */
+  const effective = (l: MoveLineValues): MoveLineValues => {
+    if (!fixed) return l;
+    const used = [l.item, l.lot, l.qty, l.unit].some((v) => (v ?? "").trim() !== "");
+    if (!used) return { ...l, warehouse: "", toWarehouse: "" };
+    return { ...l, warehouse: head.warehouse, toWarehouse: moveType === "XFER" ? head.toWarehouse : "" };
+  };
   const [lines, setLines] = useState<MoveLineValues[]>(() => [blankLine()]);
   const [errors, setErrors] = useState<MoveErrors>({ header: {}, lines: {} });
   const [hand, setHand] = useState<Record<string, OnHand[] | "loading" | null>>({});
@@ -46,7 +65,7 @@ export function MoveForm({ options, today }: Props) {
   const [seen, setSeen] = useState(state);
   if (state !== seen) {
     setSeen(state);
-    setErrors(state?.errors ?? { header: {}, lines: {} });
+    setErrors(rejected?.errors ?? { header: {}, lines: {} });
   }
 
   const itemOf = (text: string | undefined): MoveItemOption | undefined =>
@@ -54,9 +73,9 @@ export function MoveForm({ options, today }: Props) {
 
   // 그 품목 · 창고의 가용 재고를 한 번 읽어 둔다 — 출고 · 이동의 LOT 고르기와 가용 수량, 조정의 LOT 제안.
   const asked = useRef(new Set<string>());
-  const ensureHand = (line: MoveLineValues, type: MoveType = moveType) => {
+  const ensureHand = (line: MoveLineValues) => {
     const item = itemOf(line.item);
-    if (!item || !line.warehouse || type === "IN") return;
+    if (!item || !line.warehouse || moveType === "IN") return;
     const key = handKey(item.code, line.warehouse);
     if (asked.current.has(key)) return;
     asked.current.add(key);
@@ -65,7 +84,7 @@ export function MoveForm({ options, today }: Props) {
   };
 
   const setLine = (index: number, patch: MoveLineValues) => {
-    ensureHand({ ...lines[index], ...patch });
+    ensureHand(effective({ ...lines[index], ...patch }));
     setLines((ls) => ls.map((l, i) => (i === index ? { ...l, ...patch } : l)));
     setErrors((e) => {
       if (!e.lines[index]) return e;
@@ -75,27 +94,46 @@ export function MoveForm({ options, today }: Props) {
     });
   };
 
-  /** 품목을 고르면 기본 창고를 채운다 — 입고 · 조정은 입고 창고, 출고는 출고 창고, 이동은 입고 창고 → 출고 창고(같으면 받는 쪽은 비움). */
+  /** 품목을 고르면 LOT · 단위를 비운다. 기타입고는 품목의 기본 입고 창고를 채운다 — 다른 구분은 창고가 머리의 것이다. */
   const pickItem = (index: number, text: string) => {
     const item = itemOf(text);
     const patch: MoveLineValues = { item: text };
     if (item && item.code !== codeOf(lines[index].item)) {
       patch.lot = "";
       patch.unit = "";
-      if (moveType === "OUT") patch.warehouse = item.defaultOut;
-      else if (moveType === "XFER") {
-        patch.warehouse = item.defaultIn;
-        patch.toWarehouse = item.defaultOut !== item.defaultIn ? item.defaultOut : "";
-      } else patch.warehouse = item.defaultIn;
+      if (!fixed) patch.warehouse = item.defaultIn;
     }
     setLine(index, patch);
   };
 
-  const changeType = (type: MoveType) => {
-    setMoveType(type);
-    for (const l of lines) ensureHand(l, type);
-    setLines((ls) => ls.map((l) => ({ ...l, toWarehouse: type === "XFER" ? l.toWarehouse : "", lot: "" })));
-    setErrors({ header: {}, lines: {} });
+  /** 머리의 창고를 바꾸면 줄의 LOT 를 비운다 — LOT 는 그 창고의 것에서 고르기 때문이다. */
+  const changeHead = (patch: Partial<MoveHeader>) => {
+    const next = { ...head, ...patch };
+    onHead(next);
+    if (patch.warehouse !== undefined && patch.warehouse !== head.warehouse) {
+      setLines((ls) => ls.map((l) => ({ ...l, lot: "" })));
+      for (const l of lines) ensureHand({ ...l, warehouse: next.warehouse });
+    }
+    setErrors((e) => ({ ...e, lines: {} }));
+  };
+
+  /**
+   * 현재고 표에서 고른 품목 · LOT 를 줄로 넣는다 — 품목이 빈 줄은 걷고 그 뒤에 붙인다. 수량은 비워 둔다. 줄은 100줄까지라 남은 자리만큼만 넣고,
+   * 넣은 것을 돌려준다 — 현재고 표는 넣지 못한 것을 고른 채로 두고 까닭을 보인다.
+   */
+  const pickStock = (rows: WarehouseStockRow[]): WarehouseStockRow[] => {
+    const filled = lines.filter((l) => (l.item ?? "").trim() !== "");
+    const accepted = rows.slice(0, Math.max(0, MOVE_MAX_LINES - filled.length));
+    if (accepted.length === 0) return accepted;
+    const picked: MoveLineValues[] = accepted.map((r) => ({
+      ...blankLine(),
+      item: `${r.itemCode} ${r.itemName}`,
+      lot: r.lot,
+    }));
+    for (const l of picked) ensureHand(effective(l));
+    setLines([...filled, ...picked]);
+    setErrors((e) => ({ ...e, lines: {} }));
+    return accepted;
   };
 
   const addLine = () => setLines((ls) => (ls.length >= MOVE_MAX_LINES ? ls : [...ls, blankLine()]));
@@ -112,16 +150,20 @@ export function MoveForm({ options, today }: Props) {
 
   const header = errors.header;
   const lineErrorCount = Object.keys(errors.lines).length;
-  const failed = state && (state.formError || Object.keys(header).length || lineErrorCount);
+  const failed = rejected && (rejected.formError || Object.keys(header).length || lineErrorCount);
   const isXfer = moveType === "XFER";
   const isAdj = moveType === "ADJ";
+  // 기타출고 · 재고이동은 불량창고에서 내보내지 못한다(ADR 0015). 재고조정은 불량창고 안의 조정도 받는다.
+  const fromChoices = options.warehouses.filter((w) => isAdj || !w.isDefect);
+  const toChoices = options.warehouses.filter((w) => w.code !== head.warehouse);
+  const inLines = new Set(lines.map((l) => `${codeOf(l.item)}|${l.lot ?? ""}`));
 
   return (
     <form action={formAction} onSubmit={onSubmit} noValidate className="mt-6">
       {failed && (
         <div role="alert" className="mb-6 max-w-3xl border-l-4 border-red-700 bg-white px-5 py-4">
           <p className="font-semibold">저장하지 않았습니다 — 줄이 하나라도 틀리면 아무 줄도 저장되지 않습니다.</p>
-          {state.formError && <p className="mt-1 text-sm">{state.formError}</p>}
+          {rejected.formError && <p className="mt-1 text-sm">{rejected.formError}</p>}
           {lineErrorCount > 0 && (
             <p className="mt-1 text-sm">틀린 줄 {lineErrorCount}개 — 줄 아래의 까닭을 보고 고치세요.</p>
           )}
@@ -130,41 +172,54 @@ export function MoveForm({ options, today }: Props) {
 
       <div className="grid max-w-3xl gap-8">
         <Section title="전표">
-          <div className="grid gap-5 sm:grid-cols-[12rem_1fr]">
+          {/* 수불구분은 메뉴가 정한다 — 서버는 다른 값도 지금처럼 같은 규칙으로 본다(설계 ③). */}
+          <input type="hidden" name="moveType" value={moveType} />
+          {header.moveType && (
+            <p role="alert" className="text-sm font-semibold text-red-700">
+              {header.moveType}
+            </p>
+          )}
+          <div className="sm:max-w-48">
             <Field field="moveDate" label="수불일자" error={header.moveDate} hint="오늘이나 지난 날">
               <input
                 id="f-moveDate"
                 name="moveDate"
                 type="date"
-                defaultValue={state?.values.moveDate ?? today}
+                defaultValue={rejected?.values.moveDate ?? today}
                 max={today}
                 aria-invalid={!!header.moveDate || undefined}
                 className={inputClass(!!header.moveDate)}
               />
             </Field>
-            <Field field="moveType" label="수불구분" error={header.moveType} as="fieldset">
-              <div className="flex flex-wrap gap-2">
-                {MOVE_TYPES.map((t) => (
-                  <Choice
-                    key={t.code}
-                    name="moveType"
-                    value={t.code}
-                    checked={moveType === t.code}
-                    onChange={() => changeType(t.code)}
-                  >
-                    {t.name}
-                  </Choice>
-                ))}
-              </div>
-              <p className="mt-1 text-sm text-muted">{TYPE_NOTE[moveType]}</p>
-            </Field>
           </div>
+          {fixed && (
+            <div className="grid gap-5 sm:grid-cols-2">
+              <HeadWarehouse
+                id="f-warehouse"
+                label={isXfer ? "출고창고" : "창고"}
+                hint={isXfer ? "이 창고의 현재고에서 골라 옮깁니다" : "이 창고의 현재고에서 골라 넣습니다"}
+                value={head.warehouse}
+                choices={fromChoices}
+                onChange={(warehouse) => changeHead({ warehouse })}
+              />
+              {isXfer && (
+                <HeadWarehouse
+                  id="f-toWarehouse"
+                  label="입고창고"
+                  hint="모든 줄이 이 창고로 갑니다"
+                  value={head.toWarehouse}
+                  choices={toChoices}
+                  onChange={(toWarehouse) => changeHead({ toWarehouse })}
+                />
+              )}
+            </div>
+          )}
           {isAdj && (
             <Field field="reason" label="조정사유" error={header.reason} hint="조정은 꼭 고릅니다">
               <select
                 id="f-reason"
                 name="reason"
-                defaultValue={state?.values.reason ?? ""}
+                defaultValue={rejected?.values.reason ?? ""}
                 aria-invalid={!!header.reason || undefined}
                 className={`${inputClass(!!header.reason)} sm:max-w-64`}
               >
@@ -181,7 +236,7 @@ export function MoveForm({ options, today }: Props) {
             <input
               id="f-note"
               name="note"
-              defaultValue={state?.values.note ?? ""}
+              defaultValue={rejected?.values.note ?? ""}
               maxLength={MOVE_NOTE_MAX}
               autoComplete="off"
               aria-invalid={!!header.note || undefined}
@@ -190,6 +245,14 @@ export function MoveForm({ options, today }: Props) {
           </Field>
         </Section>
       </div>
+
+      {fixed && (
+        <StockPanel
+          warehouse={options.warehouses.find((w) => w.code === head.warehouse)}
+          inLines={inLines}
+          onPick={pickStock}
+        />
+      )}
 
       <section className="mt-8 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 border-t-2 border-machine pt-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -207,7 +270,7 @@ export function MoveForm({ options, today }: Props) {
           ))}
         </datalist>
         <div className="relative overflow-x-auto border border-rule bg-white">
-          <table className="w-full min-w-[56rem] border-collapse text-left text-sm">
+          <table className={`w-full ${fixed ? "min-w-[44rem]" : "min-w-[56rem]"} border-collapse text-left text-sm`}>
             <caption className="sr-only">수불 줄</caption>
             <thead className="border-b-2 border-machine">
               <tr>
@@ -217,12 +280,9 @@ export function MoveForm({ options, today }: Props) {
                 <th scope="col" className="min-w-56 px-2 py-2">
                   품목
                 </th>
-                <th scope="col" className="min-w-44 px-2 py-2">
-                  {isXfer ? "출고창고" : "창고"}
-                </th>
-                {isXfer && (
+                {!fixed && (
                   <th scope="col" className="min-w-44 px-2 py-2">
-                    입고창고
+                    창고
                   </th>
                 )}
                 <th scope="col" className="min-w-48 px-2 py-2">
@@ -240,24 +300,26 @@ export function MoveForm({ options, today }: Props) {
               </tr>
             </thead>
             <tbody>
-              {lines.map((line, index) => (
-                <LineRow
-                  key={index}
-                  index={index}
-                  line={line}
-                  errors={errors.lines[index]}
-                  moveType={moveType}
-                  item={itemOf(line.item)}
-                  options={options}
-                  hand={(() => {
-                    const item = itemOf(line.item);
-                    return item && line.warehouse ? hand[handKey(item.code, line.warehouse)] : undefined;
-                  })()}
-                  onChange={(patch) => setLine(index, patch)}
-                  onPickItem={(text) => pickItem(index, text)}
-                  onRemove={() => removeLine(index)}
-                />
-              ))}
+              {lines.map((raw, index) => {
+                const line = effective(raw);
+                const item = itemOf(line.item);
+                return (
+                  <LineRow
+                    key={index}
+                    index={index}
+                    line={line}
+                    fixed={fixed}
+                    errors={errors.lines[index]}
+                    moveType={moveType}
+                    item={item}
+                    options={options}
+                    hand={item && line.warehouse ? hand[handKey(item.code, line.warehouse)] : undefined}
+                    onChange={(patch) => setLine(index, patch)}
+                    onPickItem={(text) => pickItem(index, text)}
+                    onRemove={() => removeLine(index)}
+                  />
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -282,9 +344,6 @@ export function MoveForm({ options, today }: Props) {
         >
           {pending ? "저장 중…" : "저장"}
         </button>
-        <Link href="/inventory/moves" className="px-3 py-2.5 text-muted underline underline-offset-4 hover:text-ink">
-          취소
-        </Link>
       </div>
     </form>
   );
@@ -293,6 +352,7 @@ export function MoveForm({ options, today }: Props) {
 function LineRow({
   index,
   line,
+  fixed,
   errors,
   moveType,
   item,
@@ -304,6 +364,8 @@ function LineRow({
 }: {
   index: number;
   line: MoveLineValues;
+  /** 창고를 머리에서 고르는가 — 그러면 창고 칸 대신 머리의 창고를 숨은 값으로 보낸다. */
+  fixed: boolean;
   errors?: MoveLineErrors;
   moveType: MoveType;
   item?: MoveItemOption;
@@ -316,7 +378,6 @@ function LineRow({
   const name = (field: string) => `lines.${index}.${field}`;
   const n = index + 1;
   const e = errors ?? {};
-  const isXfer = moveType === "XFER";
   const cell = (invalid: boolean) => `${inputClass(invalid)} px-2 py-1.5`;
   const itemUnit = options.units.find((u) => u.code === item?.unit);
   const sameBase = options.units.filter((u) => itemUnit && u.baseUnit === itemUnit.baseUnit);
@@ -429,15 +490,17 @@ function LineRow({
             className={cell(!!e.item)}
           />
           {message("item")}
+          {fixed && (
+            <>
+              <input type="hidden" name={name("warehouse")} value={line.warehouse ?? ""} />
+              <input type="hidden" name={name("toWarehouse")} value={line.toWarehouse ?? ""} />
+            </>
+          )}
         </td>
-        <td className="px-2 py-2">
-          {warehouseSelect("warehouse", isXfer ? "출고창고" : "창고")}
-          {message("warehouse")}
-        </td>
-        {isXfer && (
+        {!fixed && (
           <td className="px-2 py-2">
-            {warehouseSelect("toWarehouse", "입고창고")}
-            {message("toWarehouse")}
+            {warehouseSelect("warehouse", "창고")}
+            {message("warehouse")}
           </td>
         )}
         <td className="px-2 py-2">
@@ -499,14 +562,55 @@ function LineRow({
           </button>
         </td>
       </tr>
-      {e.row && (
+      {(e.row || (fixed && (e.warehouse || e.toWarehouse))) && (
         <tr className="border-b border-rule bg-red-50">
           <td />
-          <td colSpan={isXfer ? 7 : 6} className="px-2 pb-2 text-sm font-semibold text-red-700" role="status">
-            줄 {n} — {e.row}
+          <td colSpan={fixed ? 5 : 6} className="px-2 pb-2 text-sm font-semibold text-red-700" role="status">
+            {[e.row, fixed && e.warehouse, fixed && e.toWarehouse]
+              .filter(Boolean)
+              .map((m) => `줄 ${n} — ${m}`)
+              .join(" · ")}
           </td>
         </tr>
       )}
     </>
+  );
+}
+
+function HeadWarehouse({
+  id,
+  label,
+  hint,
+  value,
+  choices,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  hint: string;
+  value: string;
+  choices: MoveWarehouseOption[];
+  onChange: (code: string) => void;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="block font-semibold">
+        {label} <span className="text-sm font-normal text-muted">{hint}</span>
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={(ev) => onChange(ev.target.value)}
+        className={`${inputClass(false)} mt-1`}
+      >
+        <option value="">창고를 고르세요</option>
+        {choices.map((w) => (
+          <option key={w.code} value={w.code}>
+            {w.code} {w.name}
+            {w.isDefect ? " (불량)" : ""}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
