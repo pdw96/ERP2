@@ -8,7 +8,7 @@ import { LoadFailed } from "@/components/load-failed";
 import { CodeSelect, Notices, Pager, PeriodFields } from "@/components/sort-pager";
 import { withDb } from "@/db/request";
 import { getLedgerDetail, historyOptions } from "@/db/stock-history";
-import { ITEM_CODE, parseLedgerDetailQuery, queryString } from "@/lib/stock-query";
+import { ITEM_CODE, basisOf, parseLedgerDetailQuery, queryString } from "@/lib/stock-query";
 import { koreaToday } from "@/lib/today";
 
 export const metadata: Metadata = { title: "수불부 — 품목의 거래 — ERP2" };
@@ -68,8 +68,7 @@ async function Detail({
         <span className="font-mono">{d.item.code}</span> {d.item.name}
       </h1>
       <p className="mt-1 text-muted">
-        {query.from} ~ {query.to} · {query.warehouse ? `${query.warehouse} 의 몫` : "모든 창고의 합(이동은 빠짐)"} ·
-        단위 {d.item.unit}
+        {query.from} ~ {query.to} · {basisOf(query.warehouse, data.options.warehouses)} · 단위 {d.item.unit}
       </p>
       <Form
         key={JSON.stringify(keep)}

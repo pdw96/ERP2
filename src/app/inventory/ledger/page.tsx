@@ -7,7 +7,7 @@ import { LoadFailed } from "@/components/load-failed";
 import { CodeSelect, Notices, Pager, PeriodFields, SortTh, type Filters } from "@/components/sort-pager";
 import { withDb } from "@/db/request";
 import { historyOptions, listLedger, type LedgerRow } from "@/db/stock-history";
-import { parseLedgerQuery, queryString, type LedgerQuery, type LedgerSort } from "@/lib/stock-query";
+import { basisOf, parseLedgerQuery, queryString, type LedgerQuery, type LedgerSort } from "@/lib/stock-query";
 import { koreaToday } from "@/lib/today";
 
 export const metadata: Metadata = { title: "수불부 — ERP2" };
@@ -15,7 +15,7 @@ export const metadata: Metadata = { title: "수불부 — ERP2" };
 const PATH = "/inventory/ledger";
 
 // 재고 › 수불관리 › 수불부(성공 기준 9) — 품목마다 기초 · 입고 · 출고 · 기말. 창고를 고르면 그 창고 몫(이동이 들고 남),
-// 고르지 않으면 모든 창고의 합(이동이 빠져 「이동」 칸을 감춘다). 품목을 누르면 그 기간의 거래와 잔량(저자 판정 —
+// 고르지 않으면 모든 창고의 합(이동이 빠져 「이동」 칸을 감춘다). 어떻게 셌는지는 표 위 「모두 N품목」 줄에 보인다. 품목을 누르면 그 기간의 거래와 잔량(저자 판정 —
 // 설계 「2026-11-09 — PR D 를 열기 전에 정한 것」). 칸 머리를 눌러 세운다.
 export default function LedgerPage({ searchParams }: PageProps<"/inventory/ledger">) {
   return (
@@ -49,6 +49,7 @@ async function Results({ searchParams }: Pick<PageProps<"/inventory/ledger">, "s
     return <LoadFailed error={error} what="수불부" />;
   }
   const filters: Filters = { from: query.from, to: query.to, item: query.item, wh: query.warehouse };
+  const basis = basisOf(query.warehouse, data.options.warehouses);
   const sorted = {
     ...filters,
     sort: query.sort === "item" && query.dir === "asc" ? undefined : query.sort,
@@ -76,9 +77,6 @@ async function Results({ searchParams }: Pick<PageProps<"/inventory/ledger">, "s
           <Link href={PATH} className="text-sm text-muted underline underline-offset-4 hover:text-ink">
             처음대로
           </Link>
-          <span className="text-sm text-muted">
-            {query.warehouse ? `${query.warehouse} 의 몫(이동이 들고 남)` : "모든 창고의 합(이동은 빠짐)"}
-          </span>
         </div>
         <Notices notices={notices} />
       </Form>
@@ -88,10 +86,10 @@ async function Results({ searchParams }: Pick<PageProps<"/inventory/ledger">, "s
         </p>
       ) : (
         <>
-          <Pager {...data.page} path={PATH} params={sorted} unit="품목" />
+          <Pager {...data.page} path={PATH} params={sorted} unit="품목" basis={basis} />
           <p className="text-sm text-muted md:hidden">표를 옆으로 밀면 다른 열이 보입니다</p>
           <LedgerTable rows={data.page.rows} query={query} filters={filters} />
-          {data.page.pages > 1 && <Pager {...data.page} path={PATH} params={sorted} unit="품목" />}
+          {data.page.pages > 1 && <Pager {...data.page} path={PATH} params={sorted} unit="품목" basis={basis} />}
         </>
       )}
     </>

@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Pager, SortTh } from "@/components/sort-pager";
+import { basisOf } from "@/lib/stock-query";
 
 // 칸 머리로 세우기 · 쪽 넘김(조각 「재고 수불」 설계 「2026-11-09 — PR D 를 열기 전에 정한 것」).
 
@@ -51,5 +52,18 @@ describe("Pager", () => {
     expect(screen.getByRole("link", { name: "이전" })).toHaveAttribute("href", "/x?sort=qty&dir=desc");
     expect(screen.getByRole("link", { name: "다음" })).toHaveAttribute("href", "/x?sort=qty&dir=desc&page=3");
     expect(screen.getByText("2")).toHaveAttribute("aria-current", "page");
+  });
+});
+
+describe("수불부의 기준 글", () => {
+  const whs = [{ code: "WH-02", name: "생산현장" }];
+  it("창고를 고르면 그 창고 기준 · 이동 포함, 비우면 모든 창고 합계 · 이동 제외", () => {
+    expect(basisOf("WH-02", whs)).toBe("WH-02 생산현장 기준 · 이동 포함");
+    expect(basisOf(undefined, whs)).toBe("모든 창고 합계 · 이동 제외");
+  });
+
+  it("「모두 N품목」 줄에 붙는다", () => {
+    render(<Pager total={10} page={1} pages={1} path="/x" params={{}} unit="품목" basis={basisOf("WH-02", whs)} />);
+    expect(screen.getByRole("navigation")).toHaveTextContent("모두 10품목 · WH-02 생산현장 기준 · 이동 포함");
   });
 });

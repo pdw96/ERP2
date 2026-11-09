@@ -62,6 +62,7 @@ export function Pager({
   path,
   params,
   unit = "줄",
+  basis,
 }: {
   total: number;
   page: number;
@@ -70,6 +71,8 @@ export function Pager({
   /** 거르기 · 정렬 — 쪽을 넘겨도 그대로 둔다. */
   params: Filters;
   unit?: string;
+  /** 숫자를 어떻게 셌는지 — 수불부의 「WH-02 생산현장 기준 · 이동 포함」 따위. 「모두 N」 뒤에 붙는다. */
+  basis?: string;
 }) {
   const href = (p: number) => `${path}${queryString({ ...params, page: p === 1 ? undefined : p })}`;
   const near = Array.from({ length: pages }, (_, i) => i + 1).filter(
@@ -81,6 +84,7 @@ export function Pager({
         모두 {total.toLocaleString("ko-KR")}
         {unit}
         {pages > 1 && ` · ${page} / ${pages}쪽`}
+        {basis && <span className="font-semibold text-ink"> · {basis}</span>}
       </span>
       {pages > 1 && (
         <span className="flex flex-wrap items-center gap-1">

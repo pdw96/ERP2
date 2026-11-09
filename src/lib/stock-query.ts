@@ -193,3 +193,13 @@ export function queryString(values: Record<string, string | number | undefined>)
   const s = p.toString();
   return s ? `?${s}` : "";
 }
+
+/**
+ * 표의 숫자를 어떻게 셌는지(저자 판정 — 표 위 「모두 N품목」 줄에) — 창고를 고르면 그 창고에 들고 난 것(이동 포함),
+ * 고르지 않으면 모든 창고의 합(창고끼리의 이동은 들고 나는 것이 지워져 빠진다). 지금 보이는 숫자와 늘 같다.
+ */
+export function basisOf(warehouse: string | undefined, warehouses: readonly { code: string; name: string }[]) {
+  if (!warehouse) return "모든 창고 합계 · 이동 제외";
+  const name = warehouses.find((w) => w.code === warehouse)?.name;
+  return `${warehouse}${name ? ` ${name}` : ""} 기준 · 이동 포함`;
+}
