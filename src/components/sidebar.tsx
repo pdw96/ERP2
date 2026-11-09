@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { useMenuHint } from "@/components/menu-hint";
 import { AREAS, activeMenuHref, isOpen, isWithin, type Menu } from "@/lib/areas";
 
 // 넓은 화면에서는 왼쪽에 늘 보이고, 휴대폰 폭에서는 「메뉴」 단추로 펼친다.
@@ -15,6 +16,8 @@ export function Sidebar() {
 // 주소를 빌드 때 알 수 없는 화면(품목 코드가 주소인 수정 화면 등)은 이 모양이 먼저 나가고, 요청 때 지금 모듈이 표시된다.
 export function SidebarView({ pathname }: { pathname: string }) {
   const [open, setOpen] = useState(false);
+  // 주소만으로 메뉴를 알 수 없는 화면(전표 보기)이 알린 메뉴 — 그 모듈의 메뉴일 때만 쓴다.
+  const hinted = useMenuHint(pathname);
 
   return (
     <nav
@@ -42,7 +45,8 @@ export function SidebarView({ pathname }: { pathname: string }) {
       >
         {AREAS.map((area) => {
           const current = isWithin(pathname, area.href);
-          const activeHref = current ? activeMenuHref(pathname, area) : undefined;
+          const hintHere = area.groups.some((g) => g.menus.some((m) => m.href && m.href === hinted));
+          const activeHref = current ? (hintHere ? hinted : activeMenuHref(pathname, area)) : undefined;
           return (
             <li key={area.href}>
               <Link

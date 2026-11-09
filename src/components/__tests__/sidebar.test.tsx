@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act } from "react";
+import { MenuHint } from "@/components/menu-hint";
 import { Sidebar, SidebarView } from "@/components/sidebar";
 
 const nav = vi.hoisted(() => ({ pathname: "/" }));
@@ -83,18 +85,65 @@ describe("Sidebar", () => {
     }
   });
 
-  it("재고를 열면 「재고 기준정보 › 창고」와 「수불관리 › 수불 등록 · 수불 이력 · 수불부」는 링크, 재고 실사는 준비 중으로 보인다", () => {
+  it("재고를 열면 「재고 기준정보 › 창고」와 「수불관리 › 등록 넷 · 수불 이력 · 수불부」는 링크, 재고 실사는 준비 중으로 보인다", () => {
     nav.pathname = "/inventory/warehouses/WH-01";
     render(<Sidebar />);
     const menu = within(screen.getByRole("list", { name: "재고 메뉴" }));
     expect(menu.getByText("재고 기준정보")).toBeInTheDocument();
     expect(menu.getByRole("link", { name: "창고" })).toHaveAttribute("href", "/inventory/warehouses");
     expect(menu.getByRole("link", { name: "창고" })).toHaveAttribute("aria-current", "page");
-    expect(menu.getByRole("link", { name: "수불 등록" })).toHaveAttribute("href", "/inventory/moves");
+    expect(menu.getByRole("link", { name: "기타입고 등록" })).toHaveAttribute("href", "/inventory/receipts");
+    expect(menu.getByRole("link", { name: "기타출고 등록" })).toHaveAttribute("href", "/inventory/issues");
+    expect(menu.getByRole("link", { name: "재고이동 등록" })).toHaveAttribute("href", "/inventory/transfers");
+    expect(menu.getByRole("link", { name: "재고조정 등록" })).toHaveAttribute("href", "/inventory/adjustments");
+    expect(menu.queryByText("수불 등록")).toBeNull();
     expect(menu.getByRole("link", { name: "수불 이력" })).toHaveAttribute("href", "/inventory/history");
     expect(menu.getByRole("link", { name: "수불부" })).toHaveAttribute("href", "/inventory/ledger");
     expect(menu.getByText("재고 실사").parentElement).toHaveTextContent("재고 실사준비 중");
-    expect(screen.getByRole("link", { name: /^재고/ })).not.toHaveTextContent("준비 중");
+    expect(screen.getByRole("link", { name: "재고" })).not.toHaveTextContent("준비 중");
+  });
+
+  it("수불관리의 메뉴는 등록 넷 → 재고 실사 → 수불 이력 · 수불부 차례다(ADR 0020)", () => {
+    nav.pathname = "/inventory/receipts";
+    render(<Sidebar />);
+    const menu = within(screen.getByRole("list", { name: "재고 메뉴" }));
+    const group = menu.getByText("수불관리").closest("li")!;
+    expect([...group.querySelectorAll("ul > li")].map((li) => li.firstChild?.firstChild?.textContent)).toEqual([
+      "기타입고 등록",
+      "기타출고 등록",
+      "재고이동 등록",
+      "재고조정 등록",
+      "재고 실사",
+      "수불 이력",
+      "수불부",
+    ]);
+    expect(menu.getByRole("link", { name: "기타입고 등록" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("전표 보기는 주소에 수불구분이 없어, 화면이 알린 그 구분의 등록 메뉴를 가리킨다 — 다른 주소의 알림은 쓰지 않는다", () => {
+    nav.pathname = "/inventory/moves/IV-20261109-001";
+    const { rerender } = render(<Sidebar />);
+    const menu = () => within(screen.getByRole("list", { name: "재고 메뉴" }));
+    expect(menu().queryAllByRole("link", { current: "page" })).toHaveLength(0);
+    act(() => {
+      rerender(
+        <>
+          <Sidebar />
+          <MenuHint pathname="/inventory/moves/IV-20261109-001" href="/inventory/transfers" />
+        </>,
+      );
+    });
+    expect(menu().getByRole("link", { name: "재고이동 등록" })).toHaveAttribute("aria-current", "page");
+    expect(menu().queryAllByRole("link", { current: "page" })).toHaveLength(1);
+    act(() => {
+      rerender(
+        <>
+          <Sidebar />
+          <MenuHint pathname="/inventory/moves/IV-20261109-002" href="/inventory/transfers" />
+        </>,
+      );
+    });
+    expect(menu().queryAllByRole("link", { current: "page" })).toHaveLength(0);
   });
 
   it("시스템 관리를 열면 공통코드는 링크, 회사 정보 · 사용자 · 메뉴 관리 · 권한은 준비 중으로 보인다", () => {

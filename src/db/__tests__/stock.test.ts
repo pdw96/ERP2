@@ -638,3 +638,32 @@ describe("등록 상한 — 설계 「2026-11-09 — PR C 를 열기 전에 정�
     expect((await save({ lines: lines(69) })).ok).toBe(true);
   });
 });
+
+describe("등록 메뉴의 최근 전표 — 그 수불구분만(ADR 0020, PR F)", () => {
+  it("구분을 주면 그 구분의 전표와 그 취소 전표만, 주지 않으면 모든 구분이 등록한 차례의 거꾸로 나온다", async () => {
+    await ok(save({ lines: [wire("100")] }));
+    const xfer = await ok(save({ moveType: "XFER", lines: [wire("40", { toWarehouse: "WH-02" })] }));
+    const adj = await ok(save({ moveType: "ADJ", reason: "DAMAGE", lines: [wire("-5")] }));
+    const inCode = await ok(save({ lines: [wire("10", { lot: "T-2" })] }));
+    const cancel = await cancelMove(db, inCode, TODAY);
+    if (!cancel.ok) throw new Error("취소되지 않았다");
+    await invariant();
+
+    const types = async (type?: "IN" | "OUT" | "XFER" | "ADJ") =>
+      new Set((await listRecentMoves(db, 50, type)).map((m) => m.moveType));
+    expect(await types("IN")).toEqual(new Set(["IN"]));
+    expect(await types("OUT")).toEqual(new Set(["OUT"]));
+    expect(await types("XFER")).toEqual(new Set(["XFER"]));
+    expect(await types("ADJ")).toEqual(new Set(["ADJ"]));
+    expect(await types()).toEqual(new Set(["IN", "OUT", "XFER", "ADJ"]));
+
+    // 취소 전표는 원래 전표의 구분이라 기타입고에 든다. 맨 위가 가장 나중에 등록한 것이다.
+    expect((await listRecentMoves(db, 2, "IN")).map((m) => [m.code, m.cancels, m.canceledBy])).toEqual([
+      [cancel.code, inCode, null],
+      [inCode, null, cancel.code],
+    ]);
+    expect((await listRecentMoves(db, 1, "XFER")).map((m) => m.code)).toEqual([xfer]);
+    expect((await listRecentMoves(db, 1, "ADJ")).map((m) => m.code)).toEqual([adj]);
+    expect((await listRecentMoves(db, 50, "XFER")).some((m) => [inCode, cancel.code].includes(m.code))).toBe(false);
+  });
+});

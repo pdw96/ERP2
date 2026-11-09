@@ -227,7 +227,7 @@ function Fields(props: Props & { values: ItemValues; errors: ItemErrors }) {
 
       <Section
         title="재고"
-        note="수불 등록이 씁니다. 기본 창고는 품목을 고르면 창고 칸에 미리 채워지고, 수불 등록에서 바꿀 수 있습니다."
+        note="수불관리의 등록 화면(기타입고 · 기타출고 · 재고이동 · 재고조정)이 씁니다. 기본 창고는 품목을 고르면 창고 칸에 미리 채워지고, 그 화면에서 바꿀 수 있습니다."
       >
         <div>
           <Check name="lotManaged" checked={lotManaged} onChange={setLotManaged} error={errors.lotManaged}>

@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { startTransition, useActionState, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Choice, Field, inputClass, Section } from "@/components/form-parts";
+import { startTransition, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Field, inputClass, Section } from "@/components/form-parts";
 import type { MoveFormOptions, MoveItemOption, OnHand } from "@/db/stock";
-import { MOVE_TYPES, isMadeType, type MoveType } from "@/lib/master-codes";
+import { isMadeType, type MoveType } from "@/lib/master-codes";
 import {
   MOVE_MAX_LINES,
   MOVE_NOTE_MAX,
@@ -12,14 +11,22 @@ import {
   type MoveLineErrors,
   type MoveLineValues,
 } from "@/lib/move-input";
-import { onHandAction, saveMoveAction, type MoveFormState } from "./actions";
+import { onHandAction, type MoveFormState } from "./actions";
 
-// 수불 등록 화면(성공 기준 2 ~ 6 · 12) — 일자 · 유형 · 비고를 한 번 쓰고 줄을 「줄 더하기」로 한 줄씩 늘린다(설계 「2026-11-09 — PR C 를 열기 전에
-// 정한 것」). 유형을 고르면 그 유형의 칸만 보인다. 품목을 고르면 기본 창고가 미리 채워지고(이동은 입고 창고 → 출고 창고), 출고 · 이동은 그 창고의
-// LOT 를 가용 수량과 함께 고른다. 검사는 서버가 하고 — 줄이 하나라도 틀리면 아무 줄도 저장되지 않는다 — 화면은 틀린 칸 · 줄과 까닭을 보인다.
+// 수불 등록의 입력(성공 기준 2 ~ 6 · 12) — 일자 · 비고를 한 번 쓰고 줄을 「줄 더하기」로 한 줄씩 늘린다(설계 「2026-11-09 — PR C 를 열기 전에
+// 정한 것」). 수불구분은 메뉴가 정하고(ADR 0020) 그 구분의 칸만 보인다. 품목을 고르면 기본 창고가 미리 채워지고(이동은 입고 창고 → 출고 창고),
+// 출고 · 이동은 그 창고의 LOT 를 가용 수량과 함께 고른다. 검사는 서버가 하고 — 줄이 하나라도 틀리면 아무 줄도 저장되지 않는다 — 화면은 틀린
+// 칸 · 줄과 까닭을 보인다. 저장 상태는 부르는 쪽(move-entry.tsx)이 쥐고, 저장되면 이 입력을 새로 그려 비운다.
 // 휴대폰 폭에서는 머리 칸이 세로로 쌓이고 줄 표는 옆으로 민다.
 
-type Props = { options: MoveFormOptions; today: string };
+type Props = {
+  options: MoveFormOptions;
+  today: string;
+  moveType: MoveType;
+  state: MoveFormState;
+  formAction: (form: FormData) => void;
+  pending: boolean;
+};
 
 const blankLine = (): MoveLineValues => ({ item: "", lot: "", warehouse: "", toWarehouse: "", qty: "", unit: "" });
 const codeOf = (text: string | undefined) => (text ?? "").trim().split(/\s+/)[0] ?? "";
@@ -28,16 +35,8 @@ const handKey = (item: string, warehouse: string) => `${item}|${warehouse}`;
 const reduces = (type: MoveType, qty: string | undefined) =>
   type === "OUT" || type === "XFER" || (type === "ADJ" && (qty ?? "").trim().startsWith("-"));
 
-const TYPE_NOTE: Record<MoveType, string> = {
-  IN: "창고로 들어온 것 — 구매 · 생산이 아닌 입고(기초 재고 따위)",
-  OUT: "창고에서 나간 것 — 판매 · 생산 투입이 아닌 출고(소모 · 견본 따위)",
-  XFER: "출고창고에서 입고창고로 옮긴 것 — 재고의 합은 그대로",
-  ADJ: "장부를 실물에 맞춘 것 — 늘리면 +, 줄이면 − 를 붙입니다",
-};
-
-export function MoveForm({ options, today }: Props) {
-  const [state, formAction, pending] = useActionState<MoveFormState, FormData>(saveMoveAction, null);
-  const [moveType, setMoveType] = useState<MoveType>((state?.values.moveType as MoveType) ?? "IN");
+export function MoveForm({ options, today, moveType, state, formAction, pending }: Props) {
+  const rejected = state && !state.ok ? state : null;
   const [lines, setLines] = useState<MoveLineValues[]>(() => [blankLine()]);
   const [errors, setErrors] = useState<MoveErrors>({ header: {}, lines: {} });
   const [hand, setHand] = useState<Record<string, OnHand[] | "loading" | null>>({});
@@ -46,7 +45,7 @@ export function MoveForm({ options, today }: Props) {
   const [seen, setSeen] = useState(state);
   if (state !== seen) {
     setSeen(state);
-    setErrors(state?.errors ?? { header: {}, lines: {} });
+    setErrors(rejected?.errors ?? { header: {}, lines: {} });
   }
 
   const itemOf = (text: string | undefined): MoveItemOption | undefined =>
@@ -54,9 +53,9 @@ export function MoveForm({ options, today }: Props) {
 
   // 그 품목 · 창고의 가용 재고를 한 번 읽어 둔다 — 출고 · 이동의 LOT 고르기와 가용 수량, 조정의 LOT 제안.
   const asked = useRef(new Set<string>());
-  const ensureHand = (line: MoveLineValues, type: MoveType = moveType) => {
+  const ensureHand = (line: MoveLineValues) => {
     const item = itemOf(line.item);
-    if (!item || !line.warehouse || type === "IN") return;
+    if (!item || !line.warehouse || moveType === "IN") return;
     const key = handKey(item.code, line.warehouse);
     if (asked.current.has(key)) return;
     asked.current.add(key);
@@ -91,13 +90,6 @@ export function MoveForm({ options, today }: Props) {
     setLine(index, patch);
   };
 
-  const changeType = (type: MoveType) => {
-    setMoveType(type);
-    for (const l of lines) ensureHand(l, type);
-    setLines((ls) => ls.map((l) => ({ ...l, toWarehouse: type === "XFER" ? l.toWarehouse : "", lot: "" })));
-    setErrors({ header: {}, lines: {} });
-  };
-
   const addLine = () => setLines((ls) => (ls.length >= MOVE_MAX_LINES ? ls : [...ls, blankLine()]));
   const removeLine = (index: number) => {
     setLines((ls) => (ls.length === 1 ? [blankLine()] : ls.filter((_, i) => i !== index)));
@@ -112,7 +104,7 @@ export function MoveForm({ options, today }: Props) {
 
   const header = errors.header;
   const lineErrorCount = Object.keys(errors.lines).length;
-  const failed = state && (state.formError || Object.keys(header).length || lineErrorCount);
+  const failed = rejected && (rejected.formError || Object.keys(header).length || lineErrorCount);
   const isXfer = moveType === "XFER";
   const isAdj = moveType === "ADJ";
 
@@ -121,7 +113,7 @@ export function MoveForm({ options, today }: Props) {
       {failed && (
         <div role="alert" className="mb-6 max-w-3xl border-l-4 border-red-700 bg-white px-5 py-4">
           <p className="font-semibold">저장하지 않았습니다 — 줄이 하나라도 틀리면 아무 줄도 저장되지 않습니다.</p>
-          {state.formError && <p className="mt-1 text-sm">{state.formError}</p>}
+          {rejected.formError && <p className="mt-1 text-sm">{rejected.formError}</p>}
           {lineErrorCount > 0 && (
             <p className="mt-1 text-sm">틀린 줄 {lineErrorCount}개 — 줄 아래의 까닭을 보고 고치세요.</p>
           )}
@@ -130,33 +122,24 @@ export function MoveForm({ options, today }: Props) {
 
       <div className="grid max-w-3xl gap-8">
         <Section title="전표">
-          <div className="grid gap-5 sm:grid-cols-[12rem_1fr]">
+          {/* 수불구분은 메뉴가 정한다 — 서버는 다른 값도 지금처럼 같은 규칙으로 본다(설계 ③). */}
+          <input type="hidden" name="moveType" value={moveType} />
+          {header.moveType && (
+            <p role="alert" className="text-sm font-semibold text-red-700">
+              {header.moveType}
+            </p>
+          )}
+          <div className="sm:max-w-48">
             <Field field="moveDate" label="수불일자" error={header.moveDate} hint="오늘이나 지난 날">
               <input
                 id="f-moveDate"
                 name="moveDate"
                 type="date"
-                defaultValue={state?.values.moveDate ?? today}
+                defaultValue={rejected?.values.moveDate ?? today}
                 max={today}
                 aria-invalid={!!header.moveDate || undefined}
                 className={inputClass(!!header.moveDate)}
               />
-            </Field>
-            <Field field="moveType" label="수불구분" error={header.moveType} as="fieldset">
-              <div className="flex flex-wrap gap-2">
-                {MOVE_TYPES.map((t) => (
-                  <Choice
-                    key={t.code}
-                    name="moveType"
-                    value={t.code}
-                    checked={moveType === t.code}
-                    onChange={() => changeType(t.code)}
-                  >
-                    {t.name}
-                  </Choice>
-                ))}
-              </div>
-              <p className="mt-1 text-sm text-muted">{TYPE_NOTE[moveType]}</p>
             </Field>
           </div>
           {isAdj && (
@@ -164,7 +147,7 @@ export function MoveForm({ options, today }: Props) {
               <select
                 id="f-reason"
                 name="reason"
-                defaultValue={state?.values.reason ?? ""}
+                defaultValue={rejected?.values.reason ?? ""}
                 aria-invalid={!!header.reason || undefined}
                 className={`${inputClass(!!header.reason)} sm:max-w-64`}
               >
@@ -181,7 +164,7 @@ export function MoveForm({ options, today }: Props) {
             <input
               id="f-note"
               name="note"
-              defaultValue={state?.values.note ?? ""}
+              defaultValue={rejected?.values.note ?? ""}
               maxLength={MOVE_NOTE_MAX}
               autoComplete="off"
               aria-invalid={!!header.note || undefined}
@@ -282,9 +265,6 @@ export function MoveForm({ options, today }: Props) {
         >
           {pending ? "저장 중…" : "저장"}
         </button>
-        <Link href="/inventory/moves" className="px-3 py-2.5 text-muted underline underline-offset-4 hover:text-ink">
-          취소
-        </Link>
       </div>
     </form>
   );

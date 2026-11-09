@@ -2,6 +2,8 @@
 // 모듈의 순서와 메뉴는 마스터플랜 「모듈과 메뉴」를 따르고, 후보 메뉴는 넣지 않는다.
 // 지은 화면만 주소(href)를 갖는다 — 주소가 없는 메뉴는 「준비 중」으로 보인다.
 
+import { MOVE_MENUS } from "@/lib/move-menus";
+
 export type Menu = {
   label: string;
   /** 이 메뉴를 짓는 조각(마스터플랜의 조각 이름). */
@@ -86,7 +88,8 @@ export const AREAS: readonly Area[] = [
       {
         label: "수불관리",
         menus: [
-          { label: "수불 등록", slice: "재고 수불", href: "/inventory/moves" },
+          // 등록은 수불구분마다 메뉴 하나다(ADR 0020) — 이름 · 주소는 src/lib/move-menus.ts 가 든다.
+          ...MOVE_MENUS.map((m) => ({ label: m.label, slice: "재고 수불", href: m.href })),
           { label: "재고 실사", slice: "재고 수불" },
           { label: "수불 이력", slice: "재고 수불", href: "/inventory/history" },
           { label: "수불부", slice: "재고 수불", href: "/inventory/ledger" },

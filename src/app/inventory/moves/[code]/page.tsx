@@ -4,28 +4,28 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
+import { MenuHint } from "@/components/menu-hint";
 import { withDb } from "@/db/request";
 import { getMove } from "@/db/stock";
+import { MOVE_HOME, moveMenu } from "@/lib/move-menus";
 import { CancelMove } from "../cancel-move";
 import { Tag } from "../move-list";
 
 export const metadata: Metadata = { title: "수불 전표 — ERP2" };
 
-// 재고 › 수불관리 › 수불 등록 › 전표 하나 — 줄과 「취소」. 주소는 전표 번호다.
+// 재고 › 수불관리 › <그 전표의 등록 메뉴> › 전표 하나 — 줄과 「취소」. 주소는 전표 번호이고, 수불구분이 주소에 없어 화면이 왼쪽 메뉴에
+// 그 구분의 등록 메뉴를 알린다(ADR 0020).
 export default function MovePage({ params, searchParams }: PageProps<"/inventory/moves/[code]">) {
   return (
     <section className="max-w-5xl">
-      <p className="text-sm text-muted">
-        <Link href="/inventory" className="underline-offset-4 hover:underline">
-          재고
-        </Link>{" "}
-        › 수불관리 ›{" "}
-        <Link href="/inventory/moves" className="underline-offset-4 hover:underline">
-          수불 등록
-        </Link>{" "}
-        › 전표
-      </p>
-      <Suspense fallback={<p className="mt-8 text-muted">불러오는 중입니다.</p>}>
+      <Suspense
+        fallback={
+          <>
+            <Trail />
+            <p className="mt-8 text-muted">불러오는 중입니다.</p>
+          </>
+        }
+      >
         <Move params={params} searchParams={searchParams} />
       </Suspense>
     </section>
@@ -44,8 +44,11 @@ async function Move({ params, searchParams }: Pick<PageProps<"/inventory/moves/[
   }
   if (!move) notFound();
   const isXfer = move.lineRows.some((l) => l.from && l.to);
+  const menu = moveMenu(move.moveType);
   return (
     <>
+      <Trail menu={menu} />
+      {menu && <MenuHint pathname={`/inventory/moves/${move.code}`} href={menu.href} />}
       {saved === "1" && (
         <div role="status" className="mt-4 border-l-4 border-safety bg-white px-5 py-3">
           <p>
@@ -139,10 +142,31 @@ async function Move({ params, searchParams }: Pick<PageProps<"/inventory/moves/[
 
       {!move.canceledBy && !move.cancels && <CancelMove code={move.code} />}
       <p className="mt-8">
-        <Link href="/inventory/moves" className="text-muted underline underline-offset-4 hover:text-ink">
-          최근 전표로
+        <Link href={menu?.href ?? MOVE_HOME} className="text-muted underline underline-offset-4 hover:text-ink">
+          {menu ? `${menu.label}으로` : "수불관리로"}
         </Link>
       </p>
     </>
+  );
+}
+
+/** 화면 위의 길 — 전표의 등록 메뉴를 알면 그 메뉴로 이어진다. */
+function Trail({ menu }: { menu?: { label: string; href: string } }) {
+  return (
+    <p className="text-sm text-muted">
+      <Link href="/inventory" className="underline-offset-4 hover:underline">
+        재고
+      </Link>{" "}
+      › 수불관리 ›{" "}
+      {menu && (
+        <>
+          <Link href={menu.href} className="underline-offset-4 hover:underline">
+            {menu.label}
+          </Link>{" "}
+          ›{" "}
+        </>
+      )}
+      전표
+    </p>
   );
 }

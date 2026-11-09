@@ -82,8 +82,8 @@ async function Group({ params, searchParams }: PageProps<"/system/codes/[group]"
       {saved && <SavedNotice code={saved} />}
       {specs && (
         <p className="mt-4 text-sm text-muted">
-          같은 기준 단위끼리는 수불 등록에서 바꿔 넣습니다 — 예: KG 은 기준 G 의 1000 배. 소수 자릿수는 수불 수량이
-          들어가는 자리입니다.
+          같은 기준 단위끼리는 수불관리의 등록 화면에서 바꿔 넣습니다 — 예: KG 은 기준 G 의 1000 배. 소수 자릿수는 수불
+          수량이 들어가는 자리입니다.
         </p>
       )}
       <CodeTable group={group} rows={rows} savedCode={saved?.code} specs={specs} />

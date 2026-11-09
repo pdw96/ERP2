@@ -1,16 +1,25 @@
 import Link from "next/link";
 import type { MoveSummary } from "@/db/stock";
 
-// 최근 전표 표 — 일자 · 전표 번호 · 유형(사유) · 줄 수 · 비고, 취소됨 · 취소 전표 표시. 넓은 표는 휴대폰 폭에서 옆으로 민다.
-export function MoveList({ rows }: { rows: MoveSummary[] }) {
+// 최근 전표 표 — 일자 · 전표 번호 · 유형(사유) · 줄 수 · 비고, 취소됨 · 취소 전표 표시. 등록 메뉴는 그 수불구분의 전표만 싣는다(ADR 0020).
+// 넓은 표는 휴대폰 폭에서 옆으로 민다.
+export function MoveList({ rows, typeName }: { rows: MoveSummary[]; typeName: string }) {
+  const title = <h2 className="text-lg font-semibold">최근 {typeName} 전표</h2>;
   if (rows.length === 0)
     return (
-      <p className="mt-6 border border-dashed border-rule px-5 py-8 text-center text-muted">등록된 전표가 없습니다.</p>
+      <>
+        {title}
+        <p className="mt-2 border border-dashed border-rule px-5 py-8 text-center text-muted">
+          등록된 {typeName} 전표가 없습니다.
+        </p>
+      </>
     );
   return (
     <>
-      <h2 className="mt-8 text-lg font-semibold">최근 전표</h2>
-      <p className="text-sm text-muted">등록한 차례의 거꾸로 {rows.length}장까지.</p>
+      {title}
+      <p className="text-sm text-muted">
+        등록한 차례의 거꾸로 {rows.length}장까지 — 취소 전표도 함께. 다른 구분과 기간으로 보려면 「수불 이력」.
+      </p>
       <div className="relative mt-2 overflow-x-auto">
         <table className="w-full min-w-[40rem] border-collapse bg-white text-left">
           <caption className="sr-only">최근 수불 전표</caption>

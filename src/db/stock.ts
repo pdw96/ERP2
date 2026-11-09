@@ -732,8 +732,11 @@ export type MoveSummary = {
 const cancelOf = alias(stockMoves, "cancel_of");
 const original = alias(stockMoves, "original");
 
-/** 최근 전표 — 등록한 차례의 거꾸로(수불 등록 화면의 목록). 거르기 · 기간은 메뉴 「수불 이력」(PR D)이 든다. */
-export async function listRecentMoves(db: Db, limit = 20): Promise<MoveSummary[]> {
+/**
+ * 최근 전표 — 등록한 차례의 거꾸로. 등록 메뉴는 그 수불구분만 본다(취소 전표는 원래 전표의 구분이라 함께 든다, ADR 0020).
+ * 거르기 · 기간은 메뉴 「수불 이력」이 든다.
+ */
+export async function listRecentMoves(db: Db, limit = 20, moveType?: MoveType): Promise<MoveSummary[]> {
   const rows = await db
     .select({
       code: stockMoves.code,
@@ -748,6 +751,7 @@ export async function listRecentMoves(db: Db, limit = 20): Promise<MoveSummary[]
     .from(stockMoves)
     .leftJoin(cancelOf, eq(cancelOf.cancelsMoveId, stockMoves.id))
     .leftJoin(original, eq(original.id, stockMoves.cancelsMoveId))
+    .where(moveType ? eq(stockMoves.moveType, moveType) : undefined)
     .orderBy(desc(stockMoves.id))
     .limit(limit);
   return rows.map((r) => ({ ...r, lines: Number(r.lines), moveTypeName: moveTypeName(r.moveType) }));
