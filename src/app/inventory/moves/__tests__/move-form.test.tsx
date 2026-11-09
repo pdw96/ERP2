@@ -217,6 +217,42 @@ describe("등록 메뉴의 입력", () => {
     expect(await screen.findByRole("checkbox", { name: "RM-0003 NW-25-0701 고르기" })).not.toBeDisabled();
   });
 
+  it("머리에서 창고를 골라도 쓰지 않은 빈 줄은 창고를 보내지 않아, 서버가 없는 줄로 친다(PR 리뷰)", async () => {
+    h.save.mockResolvedValue({ ok: true, code: "IV-20261109-005" });
+    h.stock.mockResolvedValue([stockRow({})]);
+    const { container } = open("OUT");
+    fireEvent.change(screen.getByLabelText(/^창고/), { target: { value: "WH-02" } });
+    fireEvent.click(await screen.findByRole("checkbox", { name: "RM-0003 NW-25-0701 고르기" }));
+    fireEvent.click(screen.getByRole("button", { name: "줄로 넣기 (1)" }));
+    fireEvent.click(screen.getByRole("button", { name: "줄 더하기" }));
+    expect(screen.getByText("2줄")).toBeInTheDocument();
+    submit(container);
+    await waitFor(() => expect(h.save).toHaveBeenCalled());
+    const sent = h.save.mock.calls[0][1] as FormData;
+    expect([sent.get("lines.0.warehouse"), sent.get("lines.1.warehouse"), sent.get("lines.1.item")]).toEqual([
+      "WH-02",
+      "",
+      "",
+    ]);
+  });
+
+  it("줄이 100줄을 넘게 고르면 남은 자리만큼만 넣고, 넣지 못한 것은 고른 채로 두고 알린다(PR 리뷰)", async () => {
+    const many = Array.from({ length: 101 }, (_, i) => stockRow({ lot: `L-${String(i).padStart(3, "0")}` }));
+    h.stock.mockResolvedValue(many);
+    open("OUT");
+    fireEvent.change(screen.getByLabelText(/^창고/), { target: { value: "WH-02" } });
+    fireEvent.click(await screen.findByRole("checkbox", { name: "보이는 것 모두 고르기" }));
+    fireEvent.click(screen.getByRole("button", { name: "줄로 넣기 (101)" }));
+    expect(screen.getByText("100줄")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("1개를 넣지 못했습니다");
+    expect(screen.getByRole("checkbox", { name: "RM-0003 L-100 고르기" })).toBeChecked();
+    expect(screen.getByRole("button", { name: "줄로 넣기 (1)" })).toBeInTheDocument();
+    // 줄이 가득하면 더 넣지 않고, 고른 것도 그대로다.
+    fireEvent.click(screen.getByRole("button", { name: "줄로 넣기 (1)" }));
+    expect(screen.getByText("100줄")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "RM-0003 L-100 고르기" })).toBeChecked();
+  });
+
   it("거절되면 넣은 값이 남고 틀린 줄의 까닭이 보이며, 저장했다는 줄은 없다", async () => {
     h.save.mockResolvedValue({
       ok: false,

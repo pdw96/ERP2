@@ -47,9 +47,16 @@ export function MoveForm({ options, today, moveType, state, formAction, pending,
   const rejected = state && !state.ok ? state : null;
   /** 창고를 머리에서 고르는가 — 기타입고만 줄마다 고른다. */
   const fixed = moveType !== "IN";
-  /** 줄이 실제로 보내는 값 — 머리에서 고르면 창고 칸은 머리의 창고다. */
-  const effective = (l: MoveLineValues): MoveLineValues =>
-    fixed ? { ...l, warehouse: head.warehouse, toWarehouse: moveType === "XFER" ? head.toWarehouse : "" } : l;
+  /**
+   * 줄이 실제로 보내는 값 — 머리에서 고르면 창고 칸은 머리의 창고다. 아무것도 넣지 않은 줄은 창고도 비워 둔다 — 서버는 칸이 모두 빈 줄을 없는 줄로
+   * 치므로(src/lib/move-input.ts), 창고만 붙으면 쓰지 않은 줄이 전표를 막는다.
+   */
+  const effective = (l: MoveLineValues): MoveLineValues => {
+    if (!fixed) return l;
+    const used = [l.item, l.lot, l.qty, l.unit].some((v) => (v ?? "").trim() !== "");
+    if (!used) return { ...l, warehouse: "", toWarehouse: "" };
+    return { ...l, warehouse: head.warehouse, toWarehouse: moveType === "XFER" ? head.toWarehouse : "" };
+  };
   const [lines, setLines] = useState<MoveLineValues[]>(() => [blankLine()]);
   const [errors, setErrors] = useState<MoveErrors>({ header: {}, lines: {} });
   const [hand, setHand] = useState<Record<string, OnHand[] | "loading" | null>>({});
@@ -110,19 +117,23 @@ export function MoveForm({ options, today, moveType, state, formAction, pending,
     setErrors((e) => ({ ...e, lines: {} }));
   };
 
-  /** 현재고 표에서 고른 품목 · LOT 를 줄로 넣는다 — 빈 줄부터 채우고, 모자라면 더한다. 수량은 비워 둔다. */
-  const pickStock = (rows: WarehouseStockRow[]) => {
-    const picked: MoveLineValues[] = rows.map((r) => ({
+  /**
+   * 현재고 표에서 고른 품목 · LOT 를 줄로 넣는다 — 품목이 빈 줄은 걷고 그 뒤에 붙인다. 수량은 비워 둔다. 줄은 100줄까지라 남은 자리만큼만 넣고,
+   * 넣은 것을 돌려준다 — 현재고 표는 넣지 못한 것을 고른 채로 두고 까닭을 보인다.
+   */
+  const pickStock = (rows: WarehouseStockRow[]): WarehouseStockRow[] => {
+    const filled = lines.filter((l) => (l.item ?? "").trim() !== "");
+    const accepted = rows.slice(0, Math.max(0, MOVE_MAX_LINES - filled.length));
+    if (accepted.length === 0) return accepted;
+    const picked: MoveLineValues[] = accepted.map((r) => ({
       ...blankLine(),
       item: `${r.itemCode} ${r.itemName}`,
       lot: r.lot,
     }));
     for (const l of picked) ensureHand(effective(l));
-    setLines((ls) => {
-      const filled = ls.filter((l) => (l.item ?? "").trim() !== "");
-      return [...filled, ...picked].slice(0, MOVE_MAX_LINES);
-    });
+    setLines([...filled, ...picked]);
     setErrors((e) => ({ ...e, lines: {} }));
+    return accepted;
   };
 
   const addLine = () => setLines((ls) => (ls.length >= MOVE_MAX_LINES ? ls : [...ls, blankLine()]));

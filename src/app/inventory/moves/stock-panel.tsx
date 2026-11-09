@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { MoveWarehouseOption, WarehouseStockRow } from "@/db/stock";
+import { MOVE_MAX_LINES } from "@/lib/move-input";
 import { warehouseStockAction } from "./actions";
 
 // 머리에서 고른 창고의 현재고 — 기타출고 · 재고이동 · 재고조정 등록이 그 창고에 무엇이 있는지 조회 메뉴에 가지 않고 보며, 체크해 「줄로 넣기」로
@@ -20,12 +21,15 @@ export function StockPanel({
   warehouse: MoveWarehouseOption | undefined;
   /** 이미 줄에 있는 「품목코드|LOT」. */
   inLines: Set<string>;
-  onPick: (rows: WarehouseStockRow[]) => void;
+  /** 고른 것을 줄로 넣고, 실제로 넣은 것을 돌려준다(줄은 100줄까지). */
+  onPick: (rows: WarehouseStockRow[]) => WarehouseStockRow[];
 }) {
   const code = warehouse?.code ?? "";
   const [load, setLoad] = useState<Load>(null);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [find, setFind] = useState("");
+  /** 줄이 모자라 넣지 못한 수 — 0 이면 알릴 것이 없다. */
+  const [left, setLeft] = useState(0);
 
   useEffect(() => {
     if (!code) return;
@@ -44,6 +48,7 @@ export function StockPanel({
     setSeenCode(code);
     setChecked(new Set());
     setFind("");
+    setLeft(0);
   }
 
   const title = (
@@ -112,8 +117,10 @@ export function StockPanel({
           <button
             type="button"
             onClick={() => {
-              onPick(picked);
-              setChecked(new Set());
+              const accepted = new Set(onPick(picked).map(keyOf));
+              // 넣은 것만 고른 표시를 풀고, 줄이 모자라 넣지 못한 것은 고른 채로 둔다.
+              setChecked((c) => new Set([...c].filter((k) => !accepted.has(k))));
+              setLeft(picked.length - accepted.size);
             }}
             disabled={picked.length === 0}
             className="rounded bg-machine px-4 py-2 font-semibold text-white hover:bg-machine-deep disabled:opacity-60"
@@ -122,6 +129,12 @@ export function StockPanel({
           </button>
         </div>
       </div>
+      {left > 0 && (
+        <p role="alert" className="text-sm font-semibold text-red-700">
+          줄은 {MOVE_MAX_LINES}줄까지라 {left}개를 넣지 못했습니다 — 고른 채로 남겨 두었습니다. 줄을 지우거나 전표를
+          나눠 넣으세요.
+        </p>
+      )}
       {rows === undefined ? (
         <p className="text-muted">불러오는 중입니다.</p>
       ) : rows === null ? (
