@@ -14,6 +14,8 @@ export const REGISTER_LOCK = {
   partners: 2026110303,
   codes: 2026110304,
   numberRules: 2026110601,
+  // 재고 수불(조각 「재고 수불」 PR C) — 수불 저장 · 취소, 그리고 재고에 기대는 고침(품목의 LOT 관리 · 단위, 창고의 불량창고 표시, 단위의 자릿수).
+  stock: 2026110901,
 } as const;
 
 export type Params = Record<string, string | string[] | undefined>;

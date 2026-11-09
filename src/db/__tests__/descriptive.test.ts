@@ -14,12 +14,11 @@ import {
   type ItemFilter,
 } from "@/db/items";
 import { createPartner, savePartnerRows, getPartner, updatePartner } from "@/db/partners";
-import { resetToSample } from "@/db/reset";
 import { codes, items, partners } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { ItemValues } from "@/lib/item-input";
 import type { PartnerValues } from "@/lib/partner-input";
-import { migratedDb, rejection } from "./pglite";
+import { migratedDb, rejection, resetWithoutStock } from "./pglite";
 
 // 품목 · 거래처의 설명용 칸(PR H, 성공 기준 13 · ADR 0012) — PGlite 에서 실제 SQL 로(설계 ⑤).
 // 분류의 「사용 안 함」 규칙(단위와 같다), 목록의 분류 거르기, DB 의 새 제약, 시트의 저장.
@@ -31,7 +30,7 @@ beforeAll(async () => {
   db = handle.db;
 });
 afterAll(() => handle.close());
-beforeEach(() => resetToSample(db));
+beforeEach(() => resetWithoutStock(db));
 
 const all: ItemFilter = { q: "", includeInactive: false };
 const codesOf = (rows: { code: string }[]) => rows.map((r) => r.code);

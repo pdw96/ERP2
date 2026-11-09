@@ -25,6 +25,7 @@ import {
 import { nextCode } from "./numbering";
 import { itemsDefaultingTo } from "./items";
 import { warehouses } from "./schema";
+import { lockStock, warehouseHasStock } from "./stock";
 import type { Db } from "./types";
 
 // 창고의 목록 · 등록 · 수정(조각 「기준정보」 PR D). 화면(src/app/inventory/warehouses/)은 이 함수만 부른다.
@@ -134,6 +135,7 @@ export async function createWarehouse(db: Db, values: WarehouseValues): Promise<
   }
 }
 
+const HAS_STOCK = "재고가 있는 창고라 불량창고 표시를 바꿀 수 없습니다 — 재고를 다른 창고로 옮긴 뒤 바꾸세요";
 const DEFAULT_OF_ITEMS = (n: number) =>
   `품목 ${n}개의 기본 입고 · 출고 창고라 불량창고로 바꿀 수 없습니다 — 그 품목의 기본 창고를 먼저 바꾸세요`;
 
@@ -141,7 +143,7 @@ const DEFAULT_OF_ITEMS = (n: number) =>
  * 수정 — 코드는 바꾸지 않는다. 창고명 · 불량창고 표시 · 사용 여부.
  * 품목의 기본 창고인 창고는 불량창고로 바꾸지 못한다 — 기본 창고는 불량창고가 아니다(ADR 0015). 서버가 세어 알리고,
  * 센 뒤 그 사이 누가 그 창고를 고른 때는 DB 의 참조가 막는다(리뷰 1회차).
- * 재고가 있는 창고의 표시를 막는 것은 재고(잔액)의 표가 생기는 PR C 가 더한다(설계 「2026-11-06 — PR B 에서 정한 것」).
+ * 재고(잔액)가 있는 창고는 불량창고 표시를 바꾸지 못한다 — 그 재고의 상태가 바뀌므로(설계 ③, 조각 「재고 수불」 PR C).
  * version 은 화면을 연 때의 버전이다 — 그 사이 다른 사람이 고쳤으면 저장하지 않는다(저자 판정 2026-11-05 — 품목 · 거래처와 같다).
  * 주지 않으면 버전을 보지 않는다(서버 안의 시험용 — 화면의 입구는 늘 준다).
  */
@@ -161,17 +163,24 @@ export async function updateWarehouse(
   }
   if (version !== undefined && !VERSION.test(version)) return { ok: false, errors: {}, formError: STALE, values };
   try {
-    const done = await db
-      .update(warehouses)
-      .set({ ...parsed.value, updatedAt: touched() })
-      .where(
-        version === undefined
-          ? eq(warehouses.id, current.id)
-          : and(eq(warehouses.id, current.id), versionIs(warehouses.updatedAt, version)),
-      )
-      .returning({ id: warehouses.id });
-    if (done.length === 0) return { ok: false, errors: {}, formError: STALE, values };
-    return { ok: true, code };
+    return await db.transaction(async (tx): Promise<WarehouseSaveResult> => {
+      // 재고가 있는 창고는 불량창고 표시를 바꾸지 못한다 — 그 재고의 상태가 바뀌므로(설계 ③ 「창고의 새 칸」). 재고의 잠금을 쥐고 센다.
+      if (parsed.value.isDefect !== current.isDefect) {
+        await lockStock(tx);
+        if (await warehouseHasStock(tx, current.id)) return { ok: false, errors: { isDefect: HAS_STOCK }, values };
+      }
+      const done = await tx
+        .update(warehouses)
+        .set({ ...parsed.value, updatedAt: touched() })
+        .where(
+          version === undefined
+            ? eq(warehouses.id, current.id)
+            : and(eq(warehouses.id, current.id), versionIs(warehouses.updatedAt, version)),
+        )
+        .returning({ id: warehouses.id });
+      if (done.length === 0) return { ok: false, errors: {}, formError: STALE, values };
+      return { ok: true, code };
+    });
   } catch (error) {
     return asRejection(error, values);
   }

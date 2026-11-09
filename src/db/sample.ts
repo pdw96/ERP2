@@ -1,4 +1,6 @@
-import { ITEM_TYPES, PROC_TYPES, type ItemType } from "@/lib/master-codes";
+import { ITEM_TYPES, MOVE_TYPES, PROC_TYPES, type ItemType } from "@/lib/master-codes";
+import type { MoveLineValues } from "@/lib/move-input";
+import type { MoveType } from "@/lib/master-codes";
 import type { codeGroups, codes, items, numberRules, partners, unitSpecs, warehouses } from "./schema";
 
 // 샘플 데이터 — 가상 반도체 후공정(패키징) 회사. 매일 밤 되돌림(ADR 0004)과 첫 배포가 이 값으로 테이블을 채운다.
@@ -19,11 +21,20 @@ export const SAMPLE_CODE_GROUPS: New<typeof codeGroups>[] = [
   { code: "ITEM_CLS1", name: "품목 대분류", isSystem: false },
   { code: "ITEM_CLS2", name: "품목 중분류", isSystem: false },
   { code: "ITEM_CLS3", name: "품목 소분류", isSystem: false },
+  // 재고 수불(PR C, ADR 0016) — 수불 유형은 재고 계산이 기대는 시스템 코드, 조정 사유는 사용자 코드.
+  { code: "MOVE_TYPE", name: "수불 유형", isSystem: true },
+  { code: "ADJ_REASON", name: "조정 사유", isSystem: false },
 ];
 
 export const SAMPLE_CODES: New<typeof codes>[] = [
   ...ITEM_TYPES.map((t, i) => ({ groupCode: "ITEM_TYPE", code: t.code, name: t.name, sortOrder: (i + 1) * 10 })),
   ...PROC_TYPES.map((t, i) => ({ groupCode: "PROC_TYPE", code: t.code, name: t.name, sortOrder: (i + 1) * 10 })),
+  ...MOVE_TYPES.map((t, i) => ({ groupCode: "MOVE_TYPE", code: t.code, name: t.name, sortOrder: (i + 1) * 10 })),
+  { groupCode: "ADJ_REASON", code: "COUNT", name: "실사 차이", sortOrder: 10 },
+  { groupCode: "ADJ_REASON", code: "DAMAGE", name: "파손", sortOrder: 20 },
+  { groupCode: "ADJ_REASON", code: "LOSS", name: "분실", sortOrder: 30 },
+  { groupCode: "ADJ_REASON", code: "FOUND", name: "발견", sortOrder: 40 },
+  { groupCode: "ADJ_REASON", code: "ETC", name: "기타", sortOrder: 50 },
   { groupCode: "UNIT", code: "EA", name: "개", sortOrder: 10 },
   { groupCode: "UNIT", code: "M", name: "미터", sortOrder: 20 },
   { groupCode: "UNIT", code: "KG", name: "킬로그램", sortOrder: 30 },
@@ -414,4 +425,92 @@ export const SAMPLE_ITEMS: New<typeof items>[] = [
     minLot: 20,
     lotMultiple: 20,
   },
+];
+
+/**
+ * 샘플 수불(조각 「재고 수불」 PR C — 저자 판정 2026-11-09, 설계 「2026-11-09 — PR C 를 열기 전에 정한 것」). 날짜는 되돌린 날 D 에서 센다(daysAgo).
+ * 오늘 날짜의 전표는 두지 않아 그날 첫 전표가 IV-<오늘>-001 이다. 거래처 LOT 는 지어낸 번호다(CLAUDE.md — 실제 거래처의 LOT 꼴을 쓰지 않는다).
+ * 반제품 · 완제품은 LOT 를 비워 번호 규칙으로 받는다. 되돌림이 재고 계산의 저장(src/db/stock.ts)을 불러 넣는다 — 잔액 · 번호 · LOT 일련이 맞는다.
+ * cancel 이면 같은 날 그 전표를 취소한다.
+ */
+export type SampleMove = {
+  daysAgo: number;
+  moveType: MoveType;
+  reason?: string;
+  note?: string;
+  lines: MoveLineValues[];
+  cancel?: true;
+};
+
+export const SAMPLE_MOVES: SampleMove[] = [
+  {
+    daysAgo: 7,
+    moveType: "IN",
+    note: "기초 재고",
+    lines: [
+      { item: "RM-0001", lot: "MW-A1021", warehouse: "WH-01", qty: "100" },
+      { item: "RM-0002", lot: "GL-S8-5501", warehouse: "WH-01", qty: "30000" },
+      { item: "RM-0003", lot: "NW-25-0701", warehouse: "WH-01", qty: "8000" },
+      { item: "RM-0004", lot: "SR-K3108", warehouse: "WH-01", qty: "75" },
+      { item: "RM-0005", lot: "DA-AG-1150", warehouse: "WH-01", qty: "1000" },
+      { item: "RM-0006", lot: "GL-Q32-2207", warehouse: "WH-01", qty: "15000" },
+      { item: "SF-0001", warehouse: "WH-02", qty: "2000" },
+      { item: "SF-0002", warehouse: "WH-02", qty: "1500" },
+      { item: "FG-0001", warehouse: "WH-03", qty: "3000" },
+      { item: "FG-0002", warehouse: "WH-03", qty: "1500" },
+      { item: "SM-0001", warehouse: "WH-01", qty: "3000" },
+      { item: "SM-0002", warehouse: "WH-01", qty: "800" },
+      { item: "CS-0001", warehouse: "WH-01", qty: "20" },
+      { item: "CS-0002", warehouse: "WH-01", qty: "40" },
+    ],
+  },
+  {
+    daysAgo: 5,
+    moveType: "XFER",
+    note: "생산 불출",
+    lines: [
+      { item: "RM-0001", lot: "MW-A1021", warehouse: "WH-01", toWarehouse: "WH-02", qty: "25" },
+      { item: "RM-0002", lot: "GL-S8-5501", warehouse: "WH-01", toWarehouse: "WH-02", qty: "10000" },
+      { item: "RM-0003", lot: "NW-25-0701", warehouse: "WH-01", toWarehouse: "WH-02", qty: "2000" },
+      { item: "RM-0004", lot: "SR-K3108", warehouse: "WH-01", toWarehouse: "WH-02", qty: "25" },
+      { item: "RM-0005", lot: "DA-AG-1150", warehouse: "WH-01", toWarehouse: "WH-02", qty: "250" },
+      { item: "SM-0001", warehouse: "WH-01", toWarehouse: "WH-02", qty: "1000" },
+      { item: "CS-0001", warehouse: "WH-01", toWarehouse: "WH-02", qty: "4" },
+      { item: "CS-0002", warehouse: "WH-01", toWarehouse: "WH-02", qty: "10" },
+    ],
+  },
+  {
+    daysAgo: 4,
+    moveType: "IN",
+    lines: [{ item: "RM-0003", lot: "NW-25-0702", warehouse: "WH-01", qty: "2000" }],
+  },
+  {
+    daysAgo: 3,
+    moveType: "OUT",
+    note: "소모",
+    lines: [
+      { item: "CS-0001", warehouse: "WH-02", qty: "2" },
+      { item: "CS-0002", warehouse: "WH-02", qty: "4" },
+    ],
+  },
+  {
+    daysAgo: 3,
+    moveType: "OUT",
+    note: "견본 출고",
+    lines: [{ item: "FG-0001", lot: "@FG-0001", warehouse: "WH-03", qty: "500" }],
+  },
+  {
+    daysAgo: 2,
+    moveType: "ADJ",
+    reason: "DAMAGE",
+    lines: [{ item: "RM-0002", lot: "GL-S8-5501", warehouse: "WH-02", qty: "-50" }],
+  },
+  { daysAgo: 2, moveType: "ADJ", reason: "FOUND", lines: [{ item: "SM-0002", warehouse: "WH-01", qty: "20" }] },
+  {
+    daysAgo: 2,
+    moveType: "XFER",
+    note: "격리",
+    lines: [{ item: "SF-0002", lot: "@SF-0002", warehouse: "WH-02", toWarehouse: "WH-04", qty: "30" }],
+  },
+  { daysAgo: 1, moveType: "IN", lines: [{ item: "CS-0002", warehouse: "WH-01", qty: "20" }], cancel: true },
 ];

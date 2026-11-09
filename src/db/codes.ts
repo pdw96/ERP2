@@ -14,6 +14,7 @@ import {
   versionOf,
 } from "./master-shared";
 import { codeGroups, codes, unitSpecs } from "./schema";
+import { lockStock, unitQuantitiesFit } from "./stock";
 import type { Db } from "./types";
 
 // 시스템 관리 › 공통코드의 목록 · 값 추가 · 수정(조각 「기준정보」 PR E). 화면(src/app/system/codes/)은 이 함수만 부른다.
@@ -203,7 +204,7 @@ export async function updateCode(
   if (g.isSystem) return { ok: false, errors: {}, formError: SYSTEM_LOCKED, values };
   const parsed = parseCodeUpdate(values);
   // 단위 묶음이면 소수 자릿수도 고친다 — 기준 단위 · 배수는 등록 뒤 바뀌지 않는다(ADR 0017).
-  // 자릿수를 줄이는 것은 그 단위의 수불 수량이 다 맞을 때만이다 — 수불을 더하는 PR C 가 그 검사를 더한다(설계 「PR A 를 열기 전에 정한 것」).
+  // 자릿수를 줄이는 것은 그 단위의 수불 수량이 다 맞을 때만이다(설계 「PR A 를 열기 전에 정한 것」 — PR C 가 더함).
   // 자릿수를 보내지 않으면 그대로 둔다.
   const decimals = g.code === UNIT_GROUP && values.decimals !== undefined ? parseUnitDecimals(values) : undefined;
   const errors: CodeErrors = {
@@ -217,6 +218,13 @@ export async function updateCode(
   try {
     // 값과 사양을 한 트랜잭션에서 고친다 — 버전이 어긋나면 둘 다 바뀌지 않는다.
     return await db.transaction(async (tx): Promise<CodeSaveResult> => {
+      // 자릿수를 줄이는 것은 그 단위의 수불 수량이 다 맞을 때만이다(ADR 0017) — 재고의 잠금을 쥐고 본다. 잠금은 표를 고치기 전에
+      // 쥔다 — 수불 저장 · 매일 밤 되돌림과 같은 차례(잠금 → 표). 고친 뒤 쥐면 되돌림과 교착한다(PR C 리뷰 2회차).
+      if (decimals?.ok) {
+        await lockStock(tx);
+        if (!(await unitQuantitiesFit(tx, current.code, decimals.value.decimals)))
+          throw new DecimalsMisfit(decimals.value.decimals);
+      }
       const done = await tx
         .update(codes)
         .set({ ...parsed.value, updatedAt: touched() })
@@ -235,6 +243,21 @@ export async function updateCode(
       return { ok: true, code };
     });
   } catch (error) {
+    if (error instanceof DecimalsMisfit)
+      return {
+        ok: false,
+        errors: {
+          decimals: `이 단위의 수불 수량 가운데 소수 ${error.decimals}자리에 맞지 않는 것이 있어 줄이지 못합니다`,
+        },
+        values,
+      };
     return asRejection(error, values);
+  }
+}
+
+/** 자릿수를 줄이면 남은 수불 수량이 맞지 않는다 — 던져 고침을 되돌린다. */
+class DecimalsMisfit extends Error {
+  constructor(readonly decimals: number) {
+    super("단위 자릿수를 줄이지 못한다");
   }
 }

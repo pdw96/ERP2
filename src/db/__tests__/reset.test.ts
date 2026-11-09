@@ -14,7 +14,20 @@ import {
   SAMPLE_WAREHOUSES,
 } from "@/db/sample";
 import * as schema from "@/db/schema";
-import { codes, items, numberRuleSeqs, numberRules, partners, unitSpecs, warehouses } from "@/db/schema";
+import {
+  codes,
+  items,
+  numberRuleSeqs,
+  numberRules,
+  partners,
+  stockBalances,
+  stockMoveLines,
+  stockMoves,
+  unitSpecs,
+  warehouses,
+} from "@/db/schema";
+import { saveMove } from "@/db/stock";
+import { koreaToday } from "@/lib/today";
 import type { Db } from "@/db/types";
 import { migratedDb } from "./pglite";
 
@@ -42,6 +55,9 @@ async function snapshot() {
     unitSpecs: strip(await db.select().from(unitSpecs).orderBy(asc(unitSpecs.id))),
     numberRules: strip(await db.select().from(numberRules).orderBy(asc(numberRules.id))),
     numberRuleSeqs: strip(await db.select().from(numberRuleSeqs).orderBy(asc(numberRuleSeqs.id))),
+    stockMoves: strip(await db.select().from(stockMoves).orderBy(asc(stockMoves.id))),
+    stockMoveLines: strip(await db.select().from(stockMoveLines).orderBy(asc(stockMoveLines.id))),
+    stockBalances: strip(await db.select().from(stockBalances).orderBy(asc(stockBalances.id))),
   };
 }
 
@@ -71,12 +87,22 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
       .set({ defaultInWarehouseId: null, lotRuleCode: "LOT_X", lotManaged: false })
       .where(eq(items.code, "FG-0001"));
     await db.update(warehouses).set({ isDefect: false }).where(eq(warehouses.code, "WH-04"));
+    // 재고 수불 PR C — 수불을 하나 더 남긴다(전표 · 줄 · 잔액 · LOT 일련이 바뀐다).
+    const more = await saveMove(
+      db,
+      { moveDate: koreaToday(), moveType: "IN", lines: [{ item: "FG-0001", warehouse: "WH-03", qty: "10" }] },
+      koreaToday(),
+    );
+    expect(more.ok).toBe(true);
 
     const counts = await resetToSample(db);
     expect(await snapshot()).toEqual(clean);
     expect(counts).toEqual({
+      stock_balances: clean.stockBalances.length,
+      stock_move_lines: clean.stockMoveLines.length,
+      stock_moves: clean.stockMoves.length,
       items: SAMPLE_ITEMS.length,
-      number_rule_seqs: 0,
+      number_rule_seqs: clean.numberRuleSeqs.length,
       number_rules: SAMPLE_NUMBER_RULES.length,
       warehouses: SAMPLE_WAREHOUSES.length,
       partners: SAMPLE_PARTNERS.length,
@@ -85,7 +111,13 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
       code_groups: SAMPLE_CODE_GROUPS.length,
     });
     expect(clean.items[0].id).toBe(1);
-    expect(clean.numberRuleSeqs).toEqual([]);
+    // 번호 규칙의 일련은 샘플 수불이 반제품 · 완제품의 LOT 를 저절로 받으며 생긴다 — 규칙마다 하나(7일 전).
+    expect(clean.numberRuleSeqs.map((s) => [s.ruleCode, s.lastSeq])).toEqual([
+      ["LOT_SF", 2],
+      ["LOT_FG", 1],
+      ["LOT_NUM", 1],
+    ]);
+    expect(clean.stockMoves).toHaveLength(10);
     // 품목의 기본 창고는 창고 코드로 넣은 샘플대로 — 사 오는 품목은 자재창고 → 생산현장, 완제품은 제품창고.
     const whId = (code: string) => clean.warehouses.find((w) => w.code === code)!.id;
     const rm = clean.items.find((i) => i.code === "RM-0003")!;
@@ -163,7 +195,7 @@ describe("코드 번호 — 같은 머리의 가장 큰 번호 + 1", () => {
     expect(await nextCode(db, "BP")).toBe("BP-0008");
     expect(await nextCode(db, "SM")).toBe("SM-0003");
     expect(await nextCode(db, "CS")).toBe("CS-0003");
-    await db.execute(sql.raw(`truncate table "items"`));
+    await db.execute(sql.raw(`truncate table "stock_balances", "stock_move_lines", "items"`));
     expect(await nextCode(db, "RM")).toBe("RM-0001");
   });
 

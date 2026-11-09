@@ -11,12 +11,11 @@ import {
   updateNumberRule,
   type NumberRule,
 } from "@/db/number-rules";
-import { resetToSample } from "@/db/reset";
 import { SAMPLE_NUMBER_RULES } from "@/db/sample";
 import { items, numberRuleSeqs, numberRules } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { NumberRuleValues } from "@/lib/number-rule-input";
-import { migratedDb, rejection } from "./pglite";
+import { migratedDb, rejection, resetWithoutStock } from "./pglite";
 
 // 번호 규칙(조각 「재고 수불」 설계 ② 「번호」 · ③ 「번호 규칙」 · ⑤ 「PR B」, ADR 0016) — PGlite 에서 실제 SQL 로.
 // 거절 시험은 거절 뒤 규칙 표가 거절 전과 같은지와 거절한 칸을, 성공 시험은 저장된 값을 본다.
@@ -28,7 +27,7 @@ beforeAll(async () => {
   db = handle.db;
 });
 afterAll(() => handle.close());
-beforeEach(() => resetToSample(db));
+beforeEach(() => resetWithoutStock(db));
 
 const rulesNow = async () =>
   (await db.select().from(numberRules).orderBy(asc(numberRules.code))).map((r) => {

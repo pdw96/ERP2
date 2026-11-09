@@ -71,6 +71,20 @@
       "when": 1794201253102,
       "tag": "0009_default_warehouse_not_defect",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794203667361,
+      "tag": "0010_stock_move_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794203673323,
+      "tag": "0011_stock_moves",
+      "breakpoints": true
     }
   ]
 }

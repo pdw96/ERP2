@@ -50,6 +50,7 @@ import {
 } from "./master-shared";
 import { nextCode } from "./numbering";
 import { codes, items, numberRules, warehouses } from "./schema";
+import { itemsWithMoves, lockStock } from "./stock";
 import type { Db } from "./types";
 
 // 품목의 목록 · 등록 · 수정(조각 「기준정보」 PR C). 화면(src/app/master/items/)은 이 함수만 부른다.
@@ -392,20 +393,39 @@ export async function updateItem(
   if (version !== undefined && !VERSION.test(version)) return { ok: false, errors: {}, formError: STALE, values };
 
   try {
-    const done = await db
-      .update(items)
-      .set({ ...columnsOf(parsed.value, stock), updatedAt: touched() })
-      .where(
-        version === undefined
-          ? eq(items.id, current.id)
-          : and(eq(items.id, current.id), versionIs(items.updatedAt, version)),
-      )
-      .returning({ id: items.id });
-    if (done.length === 0) return { ok: false, errors: {}, formError: STALE, values };
-    return { ok: true, code };
+    return await db.transaction(async (tx): Promise<SaveResult> => {
+      // 수불이 있는 품목은 LOT 관리 · 단위를 바꾸지 못한다(ADR 0015) — 재고의 잠금을 쥐고 세어, 센 뒤 그 사이 수불이 들지 않는다.
+      const moved = movedErrors(parsed.value, current);
+      if (Object.keys(moved).length) {
+        await lockStock(tx);
+        if ((await itemsWithMoves(tx, [current.id])).size) return { ok: false, errors: moved, values };
+      }
+      const done = await tx
+        .update(items)
+        .set({ ...columnsOf(parsed.value, stock), updatedAt: touched() })
+        .where(
+          version === undefined
+            ? eq(items.id, current.id)
+            : and(eq(items.id, current.id), versionIs(items.updatedAt, version)),
+        )
+        .returning({ id: items.id });
+      if (done.length === 0) return { ok: false, errors: {}, formError: STALE, values };
+      return { ok: true, code };
+    });
   } catch (error) {
     return asRejection(error, values);
   }
+}
+
+const MOVED_UNIT = "수불이 있는 품목이라 단위를 바꾸지 못합니다 — 이미 쌓인 수량의 뜻이 바뀝니다";
+const MOVED_LOT = "수불이 있는 품목이라 LOT 관리를 바꾸지 못합니다 — 이미 쌓인 수량의 뜻이 바뀝니다";
+
+/** 바꾸려는 칸 가운데 수불이 있으면 막는 것(단위 · LOT 관리)의 까닭 — 바꾸지 않으면 비어 있다. */
+function movedErrors(next: { unit: string; lotManaged: boolean }, current: Item): ItemErrors {
+  const errors: ItemErrors = {};
+  if (next.unit !== current.unit) errors.unit = MOVED_UNIT;
+  if (next.lotManaged !== current.lotManaged) errors.lotManaged = MOVED_LOT;
+  return errors;
 }
 
 // ── 시트형 등록(PR F) ────────────────────────────────────
@@ -494,9 +514,20 @@ export async function saveItemRows(db: Db, rows: readonly SheetRow[]): Promise<S
   const news = read.flatMap((r) => (r.kind === "new" ? [r] : []));
 
   const outcome = await db.transaction(async (tx) => {
-    const updated = await updateRowsWithVersion(
+    // 수불이 있는 품목의 단위 · LOT 관리를 바꾸는 줄은 남긴다(ADR 0015) — 한 건 수정과 같은 규칙 · 같은 잠금.
+    const guarded = edits.filter((r) => Object.keys(movedErrors(r.value.value, r.current)).length);
+    if (guarded.length) await lockStock(tx);
+    const moved = await itemsWithMoves(
       tx,
-      edits.map((r) => ({
+      guarded.map((r) => r.current.id),
+    );
+    const blocked = new Map(
+      guarded.filter((r) => moved.has(r.current.id)).map((r) => [r, movedErrors(r.value.value, r.current)] as const),
+    );
+    const allowed = edits.filter((r) => !blocked.has(r));
+    const done = await updateRowsWithVersion(
+      tx,
+      allowed.map((r) => ({
         update: async (sp: Db) =>
           (
             await sp
@@ -507,6 +538,9 @@ export async function saveItemRows(db: Db, rows: readonly SheetRow[]): Promise<S
           ).length,
       })),
     );
+    const updated = new Map<Read, UpdatedRow | { ok: false; reason: "moved"; errors: SheetErrors }>();
+    allowed.forEach((r, i) => updated.set(r, done[i]));
+    for (const [r, errors] of blocked) updated.set(r, { ok: false, reason: "moved", errors });
     const registered = news.length
       ? await registerRowsWithCode(tx, {
           table: items,
@@ -528,8 +562,9 @@ export async function saveItemRows(db: Db, rows: readonly SheetRow[]): Promise<S
       result.rejected.push({ row: r.row, errors: r.errors });
       continue;
     }
-    const done = r.kind === "edit" ? outcome.updated[edits.indexOf(r)] : outcome.registered[news.indexOf(r)];
-    if (!done.ok) result.rejected.push({ row: r.row, errors: rowRejection(done) });
+    const done = r.kind === "edit" ? outcome.updated.get(r)! : outcome.registered[news.indexOf(r)];
+    if (!done.ok && done.reason === "moved") result.rejected.push({ row: r.row, errors: done.errors });
+    else if (!done.ok) result.rejected.push({ row: r.row, errors: rowRejection(done) });
     else result.saved.push({ ...savedCode(r, done), name: r.value.value.name });
   }
   return result;
