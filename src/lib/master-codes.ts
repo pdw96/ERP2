@@ -16,13 +16,26 @@ export const PROC_TYPES = [
   { code: "MAKE", name: "생산" },
 ] as const;
 
+/**
+ * 수불 유형(조각 「재고 수불」 PR C, ADR 0016) — 재고 계산(src/db/stock.ts)이 기대는 시스템 코드. 구매입고 · 생산입고 · 자재투입 ·
+ * 제품출고 · 폐기는 그 화면을 짓는 조각이 더한다(ADR 0008).
+ */
+export const MOVE_TYPES = [
+  { code: "IN", name: "기타입고" },
+  { code: "OUT", name: "기타출고" },
+  { code: "XFER", name: "이동" },
+  { code: "ADJ", name: "조정" },
+] as const;
+
 export type ItemType = (typeof ITEM_TYPES)[number]["code"];
+export type MoveType = (typeof MOVE_TYPES)[number]["code"];
 export type ProcType = (typeof PROC_TYPES)[number]["code"];
 
 /** 시스템 코드 묶음 — 묶음 코드와 프로그램이 아는 값. */
 export const SYSTEM_CODE_GROUPS = {
   ITEM_TYPE: ITEM_TYPES,
   PROC_TYPE: PROC_TYPES,
+  MOVE_TYPE: MOVE_TYPES,
 } as const;
 
 /**
@@ -47,14 +60,22 @@ export const isMadeType = (type: string): type is MadeItemType => (MADE_ITEM_TYP
 
 export const itemTypeName = (code: string) => ITEM_TYPES.find((t) => t.code === code)?.name ?? code;
 export const procTypeName = (code: string) => PROC_TYPES.find((t) => t.code === code)?.name ?? code;
+export const moveTypeName = (code: string) => MOVE_TYPES.find((t) => t.code === code)?.name ?? code;
+export const isMoveType = (code: string): code is MoveType => MOVE_TYPES.some((t) => t.code === code);
+
+/** 조정 사유 「실사 차이」 — 재고 실사의 확정이 쓰는 값이라 「사용 안 함」으로 바꾸지 못한다(ADR 0016). */
+export const COUNT_REASON = "COUNT";
 
 /** 한국 — 거래처의 사업자등록번호 꼴(000-00-00000) 검사가 기대는 국가 코드(ADR 0011). */
 export const KOREA = "KR";
 
 /**
  * 사용자 코드이지만 「사용 안 함」으로 바꾸지 못하는 값 — 프로그램이 기댄다.
- * 국가 KR(사업자등록번호 꼴 검사, ADR 0011 · 저자 인터뷰 2026-11-03).
+ * 국가 KR(사업자등록번호 꼴 검사, ADR 0011 · 저자 인터뷰 2026-11-03), 조정 사유 COUNT(실사 확정, ADR 0016).
  */
-export const ALWAYS_ACTIVE: Readonly<Record<string, readonly string[]>> = { COUNTRY: [KOREA] };
+export const ALWAYS_ACTIVE: Readonly<Record<string, readonly string[]>> = {
+  COUNTRY: [KOREA],
+  ADJ_REASON: [COUNT_REASON],
+};
 
 export const isAlwaysActive = (group: string, code: string) => ALWAYS_ACTIVE[group]?.includes(code) ?? false;

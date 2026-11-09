@@ -2,7 +2,9 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  date,
   foreignKey,
+  index,
   integer,
   numeric,
   pgTable,
@@ -351,5 +353,143 @@ export const partners = pgTable(
       "partners_email_format",
       sql`${t.email} = '' or (char_length(${t.email}) <= 100 and ${t.email} ~ '^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+$')`,
     ),
+  ],
+);
+
+// ── 재고 수불(조각 「재고 수불」 PR C, ADR 0015 · 0016 · 0018) ─────────────────────────
+
+/** 재고 수량 — 품목의 단위로 소수 셋째 자리까지(ADR 0018). 자릿수는 단위가 정하고(ADR 0017) 서버가 본다. */
+const stockQty = (name: string) => numeric(name, { precision: 14, scale: 3, mode: "number" });
+
+/**
+ * 수불 전표 — 수불 등록 한 번(여러 줄). 번호는 `IV-YYYYMMDD-NNN`(수불 일자 · 그날의 일련, ADR 0016).
+ * 유형은 공통코드 MOVE_TYPE, 사유는 조정(ADJ)일 때만 ADJ_REASON. 고치거나 지우는 길이 없다 — 취소는 새 전표다.
+ * 취소 전표(`cancels_move_id`)는 원래 전표를 가리키고, 한 전표는 한 번만 취소된다(유일). 취소 전표는 취소되지 않는다 —
+ * 참조가 (원래 전표, 늘 false)로 (번호, 취소 전표인가)를 가리켜 DB 가 막는다(기본 창고의 참조와 같은 꼴).
+ */
+export const stockMoves = pgTable(
+  "stock_moves",
+  {
+    id: id(),
+    code: text("code").notNull().unique(),
+    moveDate: date("move_date", { mode: "string" }).notNull(),
+    moveTypeGroup: text("move_type_group").notNull().default("MOVE_TYPE"),
+    moveType: text("move_type").notNull(),
+    reasonGroup: text("reason_group").notNull().default("ADJ_REASON"),
+    reason: text("reason"),
+    note: text("note").notNull().default(""),
+    cancelsMoveId: integer("cancels_move_id").unique(),
+    // 이 전표가 취소 전표인가 — `cancels_move_id` 에서 저절로. 취소 전표를 가리키는 취소를 막는 열쇠다.
+    isCancel: boolean("is_cancel")
+      .notNull()
+      .generatedAlwaysAs(sql`cancels_move_id is not null`),
+    // 늘 false — 취소가 가리키는 전표는 취소 전표가 아니다.
+    cancelsCancel: boolean("cancels_cancel").notNull().default(false),
+    ...timestamps(),
+  },
+  (t) => [
+    unique("stock_moves_id_cancel_unique").on(t.id, t.isCancel),
+    foreignKey({
+      name: "stock_moves_cancels_fk",
+      columns: [t.cancelsMoveId, t.cancelsCancel],
+      foreignColumns: [t.id, t.isCancel],
+    }),
+    foreignKey({
+      name: "stock_moves_move_type_fk",
+      columns: [t.moveTypeGroup, t.moveType],
+      foreignColumns: [codes.groupCode, codes.code],
+    }),
+    foreignKey({
+      name: "stock_moves_reason_fk",
+      columns: [t.reasonGroup, t.reason],
+      foreignColumns: [codes.groupCode, codes.code],
+    }),
+    check("stock_moves_code_format", sql`${t.code} ~ '^IV-[0-9]{8}-[0-9]{3,}$'`),
+    check("stock_moves_code_date", sql`substring(${t.code} from 4 for 8) = to_char(${t.moveDate}, 'YYYYMMDD')`),
+    check("stock_moves_move_type_group_fixed", sql`${t.moveTypeGroup} = 'MOVE_TYPE'`),
+    check("stock_moves_reason_group_fixed", sql`${t.reasonGroup} = 'ADJ_REASON'`),
+    check("stock_moves_reason_adjust_only", sql`(${t.moveType} = 'ADJ') = (${t.reason} is not null)`),
+    check("stock_moves_note_length", sql`char_length(${t.note}) <= 200`),
+    check("stock_moves_cancels_cancel_fixed", sql`${t.cancelsCancel} = false`),
+    check("stock_moves_cancel_not_self", sql`${t.cancelsMoveId} is null or ${t.cancelsMoveId} <> ${t.id}`),
+  ],
+);
+
+/**
+ * 수불 줄 — 품목 하나가 보내는 창고에서 나가고(`from`) 받는 창고로 든다(`to`). 입고는 받는 창고만, 출고는 보내는 창고만, 이동은 둘 다,
+ * 조정은 늘리면 받는 창고 · 줄이면 보내는 창고다. 수량은 늘 0 보다 크다 — 취소는 보내는 · 받는 창고를 바꾼 줄이다.
+ * 잔액(품목 · 창고 · LOT · 상태) = 그 키로 든 수량 − 나간 수량(ADR 0018). 일자는 전표의 일자를 옮겨 둔다 — 지난 날짜 음수 검사가
+ * (일자, 줄 번호) 차례로 누계를 세운다(설계 「2026-11-09 — PR C 를 열기 전에 정한 것」).
+ * LOT 를 끈 품목의 LOT 는 빈 글자다. 넣은 단위가 품목 단위와 다르면 넣은 수량 · 단위를 함께 남긴다(성공 기준 8).
+ */
+export const stockMoveLines = pgTable(
+  "stock_move_lines",
+  {
+    id: id(),
+    moveId: integer("move_id")
+      .notNull()
+      .references(() => stockMoves.id),
+    lineNo: smallint("line_no").notNull(),
+    moveDate: date("move_date", { mode: "string" }).notNull(),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => items.id),
+    lot: text("lot").notNull().default(""),
+    status: text("status").notNull().default("AVAILABLE"),
+    fromWarehouseId: integer("from_warehouse_id").references(() => warehouses.id),
+    toWarehouseId: integer("to_warehouse_id").references(() => warehouses.id),
+    qty: stockQty("qty").notNull(),
+    enteredQty: stockQty("entered_qty").notNull(),
+    enteredUnitGroup: text("entered_unit_group").notNull().default("UNIT"),
+    enteredUnit: text("entered_unit").notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    unique("stock_move_lines_move_line_unique").on(t.moveId, t.lineNo),
+    foreignKey({
+      name: "stock_move_lines_entered_unit_fk",
+      columns: [t.enteredUnitGroup, t.enteredUnit],
+      foreignColumns: [codes.groupCode, codes.code],
+    }),
+    index("stock_move_lines_to_key_idx").on(t.itemId, t.toWarehouseId, t.lot, t.status, t.moveDate, t.id),
+    index("stock_move_lines_from_key_idx").on(t.itemId, t.fromWarehouseId, t.lot, t.status, t.moveDate, t.id),
+    check("stock_move_lines_line_no_range", sql`${t.lineNo} between 1 and 100`),
+    check("stock_move_lines_lot_format", sql`${t.lot} ~ '^[A-Za-z0-9._-]{0,30}$'`),
+    check("stock_move_lines_status_values", sql`${t.status} in ('AVAILABLE', 'QC')`),
+    check(
+      "stock_move_lines_warehouse_required",
+      sql`${t.fromWarehouseId} is not null or ${t.toWarehouseId} is not null`,
+    ),
+    check("stock_move_lines_warehouses_differ", sql`${t.fromWarehouseId} is distinct from ${t.toWarehouseId}`),
+    check("stock_move_lines_qty_positive", sql`${t.qty} > 0 and ${t.enteredQty} > 0`),
+    check("stock_move_lines_entered_unit_group_fixed", sql`${t.enteredUnitGroup} = 'UNIT'`),
+  ],
+);
+
+/**
+ * 잔액 — 품목 · 창고 · LOT · 상태마다 지금 수량(ADR 0018). 수불 줄을 쓰는 같은 트랜잭션에서 고치고, 0 밑으로 가지 못한다.
+ * 불량은 창고(불량창고)가, 검사대기는 상태 칸이 정한다(ADR 0015). 재고 계산(src/db/stock.ts) 말고는 고치지 않는다.
+ */
+export const stockBalances = pgTable(
+  "stock_balances",
+  {
+    id: id(),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => items.id),
+    warehouseId: integer("warehouse_id")
+      .notNull()
+      .references(() => warehouses.id),
+    lot: text("lot").notNull().default(""),
+    status: text("status").notNull().default("AVAILABLE"),
+    qty: stockQty("qty").notNull().default(0),
+    ...timestamps(),
+  },
+  (t) => [
+    unique("stock_balances_key_unique").on(t.itemId, t.warehouseId, t.lot, t.status),
+    index("stock_balances_warehouse_idx").on(t.warehouseId),
+    check("stock_balances_qty_not_negative", sql`${t.qty} >= 0`),
+    check("stock_balances_lot_format", sql`${t.lot} ~ '^[A-Za-z0-9._-]{0,30}$'`),
+    check("stock_balances_status_values", sql`${t.status} in ('AVAILABLE', 'QC')`),
   ],
 );
