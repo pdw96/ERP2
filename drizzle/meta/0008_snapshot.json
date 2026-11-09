@@ -1,6 +1,6 @@
 {
-  "id": "a90cc291-b7f7-4cc4-93bd-f5a3f2fd4465",
-  "prevId": "93c6ed99-b660-4207-a153-02407453171d",
+  "id": "ff862fef-72de-408c-a040-ca46b253febd",
+  "prevId": "9001190e-09c2-43c2-9fde-cc9c88ecb910",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -388,13 +388,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "default_warehouse_defect": {
-          "name": "default_warehouse_defect",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "active": {
           "name": "active",
           "type": "boolean",
@@ -436,13 +429,11 @@
           "name": "items_default_in_warehouse_fk",
           "tableFrom": "items",
           "columnsFrom": [
-            "default_in_warehouse_id",
-            "default_warehouse_defect"
+            "default_in_warehouse_id"
           ],
           "tableTo": "warehouses",
           "columnsTo": [
-            "id",
-            "is_defect"
+            "id"
           ],
           "onUpdate": "no action",
           "onDelete": "no action"
@@ -451,13 +442,11 @@
           "name": "items_default_out_warehouse_fk",
           "tableFrom": "items",
           "columnsFrom": [
-            "default_out_warehouse_id",
-            "default_warehouse_defect"
+            "default_out_warehouse_id"
           ],
           "tableTo": "warehouses",
           "columnsTo": [
-            "id",
-            "is_defect"
+            "id"
           ],
           "onUpdate": "no action",
           "onDelete": "no action"
@@ -565,10 +554,6 @@
       },
       "policies": {},
       "checkConstraints": {
-        "items_default_warehouse_defect_fixed": {
-          "name": "items_default_warehouse_defect_fixed",
-          "value": "\"items\".\"default_warehouse_defect\" = false"
-        },
         "items_lot_rule_made_only": {
           "name": "items_lot_rule_made_only",
           "value": "\"items\".\"lot_rule_code\" is null or \"items\".\"item_type\" in ('SF', 'FG')"
@@ -1327,14 +1312,6 @@
           "name": "warehouses_code_unique",
           "columns": [
             "code"
-          ],
-          "nullsNotDistinct": false
-        },
-        "warehouses_id_defect_unique": {
-          "name": "warehouses_id_defect_unique",
-          "columns": [
-            "id",
-            "is_defect"
           ],
           "nullsNotDistinct": false
         }

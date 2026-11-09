@@ -54,15 +54,22 @@
     {
       "idx": 7,
       "version": "7",
-      "when": 1794200914229,
+      "when": 1793933312349,
       "tag": "0007_number_rules",
       "breakpoints": true
     },
     {
       "idx": 8,
       "version": "7",
-      "when": 1794200915000,
+      "when": 1793933334474,
       "tag": "0008_number_rule_values",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794201253102,
+      "tag": "0009_default_warehouse_not_defect",
       "breakpoints": true
     }
   ]

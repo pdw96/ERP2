@@ -1,5 +1,5 @@
 {
-  "id": "93c6ed99-b660-4207-a153-02407453171d",
+  "id": "9001190e-09c2-43c2-9fde-cc9c88ecb910",
   "prevId": "5197f463-2482-4b0b-8e92-dd3d048aad0b",
   "version": "7",
   "dialect": "postgresql",
@@ -388,13 +388,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "default_warehouse_defect": {
-          "name": "default_warehouse_defect",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "active": {
           "name": "active",
           "type": "boolean",
@@ -437,12 +430,10 @@
           "tableFrom": "items",
           "tableTo": "warehouses",
           "columnsFrom": [
-            "default_in_warehouse_id",
-            "default_warehouse_defect"
+            "default_in_warehouse_id"
           ],
           "columnsTo": [
-            "id",
-            "is_defect"
+            "id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -452,12 +443,10 @@
           "tableFrom": "items",
           "tableTo": "warehouses",
           "columnsFrom": [
-            "default_out_warehouse_id",
-            "default_warehouse_defect"
+            "default_out_warehouse_id"
           ],
           "columnsTo": [
-            "id",
-            "is_defect"
+            "id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -565,10 +554,6 @@
       },
       "policies": {},
       "checkConstraints": {
-        "items_default_warehouse_defect_fixed": {
-          "name": "items_default_warehouse_defect_fixed",
-          "value": "\"items\".\"default_warehouse_defect\" = false"
-        },
         "items_lot_rule_made_only": {
           "name": "items_lot_rule_made_only",
           "value": "\"items\".\"lot_rule_code\" is null or \"items\".\"item_type\" in ('SF', 'FG')"
@@ -1328,14 +1313,6 @@
           "nullsNotDistinct": false,
           "columns": [
             "code"
-          ]
-        },
-        "warehouses_id_defect_unique": {
-          "name": "warehouses_id_defect_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "id",
-            "is_defect"
           ]
         }
       },

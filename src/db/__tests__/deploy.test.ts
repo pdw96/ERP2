@@ -48,7 +48,7 @@ describe("마이그레이션과 첫 샘플 데이터", () => {
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(await tableNames(h)).toEqual(TABLES);
     expect(await h.db.select().from(codeGroups)).toHaveLength(7);
-    expect(log[0]).toMatch(/^마이그레이션: 적용된 것 9개 — 이번에 9개 적용$/);
+    expect(log[0]).toMatch(/^마이그레이션: 적용된 것 10개 — 이번에 10개 적용$/);
     expect(log[1]).toMatch(/^샘플 데이터: 빈 DB 라 넣었다 — items 14 · /);
   });
 
@@ -61,7 +61,7 @@ describe("마이그레이션과 첫 샘플 데이터", () => {
     const log: string[] = [];
     await prepareDatabase(h.db, { ...quiet, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 9개 — 이번에 0개 적용",
+      "마이그레이션: 적용된 것 10개 — 이번에 0개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -132,7 +132,7 @@ describe("마이그레이션 0001 · 0002 — 거래처의 국가(PR G)", () => 
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 9개 — 이번에 8개 적용",
+      "마이그레이션: 적용된 것 10개 — 이번에 9개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(
@@ -185,7 +185,7 @@ describe("마이그레이션 0003 · 0004 — 품목 · 거래처의 설명용 �
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 9개 — 이번에 6개 적용",
+      "마이그레이션: 적용된 것 10개 — 이번에 7개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(
@@ -282,7 +282,7 @@ describe("마이그레이션 0005 · 0006 — 단위 사양(조각 「재고 수
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 9개 — 이번에 4개 적용",
+      "마이그레이션: 적용된 것 10개 — 이번에 5개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     // 마이그레이션이 넣은 단위 · 사양은 샘플 데이터와 같다 — 매일 밤 되돌린 뒤와 어긋나지 않게.
@@ -365,7 +365,7 @@ describe("마이그레이션 0007 · 0008 — 번호 규칙 · 품목의 재고 
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 9개 — 이번에 2개 적용",
+      "마이그레이션: 적용된 것 10개 — 이번에 3개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
 
@@ -478,6 +478,36 @@ describe("마이그레이션 0007 · 0008 — 번호 규칙 · 품목의 재고 
         .from(items)
         .where(sql`${items.itemType} in ('SM', 'CS')`),
     ).toHaveLength(4);
+  });
+});
+
+describe("마이그레이션 0009 — 품목의 기본 창고가 불량창고를 가리키지 못하게(PR B 리뷰 1회차)", () => {
+  it("0007 · 0008 이 이미 적용된 DB(미리보기 분기) — 0009 만 적용되고, 불량창고를 가리키던 기본 창고는 비워지며, 그 뒤로는 DB 가 막는다", async () => {
+    const h = await fresh();
+    await h.migrate(firstMigrations(9));
+    // 0009 앞에는 막지 않아 생길 수 있었던 행 — 원자재의 기본 출고 창고가 불량창고.
+    await h.client.exec(`
+      insert into code_groups (code, name, is_system) values
+        ('ITEM_TYPE', '품목 유형', true), ('PROC_TYPE', '조달구분', true), ('UNIT', '단위', false);
+      insert into codes (group_code, code, name) values ('ITEM_TYPE', 'RM', '원자재'), ('PROC_TYPE', 'BUY', '구매'), ('UNIT', 'EA', '개');
+      insert into warehouses (code, name, is_defect) values ('WH-01', '자재창고', false), ('WH-04', '불량창고', true);
+      insert into items (code, name, item_type, procurement, unit, default_in_warehouse_id, default_out_warehouse_id)
+      values ('RM-0001', '웨이퍼', 'RM', 'BUY', 'EA',
+        (select id from warehouses where code = 'WH-01'), (select id from warehouses where code = 'WH-04'));
+    `);
+    const log: string[] = [];
+    await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
+    expect(log).toEqual([
+      "마이그레이션: 적용된 것 10개 — 이번에 1개 적용",
+      "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
+    ]);
+    const [rm] = await h.db.select().from(items).where(eq(items.code, "RM-0001"));
+    expect(rm.defaultOutWarehouseId).toBeNull();
+    expect(rm.defaultInWarehouseId).not.toBeNull();
+    const [defect] = await h.db.select().from(warehouses).where(eq(warehouses.code, "WH-04"));
+    await expect(
+      h.db.update(items).set({ defaultInWarehouseId: defect.id }).where(eq(items.code, "RM-0001")),
+    ).rejects.toThrow();
   });
 });
 

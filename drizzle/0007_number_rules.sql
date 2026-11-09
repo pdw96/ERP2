@@ -39,14 +39,10 @@ ALTER TABLE "items" ADD COLUMN "lot_managed" boolean DEFAULT true NOT NULL;--> s
 ALTER TABLE "items" ADD COLUMN "lot_rule_code" text;--> statement-breakpoint
 ALTER TABLE "items" ADD COLUMN "default_in_warehouse_id" integer;--> statement-breakpoint
 ALTER TABLE "items" ADD COLUMN "default_out_warehouse_id" integer;--> statement-breakpoint
-ALTER TABLE "items" ADD COLUMN "default_warehouse_defect" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "warehouses" ADD COLUMN "is_defect" boolean DEFAULT false NOT NULL;--> statement-breakpoint
--- 손으로 옮긴 줄 — 품목의 기본 창고 참조가 가리키는 열쇠를 참조보다 먼저 만든다(drizzle-kit 이 뒤에 둔다, PR B 리뷰 1회차).
-ALTER TABLE "warehouses" ADD CONSTRAINT "warehouses_id_defect_unique" UNIQUE("id","is_defect");--> statement-breakpoint
 ALTER TABLE "number_rule_seqs" ADD CONSTRAINT "number_rule_seqs_rule_code_number_rules_code_fk" FOREIGN KEY ("rule_code") REFERENCES "public"."number_rules"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "items" ADD CONSTRAINT "items_lot_rule_fk" FOREIGN KEY ("lot_rule_code") REFERENCES "public"."number_rules"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "items" ADD CONSTRAINT "items_default_in_warehouse_fk" FOREIGN KEY ("default_in_warehouse_id","default_warehouse_defect") REFERENCES "public"."warehouses"("id","is_defect") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "items" ADD CONSTRAINT "items_default_out_warehouse_fk" FOREIGN KEY ("default_out_warehouse_id","default_warehouse_defect") REFERENCES "public"."warehouses"("id","is_defect") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "items" ADD CONSTRAINT "items_default_warehouse_defect_fixed" CHECK ("items"."default_warehouse_defect" = false);--> statement-breakpoint
+ALTER TABLE "items" ADD CONSTRAINT "items_default_in_warehouse_fk" FOREIGN KEY ("default_in_warehouse_id") REFERENCES "public"."warehouses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "items" ADD CONSTRAINT "items_default_out_warehouse_fk" FOREIGN KEY ("default_out_warehouse_id") REFERENCES "public"."warehouses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "items" ADD CONSTRAINT "items_lot_rule_made_only" CHECK ("items"."lot_rule_code" is null or "items"."item_type" in ('SF', 'FG'));--> statement-breakpoint
 ALTER TABLE "items" ADD CONSTRAINT "items_code_format" CHECK ("items"."code" ~ '^(RM|SF|FG|SM|CS)-[0-9]{4,}$' and left("items"."code", 2) = "items"."item_type");
