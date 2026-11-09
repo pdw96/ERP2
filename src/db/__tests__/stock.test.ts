@@ -526,6 +526,29 @@ describe("취소 — 성공 기준 5", () => {
     ).toMatchObject({ constraint: "stock_moves_code_date" });
   });
 
+  it("줄끼리 기대는 전표도 취소된다 — 반대 줄을 거꾸로 된 차례로 남긴다(리뷰 1회차)", async () => {
+    // 방습백(LOT 없음)은 자재창고에만 있다 — 한 전표에서 자재창고 → 생산현장 10, 생산현장 → 자재창고 10.
+    const there = { item: "SM-0002", qty: "10" };
+    const code = await ok(
+      save({
+        moveType: "XFER",
+        lines: [
+          { ...there, warehouse: "WH-01", toWarehouse: "WH-02" },
+          { ...there, warehouse: "WH-02", toWarehouse: "WH-01" },
+        ],
+      }),
+    );
+    const c = await cancelMove(db, code, TODAY);
+    expect(c.ok).toBe(true);
+    await invariant();
+    expect([await bal("SM-0002", "WH-01"), await bal("SM-0002", "WH-02")]).toEqual([820, 0]);
+    const reversed = await getMove(db, c.ok ? c.code : "");
+    expect(reversed!.lineRows.map((l) => [l.from, l.to])).toEqual([
+      ["WH-01 자재창고", "WH-02 생산현장"],
+      ["WH-02 생산현장", "WH-01 자재창고"],
+    ]);
+  });
+
   it("취소로 재고가 0 밑으로 가면 취소도 막는다", async () => {
     const code = await ok(save({ lines: [wire("100")] }));
     await ok(save({ moveType: "OUT", lines: [wire("80")] }));

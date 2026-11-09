@@ -549,7 +549,8 @@ export type CancelResult =
   { ok: true; code: string } | { ok: false; formError: string } | { ok: false; notFound: true };
 
 /**
- * 취소(성공 기준 5, ADR 0015) — 원래 전표의 반대 수량(보내는 · 받는 창고를 바꾼 줄)으로 새 전표를 남긴다. 일자는 취소하는 날(today).
+ * 취소(성공 기준 5, ADR 0015) — 원래 전표의 반대 수량(보내는 · 받는 창고를 바꾼 줄)으로 새 전표를 남긴다. 줄은 거꾸로 된 차례다.
+ * 일자는 취소하는 날(today).
  * 한 전표는 한 번만 취소되고, 취소 전표는 취소되지 않는다(DB 도 막는다). 취소도 음수 검사를 지난다.
  * 품목 · 창고가 그 사이 「사용 안 함」이 되었어도 취소는 된다 — 이미 남은 수불을 되돌리는 것이다.
  */
@@ -577,7 +578,9 @@ export async function cancelMove(db: Db, code: string, today: string): Promise<C
         reason: move.reason,
         note: `${code} 취소`,
         cancelsMoveId: move.id,
-        lines: lines.map((l) => ({
+        // 거꾸로 된 차례로 — 한 전표 안에서 뒤 줄이 앞 줄에 기대면(자재창고 → 생산현장 → 자재창고) 뒤 줄부터 되돌려야
+        // 누계가 0 밑으로 가지 않는다(리뷰 1회차).
+        lines: [...lines].reverse().map((l) => ({
           itemId: l.itemId,
           lot: l.lot,
           status: l.status as StockStatus,
