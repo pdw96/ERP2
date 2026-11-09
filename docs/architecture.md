@@ -17,13 +17,15 @@
 | 시트형 등록 | 기준정보 › 품목 · 거래처의 「시트형 등록」 — 칸 · 줄로 된 시트에 넣거나 엑셀에서 붙여넣어 한 번에 등록한다(100줄까지). 칸의 규칙은 한 건 등록의 검사를 그대로 쓰고, 고르는 값은 이름 · 코드 둘 다, 빈 칸은 한 건 등록의 기본값. 맞는 줄은 한 트랜잭션에서 잠금을 쥐고 줄 차례로 코드를 받아 저장하고(줄마다 저장점), 틀린 줄은 까닭과 함께 시트에 남는다 | `src/components/sheet-grid.tsx` · `src/app/master/items/sheet/` · `src/app/master/partners/sheet/` · `src/lib/sheet.ts` · `src/lib/sheet-columns.ts` · `src/lib/sheet-input.ts` · `src/db/master-shared.ts` |
 | 조회 화면 | 기준정보 › 품목 조회 · 거래처 조회 — 모든 칸을 넓은 표로 보는, 고칠 수 없는 화면(ADR 0013). 휴대폰 폭에서는 표를 옆으로 밀고 코드 · 이름 칸이 왼쪽에 남는다. 찾기는 글 칸 전체, 거르기는 등록과 같고 거래처에 국가. 코드를 누르면 등록의 수정 화면 | `src/components/inquiry-table.tsx` · `src/app/master/items/inquiry/` · `src/app/master/partners/inquiry/` · `src/db/items.ts` · `src/db/partners.ts` |
 | 번호 규칙 화면 | 시스템 관리 › 번호 규칙 — LOT 번호 규칙의 목록(꼴과 오늘의 첫 번호) · 등록 · 수정(ADR 0016). 칸을 바꾸면 번호의 예가 바로 바뀐다. 유형(반제품 · 완제품)마다 기본 규칙이 하나이고, 다른 규칙을 기본으로 고르면 옮겨 간다 — 기본 규칙은 「사용 안 함」으로 바꾸지 못한다. 겹침 · 등록 상한(50)은 서버가 본다. LOT 번호를 내는 함수(`issueLotNumber`)는 수불 등록이 부른다 | `src/app/system/number-rules/` · `src/lib/number-rule-fields.ts` · `src/lib/number-rule-input.ts` · `src/db/number-rules.ts` |
-| 공통코드 화면 | 시스템 관리 › 공통코드 — 묶음(Major) 목록과 한 묶음의 값(Minor) 목록, 사용자 코드 묶음의 값 추가 · 수정. 시스템 코드 묶음은 보이기만 하고, 서버도 바꾸는 요청을 거절한다. 프로그램이 기대는 사용자 코드 값(국가 `KR`)은 「사용 안 함」으로 바꾸지 못한다. 묶음 안의 겹침 · 등록 상한은 서버가 본다(ADR 0009). 단위(`UNIT`) 묶음은 값마다 기준 단위 · 배수 · 소수 자릿수(단위 사양)를 함께 보이고, 새 단위는 셋을 함께 넣고 수정은 자릿수만 고친다(ADR 0017) | `src/app/system/codes/` · `src/lib/code-input.ts` · `src/lib/unit-input.ts` · `src/db/codes.ts` |
+| 재고 계산 | 수불을 남기는 한 곳(설계 ②) — 전표 저장 · 취소, 단위 환산(같은 기준의 단위만, 반올림 없이), 만드는 품목의 LOT 저절로(번호 규칙), 음수 검사(줄을 넣은 뒤 나가는 쪽 키마다 (일자, 줄 번호) 차례의 누계에서 그 일자부터의 가장 작은 누계), 잔액 고치기를 한 트랜잭션에서 한 DB 잠금을 쥐고 한다(ADR 0015 · 0016 · 0018). 품목의 LOT 관리 · 단위, 창고의 불량창고 표시, 단위의 자릿수를 고칠 때도 같은 잠금을 쥐고 재고를 센다. 화면 · 샘플 · 뒤 조각은 이 함수를 불러 수불을 남긴다 | `src/db/stock.ts` · `src/lib/move-input.ts` |
+| 수불 등록 화면 | 재고 › 수불관리 › 수불 등록 — 최근 전표, 새 전표(일자 · 유형 · 사유 · 비고와 「줄 더하기」로 늘리는 줄 표), 전표 보기 · 취소. 유형마다 칸이 바뀌고, 품목을 고르면 기본 창고가 채워진다(이동은 입고 창고 → 출고 창고). 출고 · 이동의 LOT 는 그 창고의 가용 재고를 서버에서 읽어 수량과 함께 고른다. 줄이 하나라도 틀리면 아무 줄도 저장되지 않고 틀린 칸 · 줄과 까닭(모자란 수량)이 보인다. 휴대폰 폭에서는 줄 표를 옆으로 민다 | `src/app/inventory/moves/` · `src/db/stock.ts` |
+| 공통코드 화면 | 시스템 관리 › 공통코드 — 묶음(Major) 목록과 한 묶음의 값(Minor) 목록, 사용자 코드 묶음의 값 추가 · 수정. 시스템 코드 묶음은 보이기만 하고, 서버도 바꾸는 요청을 거절한다. 프로그램이 기대는 사용자 코드 값(국가 `KR` · 조정 사유 `COUNT`)은 「사용 안 함」으로 바꾸지 못한다. 묶음 안의 겹침 · 등록 상한은 서버가 본다(ADR 0009). 단위(`UNIT`) 묶음은 값마다 기준 단위 · 배수 · 소수 자릿수(단위 사양)를 함께 보이고, 새 단위는 셋을 함께 넣고 수정은 자릿수만 고친다(ADR 0017) — 자릿수를 줄이는 것은 그 단위의 수불 수량이 다 맞을 때만 | `src/app/system/codes/` · `src/lib/code-input.ts` · `src/lib/unit-input.ts` · `src/db/codes.ts` |
 | 설계도 화면 | 업무 흐름(스윔레인 · Overview) · 데이터 모델(모듈별 전체 지도 · 이 조각의 테이블) · 시스템 구성 그림. 메뉴 판 아래 「설계도」. 그림의 글과 스윔레인 데이터는 한 파일에 있고, 테이블 · 부품 · 흐름을 바꾸는 PR 이 함께 고친다(ADR 0006). 스윔레인은 서버에서 SVG 로, 모듈별 지도는 서버에서 카드로, 나머지는 브라우저의 Mermaid 가 그린다 | `src/app/design/` · `src/content/diagrams.ts` · `src/lib/swimlane.ts` · `src/components/swimlane.tsx` · `src/components/module-map.tsx` · `src/components/mermaid-diagram.tsx` |
 | 상태 화면 | DB 에 닿는지 묻고 「연결됨」(DB 시각) 또는 「연결 안 됨」을 보인다. 「마지막 되돌림」(샘플을 마지막으로 넣은 시각 — 공통코드 묶음의 가장 이른 등록 시각)도 보인다. 결과를 1분 재사용하고 검색 로봇을 막는다. 떠 있는 배포의 커밋도 보인다 | `src/app/health/` · `src/db/status.ts` |
 | DB 접속 | 환경변수 `DATABASE_URL` 하나로 PostgreSQL 에 닿는다 — Drizzle ORM · postgres 드라이버. 내 컴퓨터의 DB 말고는 암호화하고 인증서를 확인한다 | `src/db/client.ts` |
-| 테이블 | 기준정보 다섯(품목 · 창고 · 거래처 · 공통코드 묶음 · 값)과 재고 수불의 단위 사양 · 번호 규칙 · 번호 규칙의 일련, 코드의 꼴 · 참조 제약, 마이그레이션 SQL(`docs/schema.md`) | `src/db/schema.ts` · `drizzle/` |
+| 테이블 | 기준정보 다섯(품목 · 창고 · 거래처 · 공통코드 묶음 · 값)과 재고 수불의 단위 사양 · 번호 규칙 · 번호 규칙의 일련 · 수불 전표 · 수불 줄 · 잔액, 코드의 꼴 · 참조 제약, 마이그레이션 SQL(`docs/schema.md`) | `src/db/schema.ts` · `drizzle/` |
 | DB 준비(배포 빌드) | 빌드의 첫 단계 — 마이그레이션을 적용하고, 빈 DB 면 샘플 데이터를 넣는다. 실패하면 빌드가 멈춰 배포가 나가지 않는다(ADR 0005) | `scripts/migrate.ts` · `src/db/deploy.ts` |
-| 샘플 데이터 · 되돌림 | 가상 반도체 후공정 회사의 샘플과, 테이블을 비우고 샘플로 다시 채우는 되돌림. 매일 밤 Vercel Cron 이 `CRON_SECRET` 을 붙여 입구를 부른다 — 비밀값이 틀리면 DB 에 닿지 않는다(ADR 0004) | `src/db/sample.ts` · `src/db/reset.ts` · `src/db/reset-request.ts` · `src/app/api/cron/reset/` · `vercel.json` |
+| 샘플 데이터 · 되돌림 | 가상 반도체 후공정 회사의 샘플과, 테이블을 비우고 샘플로 다시 채우는 되돌림. 샘플 수불은 재고 계산의 저장을 불러 되돌린 날에서 센 며칠 앞 날짜로 넣는다. 매일 밤 Vercel Cron 이 `CRON_SECRET` 을 붙여 입구를 부른다 — 비밀값이 틀리면 DB 에 닿지 않는다(ADR 0004) | `src/db/sample.ts` · `src/db/reset.ts` · `src/db/reset-request.ts` · `src/app/api/cron/reset/` · `vercel.json` |
 | 코드 번호 | 같은 머리의 가장 큰 번호 + 1 | `src/db/numbering.ts` · 공통코드의 시스템 값 `src/lib/master-codes.ts` |
 | 한국 날짜 | 서버의 시계(UTC)로 한국 시각의 오늘을 낸다 — 번호의 예와 수불 일자가 기댄다 | `src/lib/today.ts` |
 | 정기 확인 | 하루 4번 데모의 `/health` 가 「연결됨」이고 `main` 의 최신 커밋이며 「마지막 되돌림」이 30시간 안인지 보고, 아니면 GitHub 가 메일로 알린다 | `.github/workflows/health-check.yml` |
@@ -35,6 +37,7 @@
 ```
 브라우저 ── 웹 앱(Vercel) ── PostgreSQL(Neon 운영 DB)
          └─ 품목 · 거래처 · 창고 · 공통코드 · 번호 규칙 등록 · 수정, 품목 · 거래처 시트형 등록(서버 액션) ── 입력 검사 ── 운영 DB
+         └─ 수불 등록 · 취소(서버 액션) ── 꼴 검사 ── 재고 계산(잠금 · 수불 줄 · 음수 검사 · 잔액, 한 트랜잭션) ── 운영 DB
 PR ── 자동 검사(GitHub Actions)
    └─ 미리보기 배포(Vercel) ── Neon 미리보기 분기 DB
    └─ 빌드: 마이그레이션 · 빈 DB 면 샘플 ── 미리보기 분기 DB
@@ -46,7 +49,7 @@ main 머지 ── 빌드: 마이그레이션 · 빈 DB 면 샘플 ── 운영
 ```
 
 고정 화면(첫 화면 · 모듈 화면 · 설계도)은 빌드 때 만들어 Vercel 이 가까운 곳에서 내보낸다. 상태 화면의 DB 확인, 되돌림 입구, 품목 · 거래처 · 창고 · 공통코드
-· 번호 규칙 화면의 DB 읽기 · 쓰기는 요청이 올 때 돈다(상태 확인은 1분 재사용, 기준정보 화면은 늘 새로 읽는다). 기준정보 화면의 틀(머리 · 메뉴)은 빌드 때 만들고 목록 · 입력 칸만 요청 때 채운다.
+· 번호 규칙 · 수불 화면의 DB 읽기 · 쓰기는 요청이 올 때 돈다(상태 확인은 1분 재사용, 기준정보 화면은 늘 새로 읽는다). 기준정보 화면의 틀(머리 · 메뉴)은 빌드 때 만들고 목록 · 입력 칸만 요청 때 채운다.
 스택과 배포처를 고른 까닭은 ADR 0001 · 0002, 테이블과 마이그레이션은 `docs/schema.md`, 배포와 되돌리기는 `docs/deploy.md`.
 
 ## 시험

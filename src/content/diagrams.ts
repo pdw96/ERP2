@@ -189,9 +189,14 @@ export const MODULE_MAP: readonly MapModule[] = [
     module: "재고",
     tables: [
       { id: "warehouses", name: "창고", table: "warehouses", slice: "기준정보" },
-      { id: "txn", name: "수불", slice: "재고 수불" },
-      { id: "stock", name: "현재고 — 품목 × 창고 × LOT · 상태", slice: "재고 수불" },
-      { id: "lot", name: "LOT", slice: "재고 수불" },
+      { id: "txn", name: "수불 전표 — 유형 · 사유 · 취소", table: "stock_moves", slice: "재고 수불" },
+      {
+        id: "txn_lines",
+        name: "수불 줄 — 품목 · LOT · 보내는 → 받는 창고",
+        table: "stock_move_lines",
+        slice: "재고 수불",
+      },
+      { id: "stock", name: "잔액 — 품목 × 창고 × LOT · 상태", table: "stock_balances", slice: "재고 수불" },
       { id: "alloc", name: "할당", slice: "작업지시" },
       { id: "count", name: "실사", slice: "재고 수불" },
     ],
@@ -255,7 +260,7 @@ export const MODULE_FLOWS: readonly (readonly string[])[] = [
   ["so", "mps", "plo"],
   ["splan", "mps"],
   ["bom", "plo"],
-  ["plo", "wo", "result", "txn", "stock"],
+  ["plo", "wo", "result", "txn", "txn_lines", "stock"],
   ["plo", "po", "rcv", "txn"],
   ["wo", "alloc", "stock"],
   ["shipreq", "alloc"],
@@ -313,11 +318,44 @@ export const DATA_MODEL = `erDiagram
     text code UK "WH-01 …"
     boolean is_defect "불량창고 — 재고가 불량"
   }
+  STOCK_MOVES["수불 전표 stock_moves"] {
+    text code UK "IV-YYYYMMDD-NNN — 수불 일자 · 그날의 일련"
+    date move_date "일자 — 오늘이나 지난 날"
+    text move_type FK "유형 — 공통코드 MOVE_TYPE(IN · OUT · XFER · ADJ)"
+    text reason FK "사유 — 조정만, ADJ_REASON"
+    text note "비고 — 200자까지"
+    integer cancels_move_id FK "취소한 전표 — 한 번만, 취소 전표는 취소되지 않음"
+  }
+  STOCK_MOVE_LINES["수불 줄 stock_move_lines"] {
+    integer move_id FK "전표"
+    integer item_id FK "품목"
+    text lot "LOT — 끈 품목은 빈 글자"
+    text status "상태 — 가용 · 검사대기"
+    integer from_warehouse_id FK "보내는 창고 — 출고 · 이동 · 줄이는 조정"
+    integer to_warehouse_id FK "받는 창고 — 입고 · 이동 · 늘리는 조정"
+    numeric qty "품목 단위의 수량 — 늘 0 보다 큼"
+    numeric entered_qty "넣은 수량"
+    text entered_unit FK "넣은 단위 — 같은 기준이면 바꿔 쌓음"
+  }
+  STOCK_BALANCES["잔액 stock_balances"] {
+    integer item_id FK "품목"
+    integer warehouse_id FK "창고 — 불량창고면 불량"
+    text lot "LOT"
+    text status "상태"
+    numeric qty "지금 수량 — 0 밑으로 못 감, 줄의 합"
+  }
   CODES ||--|| UNIT_SPECS : "단위의 사양"
   UNIT_SPECS ||--o{ UNIT_SPECS : "기준 단위"
   NUMBER_RULES ||--o{ NUMBER_RULE_SEQS : "기간마다 일련"
   NUMBER_RULES |o--o{ ITEMS : "LOT 번호 규칙"
-  WAREHOUSES |o--o{ ITEMS : "기본 입고 · 출고 창고"`;
+  WAREHOUSES |o--o{ ITEMS : "기본 입고 · 출고 창고"
+  STOCK_MOVES ||--|{ STOCK_MOVE_LINES : "줄 1 ~ 100"
+  STOCK_MOVES |o--o| STOCK_MOVES : "취소"
+  ITEMS ||--o{ STOCK_MOVE_LINES : "품목"
+  WAREHOUSES |o--o{ STOCK_MOVE_LINES : "보내는 · 받는 창고"
+  ITEMS ||--o{ STOCK_BALANCES : "품목"
+  WAREHOUSES ||--o{ STOCK_BALANCES : "창고"
+  CODES ||--o{ STOCK_MOVES : "수불 유형 · 조정 사유"`;
 
 // 시스템 구성 — 화면 · 서버 · DB · 자동 검사 · 알림.
 export const SYSTEM = `flowchart LR
