@@ -20,6 +20,8 @@ describe("SortTh", () => {
     head(<SortTh label="수량" sortKey="qty" sort="date" dir="asc" path="/inventory/history" filters={filters} />);
     const th = screen.getByRole("columnheader");
     expect(th).not.toHaveAttribute("aria-sort");
+    // 누를 수 있는 다른 칸은 흐린 ↕.
+    expect(th).toHaveTextContent("↕");
     expect(within(th).getByRole("link")).toHaveAttribute(
       "href",
       "/inventory/history?from=2026-10-11&to=2026-11-09&item=RM-0003&sort=qty",

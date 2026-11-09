@@ -80,18 +80,11 @@ async function Results({ searchParams }: Pick<PageProps<"/inventory/ledger">, "s
         </div>
         <Notices notices={notices} />
       </Form>
-      {data.page.total === 0 ? (
-        <p className="mt-6 border border-dashed border-rule px-5 py-8 text-center text-muted">
-          이 기간 · 거르기에 기초 · 입고 · 출고가 있는 품목이 없습니다.
-        </p>
-      ) : (
-        <>
-          <Pager {...data.page} path={PATH} params={sorted} unit="품목" basis={basis} />
-          <p className="text-sm text-muted md:hidden">표를 옆으로 밀면 다른 열이 보입니다</p>
-          <LedgerTable rows={data.page.rows} query={query} filters={filters} />
-          {data.page.pages > 1 && <Pager {...data.page} path={PATH} params={sorted} unit="품목" basis={basis} />}
-        </>
-      )}
+      {/* 줄이 없어도 표 머리(칸 · 정렬 화살표)는 보인다(저자 판정) — 몸에 알림 한 줄. */}
+      <Pager {...data.page} path={PATH} params={sorted} unit="품목" basis={basis} />
+      <p className="text-sm text-muted md:hidden">표를 옆으로 밀면 다른 열이 보입니다</p>
+      <LedgerTable rows={data.page.rows} query={query} filters={filters} />
+      {data.page.pages > 1 && <Pager {...data.page} path={PATH} params={sorted} unit="품목" basis={basis} />}
     </>
   );
 }
@@ -162,6 +155,13 @@ function LedgerTable({ rows, query, filters }: { rows: LedgerRow[]; query: Ledge
           </tr>
         </thead>
         <tbody>
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={4 + inCols.length + outCols.length + 1} className="px-5 py-8 text-muted">
+                이 기간 · 거르기에 기초 · 입고 · 출고가 있는 품목이 없습니다.
+              </td>
+            </tr>
+          )}
           {rows.map((r) => (
             <tr key={r.itemCode} className="border-b border-rule align-top">
               <th scope="row" className="px-3 py-2 text-left font-mono font-normal whitespace-nowrap">

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { queryString, type SortDir } from "@/lib/stock-query";
 
 // 칸 머리로 세우기 · 쪽 넘김 — 수불 이력 · 수불부(조각 「재고 수불」 설계 「2026-11-09 — PR D 를 열기 전에 정한 것」).
-// 엑셀처럼 칸 머리를 누르면 그 칸으로 세우고, 같은 머리를 다시 누르면 거꾸로다. 고른 칸 · 차례 · 쪽은 주소에 남는다 —
+// 엑셀처럼 칸 머리를 누르면 그 칸으로 세우고, 같은 머리를 다시 누르면 거꾸로다. 고른 칸은 ▲ · ▼, 누를 수 있는 다른 칸은 흐린 ↕(저자 판정). 고른 칸 · 차례 · 쪽은 주소에 남는다 —
 // 쪽을 넘기거나 거르기를 바꿔도, 주소를 남에게 보내도 그대로다. 칸을 바꾸면 1쪽으로 돌아간다.
 
 export type Filters = Record<string, string | undefined>;
@@ -45,8 +45,8 @@ export function SortTh<K extends string>({
         }`}
       >
         {label}
-        <span aria-hidden className={`w-3 text-xs ${active ? "text-machine" : "text-transparent"}`}>
-          {active && dir === "desc" ? "▼" : "▲"}
+        <span aria-hidden className={`w-3 text-xs ${active ? "text-machine" : "text-muted opacity-50"}`}>
+          {active ? (dir === "desc" ? "▼" : "▲") : "↕"}
         </span>
         <span className="sr-only">{active ? (dir === "asc" ? " — 오름차순" : " — 내림차순") : " — 눌러 세우기"}</span>
       </Link>

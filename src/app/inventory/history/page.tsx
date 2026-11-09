@@ -112,18 +112,11 @@ async function Results({ searchParams }: Pick<PageProps<"/inventory/history">, "
         </div>
         <Notices notices={notices} />
       </Form>
-      {data.page.total === 0 ? (
-        <p className="mt-6 border border-dashed border-rule px-5 py-8 text-center text-muted">
-          이 기간 · 거르기에 맞는 수불이 없습니다.
-        </p>
-      ) : (
-        <>
-          <Pager {...data.page} path={PATH} params={sorted} />
-          <p className="text-sm text-muted md:hidden">표를 옆으로 밀면 다른 열이 보입니다</p>
-          <HistoryTable rows={data.page.rows} query={query} filters={filters} />
-          {data.page.pages > 1 && <Pager {...data.page} path={PATH} params={sorted} />}
-        </>
-      )}
+      {/* 줄이 없어도 표 머리(칸 · 정렬 화살표)는 보인다(저자 판정) — 몸에 알림 한 줄. */}
+      <Pager {...data.page} path={PATH} params={sorted} />
+      <p className="text-sm text-muted md:hidden">표를 옆으로 밀면 다른 열이 보입니다</p>
+      <HistoryTable rows={data.page.rows} query={query} filters={filters} />
+      {data.page.pages > 1 && <Pager {...data.page} path={PATH} params={sorted} />}
     </>
   );
 }
@@ -175,6 +168,13 @@ function HistoryTable({ rows, query, filters }: { rows: HistoryRow[]; query: His
           </tr>
         </thead>
         <tbody>
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={COLUMNS.length} className="px-5 py-8 text-muted">
+                이 기간 · 거르기에 맞는 수불이 없습니다.
+              </td>
+            </tr>
+          )}
           {rows.map((r) => (
             <tr
               key={r.id}
