@@ -25,7 +25,7 @@ import {
   unitSpecs,
   warehouses,
 } from "./schema";
-import { cancelMove, saveMove } from "./stock";
+import { cancelMove, lockStock, saveMove } from "./stock";
 import type { Db } from "./types";
 
 /** 되돌림이 비우고 다시 채우는 테이블 — 테이블을 더하는 조각은 여기에도 더한다(시험이 스키마와 견준다). */
@@ -51,6 +51,9 @@ export type ResetCounts = Record<(typeof RESET_TABLES)[number], number>;
 // 샘플 수불은 재고 계산의 저장(src/db/stock.ts)을 불러 넣는다 — 날짜는 today(한국 시각의 오늘)에서 센다(설계 「2026-11-09 — PR C 를 열기 전에 정한 것」).
 export async function resetToSample(db: Db, today: string = koreaToday()): Promise<ResetCounts> {
   return db.transaction(async (tx) => {
+    // 재고의 잠금을 먼저 쥔다 — 수불 저장과 같은 차례(잠금 → 표). 비운 뒤 잠금을 기다리면 잠금을 쥔 채 표를 읽으려는 저장과
+    // 서로 기다려 한쪽이 교착(40P01)으로 되돌아간다(PR C 리뷰 1회차).
+    await lockStock(tx);
     await tx.execute(sql.raw(`truncate table ${RESET_TABLES.map((t) => `"${t}"`).join(", ")} restart identity`));
     await tx.insert(codeGroups).values(SAMPLE_CODE_GROUPS);
     await tx.insert(codes).values(SAMPLE_CODES);
