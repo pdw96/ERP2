@@ -2,7 +2,7 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetToSample } from "@/db/reset";
-import { warehouses } from "@/db/schema";
+import { items, warehouses } from "@/db/schema";
 import type { Db } from "@/db/types";
 import {
   createWarehouse,
@@ -81,6 +81,8 @@ describe("등록", () => {
   });
 
   it("빈 테이블이면 첫 번호 WH-01 이다", async () => {
+    // 품목의 기본 창고(재고 수불 PR B)가 창고를 가리키므로 먼저 뗀다.
+    await db.update(items).set({ defaultInWarehouseId: null, defaultOutWarehouseId: null });
     await db.delete(warehouses);
     expect(await createWarehouse(db, { name: "자재창고" })).toEqual({ ok: true, code: "WH-01" });
   });
@@ -183,7 +185,7 @@ describe("수정", () => {
     const input = await import("@/lib/warehouse-input");
     const spy = vi.spyOn(input, "parseWarehouseUpdate").mockReturnValue({
       ok: true,
-      value: { name: "", active: true },
+      value: { name: "", isDefect: false, active: true },
     });
     try {
       const r = await updateWarehouse(db, "WH-01", { name: "", active: "Y" });

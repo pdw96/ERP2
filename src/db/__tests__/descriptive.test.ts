@@ -121,7 +121,13 @@ describe("품목의 분류 · 비고 — 등록 · 수정", () => {
 describe("품목 목록의 분류 거르기", () => {
   it("분류로 거른다 — 셋은 함께 걸린다(그리고)", async () => {
     expect(codesOf(await listItems(db, { ...all, cls1: "FRAME" }))).toEqual(["RM-0002", "RM-0006"]);
-    expect(codesOf(await listItems(db, { ...all, cls2: "SOP" }))).toEqual(["FG-0001", "RM-0002", "SF-0001", "SF-0002"]);
+    expect(codesOf(await listItems(db, { ...all, cls2: "SOP" }))).toEqual([
+      "FG-0001",
+      "RM-0002",
+      "SF-0001",
+      "SF-0002",
+      "SM-0001",
+    ]);
     expect(codesOf(await listItems(db, { ...all, cls2: "SOP", cls3: "POWER" }))).toEqual([
       "FG-0001",
       "SF-0001",
@@ -149,10 +155,11 @@ describe("품목 목록의 분류 거르기", () => {
 
   it("고르는 목록 — 거르기는 「사용 안 함」까지, 입력 화면은 사용 중인 것과 그 품목의 지금 값", async () => {
     await deactivate("ITEM_CLS1", "WAFER", "웨이퍼");
-    expect(codesOf((await allItemClasses(db)).cls1)).toEqual(["WAFER", "FRAME", "WIRE", "CHEM", "WIP", "IC"]);
-    expect(codesOf((await itemClassOptions(db)).cls1)).toEqual(["FRAME", "WIRE", "CHEM", "WIP", "IC"]);
+    const all8 = ["WAFER", "FRAME", "WIRE", "CHEM", "WIP", "IC", "PACK", "TOOL"];
+    expect(codesOf((await allItemClasses(db)).cls1)).toEqual(all8);
+    expect(codesOf((await itemClassOptions(db)).cls1)).toEqual(all8.slice(1));
     const wafer = (await getItem(db, "RM-0001"))!;
-    expect(codesOf((await itemClassOptions(db, wafer)).cls1)).toEqual(["WAFER", "FRAME", "WIRE", "CHEM", "WIP", "IC"]);
+    expect(codesOf((await itemClassOptions(db, wafer)).cls1)).toEqual(all8);
   });
 });
 
@@ -277,6 +284,10 @@ describe("DB 가 막는 것 — 화면 · 서버를 건너뛴 값", () => {
         unit: "EA",
         inspectIn: false,
         inspectOut: false,
+        lotManaged: true,
+        lotRuleCode: null,
+        defaultInWarehouse: null,
+        defaultOutWarehouse: null,
         leadTimeDays: 0,
         safetyStock: 0,
         minLot: 0,

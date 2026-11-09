@@ -83,6 +83,11 @@ describe("품목 한 줄", () => {
         unit: "EA",
         inspectIn: true,
         inspectOut: false,
+        // 재고 칸 — LOT 관리는 유형의 기본값(원자재 켬), 규칙은 유형의 기본, 창고는 없음.
+        lotManaged: true,
+        lotRuleCode: null,
+        defaultInWarehouse: null,
+        defaultOutWarehouse: null,
         leadTimeDays: 0,
         safetyStock: 0,
         minLot: 0,
@@ -107,7 +112,7 @@ describe("품목 한 줄", () => {
     expect(readItemRow({ spec: "x" }, units)).toEqual({
       ok: false,
       errors: {
-        itemType: "유형을 넣으세요 — 원자재(RM) · 반제품(SF) · 완제품(FG)",
+        itemType: "유형을 넣으세요 — 원자재(RM) · 반제품(SF) · 완제품(FG) · 부자재(SM) · 소모품(CS)",
         unit: "단위를 넣으세요",
         name: "품명을 넣으세요",
       },
@@ -119,7 +124,7 @@ describe("품목 한 줄", () => {
     expect(r).toEqual({
       ok: false,
       errors: {
-        itemType: "유형은 원자재(RM) · 반제품(SF) · 완제품(FG) 가운데 하나입니다",
+        itemType: "유형은 원자재(RM) · 반제품(SF) · 완제품(FG) · 부자재(SM) · 소모품(CS) 가운데 하나입니다",
         procurement: "조달구분은 구매(BUY) · 생산(MAKE) 가운데 하나입니다",
         unit: "「사용 안 함」인 단위입니다 — 다른 단위를 넣으세요",
         inspectIn: "Y · N 가운데 하나로 넣으세요(O · X, 예 · 아니오도 됩니다)",
@@ -242,10 +247,22 @@ describe("불러온 줄(PR J)", () => {
     cls3: null,
     note: "",
     active: false,
+    lotManaged: true,
+    lotRuleCode: null,
+    defaultInWarehouseId: 1,
+    defaultOutWarehouseId: 2,
+  };
+  // 창고는 번호로 들고, 시트에는 코드로 보인다(재고 수불 PR B).
+  const stock = {
+    rules: [],
+    warehouses: [
+      { id: 1, code: "WH-01", name: "자재창고", active: true, isDefect: false },
+      { id: 2, code: "WH-02", name: "생산현장", active: true, isDefect: false },
+    ],
   };
 
   it("불러온 품목을 그대로 다시 읽으면 같은 값이다 — 지금 값인 「사용 안 함」 단위 · 분류도 남는다", () => {
-    const r = readItemEditRow(itemSheetRow(wire), units, classes, wire);
+    const r = readItemEditRow(itemSheetRow(wire, stock), units, classes, wire, stock);
     expect(r).toEqual({
       ok: true,
       value: {
@@ -255,6 +272,10 @@ describe("불러온 줄(PR J)", () => {
         unit: "M",
         inspectIn: true,
         inspectOut: false,
+        lotManaged: true,
+        lotRuleCode: null,
+        defaultInWarehouse: "WH-01",
+        defaultOutWarehouse: "WH-02",
         leadTimeDays: 30,
         safetyStock: 1000.5,
         minLot: 0,

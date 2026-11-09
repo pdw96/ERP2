@@ -237,7 +237,13 @@ export const MODULE_MAP: readonly MapModule[] = [
       { id: "code_groups", name: "공통코드 묶음", table: "code_groups", slice: "기준정보" },
       { id: "codes", name: "공통코드 값", table: "codes", slice: "기준정보" },
       { id: "unit_specs", name: "단위 사양 — 기준 단위 · 배수 · 소수 자릿수", table: "unit_specs", slice: "재고 수불" },
-      { id: "number_rules", name: "번호 규칙 — LOT 번호", slice: "재고 수불" },
+      { id: "number_rules", name: "번호 규칙 — LOT 번호", table: "number_rules", slice: "재고 수불" },
+      {
+        id: "number_rule_seqs",
+        name: "번호 규칙의 일련 — 규칙 · 기간마다",
+        table: "number_rule_seqs",
+        slice: "재고 수불",
+      },
       { id: "company", name: "회사 정보", slice: "인사" },
       { id: "users", name: "사용자 · 메뉴 · 권한", slice: "인사" },
     ],
@@ -283,8 +289,35 @@ export const DATA_MODEL = `erDiagram
     numeric factor "배수 — 기준 단위 몇 개(KG = 1000 G). 자신이면 1"
     smallint decimals "소수 자릿수 0 ~ 3 — 수불 수량이 들어가는 자리"
   }
+  NUMBER_RULES["번호 규칙 number_rules — LOT 번호"] {
+    text code UK "LOT_SF · LOT_FG · LOT_NUM …"
+    text prefix "머리 — 영문 대문자 · 숫자 0 ~ 6자"
+    text separator "구분자 — 없음 · - · _ · ."
+    text date_format "날짜 꼴 — 없음 · YYMMDD · YYYYMMDD · YYMM"
+    smallint seq_digits "일련 자릿수 2 ~ 6"
+    text default_for UK "기본으로 쓰는 유형 — SF · FG 마다 하나"
+  }
+  NUMBER_RULE_SEQS["번호 규칙의 일련 number_rule_seqs"] {
+    text rule_code FK "규칙"
+    text period "기간 — 날짜 꼴로 쓴 날짜(261105 · 2611), 없으면 빈 글자"
+    integer last_seq "마지막으로 낸 일련"
+  }
+  ITEMS["품목 items — 조각 「기준정보」"] {
+    text code UK "RM · SF · FG · SM · CS — 부자재 · 소모품을 더함"
+    boolean lot_managed "LOT 관리"
+    text lot_rule_code FK "LOT 번호 규칙 — 반제품 · 완제품만, 비우면 유형의 기본"
+    integer default_in_warehouse_id FK "기본 입고 창고"
+    integer default_out_warehouse_id FK "기본 출고 창고"
+  }
+  WAREHOUSES["창고 warehouses — 조각 「기준정보」"] {
+    text code UK "WH-01 …"
+    boolean is_defect "불량창고 — 재고가 불량"
+  }
   CODES ||--|| UNIT_SPECS : "단위의 사양"
-  UNIT_SPECS ||--o{ UNIT_SPECS : "기준 단위"`;
+  UNIT_SPECS ||--o{ UNIT_SPECS : "기준 단위"
+  NUMBER_RULES ||--o{ NUMBER_RULE_SEQS : "기간마다 일련"
+  NUMBER_RULES |o--o{ ITEMS : "LOT 번호 규칙"
+  WAREHOUSES |o--o{ ITEMS : "기본 입고 · 출고 창고"`;
 
 // 시스템 구성 — 화면 · 서버 · DB · 자동 검사 · 알림.
 export const SYSTEM = `flowchart LR

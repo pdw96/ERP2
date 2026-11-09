@@ -33,6 +33,11 @@ const item = (over: Partial<Item>): Item => ({
   cls3Group: "ITEM_CLS3",
   cls3: null,
   note: "",
+  lotManaged: true,
+  lotRuleCode: null,
+  defaultInWarehouseId: 1,
+  defaultOutWarehouseId: 2,
+  defaultWarehouseDefect: false,
   active: true,
   createdAt: new Date("2026-11-01T00:00:00Z"),
   // 한국 시각으로는 11월 4일 새벽이다.
@@ -48,12 +53,19 @@ const classes = {
   cls3: [],
 };
 const none = { q: "", includeInactive: false };
+const stock = {
+  rules: [],
+  warehouses: [
+    { id: 1, code: "WH-01", name: "자재창고", active: true, isDefect: false },
+    { id: 2, code: "WH-02", name: "생산현장", active: true, isDefect: false },
+  ],
+};
 
 const table = (rows: Item[], over: { includeInactive?: boolean; narrowed?: boolean } = {}) =>
   render(
     <InquiryTable
       rows={rows}
-      columns={itemInquiryColumns(classes)}
+      columns={itemInquiryColumns(classes, stock)}
       what="품목"
       nameLabel="품명"
       editHref={(code) => `/master/items/${code}`}
@@ -72,6 +84,10 @@ describe("품목 조회의 표", () => {
       "단위",
       "조달구분",
       "검사 대상",
+      "LOT 관리",
+      "LOT 번호 규칙",
+      "기본 입고 창고",
+      "기본 출고 창고",
       "리드타임",
       "안전재고",
       "최소 발주 · 생산량",
@@ -96,6 +112,11 @@ describe("품목 조회의 표", () => {
       "EA",
       "구매",
       "수입",
+      "함",
+      // 원자재는 규칙이 없다 — 거래처 LOT 를 넣는다.
+      "—",
+      "WH-01 자재창고",
+      "WH-02 생산현장",
       "21일",
       "20,000",
       "5,000",
@@ -129,6 +150,20 @@ describe("품목 조회의 표", () => {
   it("긴 비고는 칸 안에서 접고 줄바꿈을 지킨다", () => {
     table([item({ note: "첫 줄\n둘째 줄" })]);
     expect(screen.getByText(/첫 줄/).closest("td")).toHaveClass("whitespace-pre-line", "wrap-anywhere");
+  });
+
+  it("재고 칸 — 반제품 · 완제품의 규칙은 고른 코드나 「유형의 기본」, 기본 창고가 없으면 「—」(재고 수불 PR B)", () => {
+    table([
+      item({ code: "FG-0001", itemType: "FG", lotRuleCode: "LOT_NUM", defaultInWarehouseId: null }),
+      item({ code: "SF-0001", itemType: "SF", lotManaged: false, defaultOutWarehouseId: null }),
+    ]);
+    const cells = (row: number) =>
+      within(screen.getAllByRole("row")[row])
+        .getAllByRole("cell")
+        .slice(5, 9)
+        .map((td) => td.textContent);
+    expect(cells(1)).toEqual(["함", "LOT_NUM", "—", "WH-02 생산현장"]);
+    expect(cells(2)).toEqual(["안 함", "유형의 기본", "WH-01 자재창고", "—"]);
   });
 
   it("공통코드에서 이름을 모르는 분류는 코드 그대로", () => {

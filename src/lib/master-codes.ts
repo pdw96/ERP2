@@ -6,6 +6,9 @@ export const ITEM_TYPES = [
   { code: "RM", name: "원자재" },
   { code: "SF", name: "반제품" },
   { code: "FG", name: "완제품" },
+  // 조각 「재고 수불」 PR B(ADR 0019) — 사 오는 품목 가운데 LOT 없이 들어오는 것.
+  { code: "SM", name: "부자재" },
+  { code: "CS", name: "소모품" },
 ] as const;
 
 export const PROC_TYPES = [
@@ -22,13 +25,25 @@ export const SYSTEM_CODE_GROUPS = {
   PROC_TYPE: PROC_TYPES,
 } as const;
 
-/** 유형을 고르면 붙는 기본값(ADR 0003) — 원자재 → 구매 · 수입검사, 반제품 → 생산, 완제품 → 생산 · 출하검사. 등록 화면에서 바꿀 수 있다. */
-export const ITEM_TYPE_DEFAULTS: Record<ItemType, { procurement: ProcType; inspectIn: boolean; inspectOut: boolean }> =
-  {
-    RM: { procurement: "BUY", inspectIn: true, inspectOut: false },
-    SF: { procurement: "MAKE", inspectIn: false, inspectOut: false },
-    FG: { procurement: "MAKE", inspectIn: false, inspectOut: true },
-  };
+/**
+ * 유형을 고르면 붙는 기본값 — 원자재 → 구매 · 수입검사, 반제품 → 생산, 완제품 → 생산 · 출하검사(ADR 0003),
+ * 부자재 · 소모품 → 구매(ADR 0019). LOT 관리는 원자재 · 반제품 · 완제품만 켬(ADR 0015 · 0019). 등록 화면에서 바꿀 수 있다.
+ */
+export const ITEM_TYPE_DEFAULTS: Record<
+  ItemType,
+  { procurement: ProcType; inspectIn: boolean; inspectOut: boolean; lotManaged: boolean }
+> = {
+  RM: { procurement: "BUY", inspectIn: true, inspectOut: false, lotManaged: true },
+  SF: { procurement: "MAKE", inspectIn: false, inspectOut: false, lotManaged: true },
+  FG: { procurement: "MAKE", inspectIn: false, inspectOut: true, lotManaged: true },
+  SM: { procurement: "BUY", inspectIn: false, inspectOut: false, lotManaged: false },
+  CS: { procurement: "BUY", inspectIn: false, inspectOut: false, lotManaged: false },
+};
+
+/** 만드는 품목 — LOT 번호 규칙을 쓰고, 입고에서 LOT 를 비우면 저절로 붙는다(ADR 0016). 나머지는 사 오는 품목이다. */
+export const MADE_ITEM_TYPES = ["SF", "FG"] as const satisfies readonly ItemType[];
+export type MadeItemType = (typeof MADE_ITEM_TYPES)[number];
+export const isMadeType = (type: string): type is MadeItemType => (MADE_ITEM_TYPES as readonly string[]).includes(type);
 
 export const itemTypeName = (code: string) => ITEM_TYPES.find((t) => t.code === code)?.name ?? code;
 export const procTypeName = (code: string) => PROC_TYPES.find((t) => t.code === code)?.name ?? code;

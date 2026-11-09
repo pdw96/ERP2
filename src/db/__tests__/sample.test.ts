@@ -12,7 +12,7 @@ import {
 } from "@/db/sample";
 import { codeGroups, codes } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { SYSTEM_CODE_GROUPS } from "@/lib/master-codes";
+import { ITEM_TYPE_DEFAULTS, SYSTEM_CODE_GROUPS, type ItemType } from "@/lib/master-codes";
 import { migratedDb } from "./pglite";
 
 describe("샘플 데이터 — 성공 기준 1", () => {
@@ -57,11 +57,14 @@ describe("샘플 데이터 — 성공 기준 1", () => {
     }
   });
 
-  it("품목의 조달구분 · 검사 대상은 유형의 기본값이다(ADR 0003)", () => {
+  it("품목의 조달구분 · 검사 대상 · LOT 관리는 유형의 기본값이다(ADR 0003 · 0019)", () => {
     for (const i of SAMPLE_ITEMS) {
-      expect(i.procurement, i.code).toBe(i.itemType === "RM" ? "BUY" : "MAKE");
-      expect(i.inspectIn ?? false, i.code).toBe(i.itemType === "RM");
-      expect(i.inspectOut ?? false, i.code).toBe(i.itemType === "FG");
+      const d = ITEM_TYPE_DEFAULTS[i.itemType as ItemType];
+      expect(i.procurement, i.code).toBe(d.procurement);
+      expect(i.inspectIn ?? false, i.code).toBe(d.inspectIn);
+      expect(i.inspectOut ?? false, i.code).toBe(d.inspectOut);
+      // LOT 관리는 DB 의 기본값(켬) — 끄는 품목만 적는다.
+      expect(i.lotManaged ?? true, i.code).toBe(d.lotManaged);
     }
   });
 
@@ -125,6 +128,8 @@ describe("설명용 칸의 샘플 — 성공 기준 13(저자 인터뷰 2026-11-
       ["CHEM", "화학재료"],
       ["WIP", "공정품"],
       ["IC", "IC"],
+      ["PACK", "포장재"],
+      ["TOOL", "공구"],
     ]);
     expect(valuesOf("ITEM_CLS2")).toEqual([
       ["SOP", "SOP"],
@@ -142,7 +147,7 @@ describe("설명용 칸의 샘플 — 성공 기준 13(저자 인터뷰 2026-11-
     for (const i of SAMPLE_ITEMS) {
       expect(i.cls1, i.code).toBeTruthy();
       expect(i.cls2, i.code).toBeTruthy();
-      expect(!!i.cls3, i.code).toBe(i.itemType !== "RM");
+      expect(!!i.cls3, i.code).toBe(i.itemType === "SF" || i.itemType === "FG");
     }
   });
 

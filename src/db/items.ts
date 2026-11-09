@@ -1,6 +1,7 @@
 import { and, asc, count, eq, getTableColumns, ilike, inArray, or, type SQL } from "drizzle-orm";
 import { eul } from "@/lib/josa";
 import { ITEM_TYPES, PROC_TYPES, type ItemType } from "@/lib/master-codes";
+import { resolveStock, type StockColumns, type StockLists, type WarehouseChoice } from "@/lib/item-stock";
 import {
   ITEM_CLASSES,
   type ItemClassField,
@@ -8,6 +9,7 @@ import {
   parseNewItem,
   type ItemErrors,
   type ItemField,
+  type ItemInput,
   type ItemValues,
 } from "@/lib/item-input";
 import { itemSheetRow, readItemEditRow, readItemRow, type CodeOption } from "@/lib/sheet-input";
@@ -47,11 +49,12 @@ import {
   type UpdatedRow,
 } from "./master-shared";
 import { nextCode } from "./numbering";
-import { codes, items } from "./schema";
+import { codes, items, numberRules, warehouses } from "./schema";
 import type { Db } from "./types";
 
 // 품목의 목록 · 등록 · 수정(조각 「기준정보」 PR C). 화면(src/app/master/items/)은 이 함수만 부른다.
 // 입력 검사는 src/lib/item-input.ts, 단위 · 분류가 「사용 안 함」이 아닌지 · 등록 상한 · 코드 번호는 여기서 본다.
+// LOT 번호 규칙 · 기본 창고(조각 「재고 수불」 PR B)는 DB 의 목록을 읽어 src/lib/item-stock.ts 의 규칙으로 본다.
 
 /** 품목의 등록 상한(설계 「PR B 를 열기 전에 정한 것」) — 매일 밤 되돌림이 샘플 수로 줄인다. */
 export const ITEM_LIMIT = 2000;
@@ -140,14 +143,15 @@ export async function listItems(db: Db, filter: ItemFilter, scope: SearchScope =
  */
 export async function loadItemsForSheet(db: Db, filter: ItemFilter): Promise<{ rows: SheetRow[]; total: number }> {
   const where = itemWhere(filter, "codeName");
-  const [found, [{ n }]] = await Promise.all([
+  const [found, [{ n }], lists] = await Promise.all([
     db.select(WITH_VERSION).from(items).where(where).orderBy(asc(items.code)).limit(SHEET_MAX_ROWS),
     db.select({ n: count() }).from(items).where(where),
+    stockLists(db),
   ]);
-  return { rows: found.map(itemSheetRow), total: n };
+  return { rows: found.map((i) => itemSheetRow(i, lists)), total: n };
 }
 
-export const ITEM_CODE = /^(RM|SF|FG)-[0-9]{4,}$/;
+export const ITEM_CODE = /^(RM|SF|FG|SM|CS)-[0-9]{4,}$/;
 
 /** 품목 하나와 그 버전 — 한 쿼리로 읽어, 보인 값과 버전이 어긋나지 않는다. */
 export async function getItem(db: Db, code: string): Promise<ItemWithVersion | undefined> {
@@ -196,8 +200,60 @@ export async function itemClassOptions(db: Db, current?: Pick<Item, ItemClassFie
 
 /** 유형마다 지금 등록하면 붙을 코드 — 화면의 안내용이고, 저장할 때 다시 센다. */
 export async function previewCodes(db: Db): Promise<Record<ItemType, string>> {
-  const [RM, SF, FG] = await Promise.all(ITEM_TYPES.map((t) => nextCode(db, t.code)));
-  return { RM, SF, FG };
+  const next = await Promise.all(ITEM_TYPES.map((t) => nextCode(db, t.code)));
+  return Object.fromEntries(ITEM_TYPES.map((t, i) => [t.code, next[i]])) as Record<ItemType, string>;
+}
+
+/** LOT 번호 규칙 · 창고 — 「사용 안 함」까지, 코드 순으로(규칙 50 · 창고 99 안). 재고 칸의 검사와 화면 · 시트가 읽는다. */
+export async function stockLists(db: Db): Promise<StockLists & { warehouses: WarehouseChoice[] }> {
+  const [rules, whs] = await Promise.all([
+    db
+      .select({ code: numberRules.code, name: numberRules.name, active: numberRules.active })
+      .from(numberRules)
+      .orderBy(asc(numberRules.code)),
+    db
+      .select({
+        id: warehouses.id,
+        code: warehouses.code,
+        name: warehouses.name,
+        active: warehouses.active,
+        isDefect: warehouses.isDefect,
+      })
+      .from(warehouses)
+      .orderBy(asc(warehouses.code)),
+  ]);
+  return { rules, warehouses: whs };
+}
+
+/** 저장할 칸 — 입력의 창고 코드를 창고 번호로 바꾼 것. */
+const columnsOf = <T extends ItemInput>(input: T, stock: StockColumns) => {
+  const rest: Omit<T, "defaultInWarehouse" | "defaultOutWarehouse"> & Partial<T> = { ...input };
+  delete rest.defaultInWarehouse;
+  delete rest.defaultOutWarehouse;
+  return { ...rest, ...stock };
+};
+
+/** 품목의 재고 칸을 DB 의 목록에 대어 본다(src/lib/item-stock.ts) — 맞으면 저장할 칸을, 틀리면 errors 에 까닭을 더한다. */
+async function checkStock(
+  db: Db,
+  values: ItemValues,
+  itemType: string | undefined,
+  errors: ItemErrors,
+  current?: Item,
+): Promise<StockColumns | undefined> {
+  const r = resolveStock(
+    {
+      itemType,
+      lotRuleCode: (values.lotRuleCode ?? "").trim() || null,
+      defaultInWarehouse: (values.defaultInWarehouse ?? "").trim() || null,
+      defaultOutWarehouse: (values.defaultOutWarehouse ?? "").trim() || null,
+    },
+    await stockLists(db),
+    current,
+    new Set(Object.keys(errors)),
+  );
+  if (r.ok) return r.value;
+  Object.assign(errors, r.errors);
 }
 
 // ── 등록 · 수정 ─────────────────────────────────────────
@@ -248,12 +304,37 @@ const CONSTRAINT_FIELD: Record<string, ItemField> = {
   items_cls2_fk: "cls2",
   items_cls3_fk: "cls3",
   items_note_length: "note",
+  items_lot_rule_fk: "lotRuleCode",
+  items_lot_rule_made_only: "lotRuleCode",
+  items_default_in_warehouse_fk: "defaultInWarehouse",
+  items_default_out_warehouse_fk: "defaultOutWarehouse",
 };
 
 /** 제약 위반이면 칸의 거절로 바꾸고, 아니면 그대로 던진다(부르는 쪽이 코드만 남기고 알린다). */
+// 칸의 말이 「받을 수 없는 값」보다 더 알려 줄 수 있는 제약 — 기본 창고의 참조는 고른 뒤 그 창고가 불량창고로 바뀌었을 때 걸린다(리뷰 1회차).
+const DEFECT_SINCE = "그 사이 불량창고로 바뀐 창고입니다 — 다른 창고를 고르세요";
+const CONSTRAINT_MESSAGE: Record<string, string> = {
+  items_default_in_warehouse_fk: DEFECT_SINCE,
+  items_default_out_warehouse_fk: DEFECT_SINCE,
+};
+const rejectedField = (error: unknown): ItemErrors | undefined => {
+  const name = constraintOf(error) ?? "";
+  const field = CONSTRAINT_FIELD[name];
+  return field && { [field]: CONSTRAINT_MESSAGE[name] ?? "받을 수 없는 값입니다" };
+};
+
+/** 그 창고를 기본 입고 · 출고 창고로 쓰는 품목의 수 — 창고를 불량창고로 바꿀 수 있는지 본다(src/db/warehouses.ts). */
+export async function itemsDefaultingTo(db: Db, warehouseId: number): Promise<number> {
+  const [{ n }] = await db
+    .select({ n: count() })
+    .from(items)
+    .where(or(eq(items.defaultInWarehouseId, warehouseId), eq(items.defaultOutWarehouseId, warehouseId)));
+  return n;
+}
+
 function asRejection(error: unknown, values: ItemValues): SaveResult {
-  const field = CONSTRAINT_FIELD[constraintOf(error) ?? ""];
-  if (field) return { ok: false, errors: { [field]: "받을 수 없는 값입니다" }, values };
+  const errors = rejectedField(error);
+  if (errors) return { ok: false, errors, values };
   if (pgError(error).code === "23514")
     return { ok: false, errors: {}, formError: "받을 수 없는 값이 있습니다 — 수량은 0 이상입니다", values };
   throw error;
@@ -264,7 +345,9 @@ export async function createItem(db: Db, values: ItemValues): Promise<SaveResult
   const parsed = parseNewItem(values);
   const errors: ItemErrors = parsed.ok ? {} : { ...parsed.errors };
   await checkCodes(db, values, errors);
-  if (!parsed.ok || Object.keys(errors).length) return { ok: false, errors, values };
+  const itemType = ITEM_TYPES.some((t) => t.code === values.itemType) ? values.itemType : undefined;
+  const stock = await checkStock(db, values, itemType, errors);
+  if (!parsed.ok || !stock || Object.keys(errors).length) return { ok: false, errors, values };
 
   try {
     const r = await registerWithCode(db, {
@@ -273,7 +356,7 @@ export async function createItem(db: Db, values: ItemValues): Promise<SaveResult
       limit: ITEM_LIMIT,
       prefix: parsed.value.itemType,
       uniqueConstraint: "items_code_unique",
-      insert: (tx, code) => tx.insert(items).values({ ...parsed.value, code }),
+      insert: (tx, code) => tx.insert(items).values({ ...columnsOf(parsed.value, stock), code }),
     });
     if (r.ok) return r;
     return {
@@ -304,13 +387,14 @@ export async function updateItem(
   const parsed = parseItemUpdate(values);
   const errors: ItemErrors = parsed.ok ? {} : { ...parsed.errors };
   await checkCodes(db, values, errors, current);
-  if (!parsed.ok || Object.keys(errors).length) return { ok: false, errors, values };
+  const stock = await checkStock(db, values, current.itemType, errors, current);
+  if (!parsed.ok || !stock || Object.keys(errors).length) return { ok: false, errors, values };
   if (version !== undefined && !VERSION.test(version)) return { ok: false, errors: {}, formError: STALE, values };
 
   try {
     const done = await db
       .update(items)
-      .set({ ...parsed.value, updatedAt: touched() })
+      .set({ ...columnsOf(parsed.value, stock), updatedAt: touched() })
       .where(
         version === undefined
           ? eq(items.id, current.id)
@@ -341,10 +425,11 @@ function rowRejection(r: RegisteredRow | UpdatedRow): SheetErrors {
   if (r.reason === "limit") return { [ROW_ERROR]: limitMessage("품목", ITEM_LIMIT) };
   if (r.reason === "collided") return { [ROW_ERROR]: COLLIDED };
   if (r.reason === "stale") return { [ROW_ERROR]: STALE_ROW };
-  const field = CONSTRAINT_FIELD[constraintOf(r.error) ?? ""];
-  return field
-    ? { [field]: "받을 수 없는 값입니다" }
-    : { [ROW_ERROR]: "받을 수 없는 값이 있습니다 — 수량은 0 이상입니다" };
+  return (
+    (rejectedField(r.error) as SheetErrors | undefined) ?? {
+      [ROW_ERROR]: "받을 수 없는 값이 있습니다 — 수량은 0 이상입니다",
+    }
+  );
 }
 
 /** 시트가 고치려는 품목들 — 코드의 꼴이 맞는 것만 DB 에 묻는다. */
@@ -363,25 +448,47 @@ async function itemsByCode(db: Db, rows: readonly SheetRow[]): Promise<Map<strin
  */
 export async function saveItemRows(db: Db, rows: readonly SheetRow[]): Promise<SheetResult> {
   const filled = rows.filter((r) => !isBlankRow(r));
-  const [units, classes, currents] = await Promise.all([allUnits(db), allItemClasses(db), itemsByCode(db, filled)]);
+  const [units, classes, currents, lists] = await Promise.all([
+    allUnits(db),
+    allItemClasses(db),
+    itemsByCode(db, filled),
+    stockLists(db),
+  ]);
   const seen = new Map<string, number>();
   for (const r of filled) if (isLoadedRow(r)) seen.set(r[CODE_KEY], (seen.get(r[CODE_KEY]) ?? 0) + 1);
 
   type Read =
     | { row: SheetRow; kind: "rejected"; errors: SheetErrors }
-    | { row: SheetRow; kind: "new"; value: ReturnType<typeof readItemRow> & { ok: true } }
-    | { row: SheetRow; kind: "edit"; current: Item; value: ReturnType<typeof readItemEditRow> & { ok: true } };
+    | { row: SheetRow; kind: "new"; value: ReturnType<typeof readItemRow> & { ok: true }; stock: StockColumns }
+    | {
+        row: SheetRow;
+        kind: "edit";
+        current: Item;
+        value: ReturnType<typeof readItemEditRow> & { ok: true };
+        stock: StockColumns;
+      };
+  // 재고 칸은 읽은 값(코드)을 DB 의 목록에 대어 본다 — 한 건 등록 · 수정과 같은 규칙(src/lib/item-stock.ts).
+  const stockOf = (input: ItemInput, itemType: string, current?: Item) =>
+    resolveStock({ ...input, itemType }, lists, current);
   const read: Read[] = filled.map((row) => {
     if (!isLoadedRow(row)) {
-      const r = readItemRow(row, units, classes);
-      return r.ok ? { row, kind: "new", value: r } : { row, kind: "rejected", errors: r.errors };
+      const r = readItemRow(row, units, classes, lists);
+      if (!r.ok) return { row, kind: "rejected", errors: r.errors };
+      const stock = stockOf(r.value, r.value.itemType);
+      return stock.ok
+        ? { row, kind: "new", value: r, stock: stock.value }
+        : { row, kind: "rejected", errors: stock.errors };
     }
     const current = currents.get(row[CODE_KEY]);
     if (!current) return { row, kind: "rejected", errors: { [ROW_ERROR]: "없는 품목입니다 — 이 행을 지우세요" } };
     if (seen.get(row[CODE_KEY])! > 1) return { row, kind: "rejected", errors: { [ROW_ERROR]: DUPLICATE_ROW } };
     if (!VERSION.test(row[VERSION_KEY] ?? "")) return { row, kind: "rejected", errors: { [ROW_ERROR]: STALE_ROW } };
-    const r = readItemEditRow(row, units, classes, current);
-    return r.ok ? { row, kind: "edit", current, value: r } : { row, kind: "rejected", errors: r.errors };
+    const r = readItemEditRow(row, units, classes, current, lists);
+    if (!r.ok) return { row, kind: "rejected", errors: r.errors };
+    const stock = stockOf(r.value, current.itemType, current);
+    return stock.ok
+      ? { row, kind: "edit", current, value: r, stock: stock.value }
+      : { row, kind: "rejected", errors: stock.errors };
   });
   const edits = read.flatMap((r) => (r.kind === "edit" ? [r] : []));
   const news = read.flatMap((r) => (r.kind === "new" ? [r] : []));
@@ -394,7 +501,7 @@ export async function saveItemRows(db: Db, rows: readonly SheetRow[]): Promise<S
           (
             await sp
               .update(items)
-              .set({ ...r.value.value, updatedAt: touched() })
+              .set({ ...columnsOf(r.value.value, r.stock), updatedAt: touched() })
               .where(and(eq(items.id, r.current.id), versionIs(items.updatedAt, r.row[VERSION_KEY])))
               .returning({ id: items.id })
           ).length,
@@ -408,7 +515,7 @@ export async function saveItemRows(db: Db, rows: readonly SheetRow[]): Promise<S
           uniqueConstraint: "items_code_unique",
           rows: news.map((r) => ({
             prefix: r.value.value.itemType,
-            insert: (sp: Db, code: string) => sp.insert(items).values({ ...r.value.value, code }),
+            insert: (sp: Db, code: string) => sp.insert(items).values({ ...columnsOf(r.value.value, r.stock), code }),
           })),
         })
       : [];

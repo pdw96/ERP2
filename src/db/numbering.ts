@@ -9,6 +9,8 @@ const SERIES = {
   RM: { table: items, digits: 4 },
   SF: { table: items, digits: 4 },
   FG: { table: items, digits: 4 },
+  SM: { table: items, digits: 4 },
+  CS: { table: items, digits: 4 },
   WH: { table: warehouses, digits: 2 },
   BP: { table: partners, digits: 4 },
 } as const;

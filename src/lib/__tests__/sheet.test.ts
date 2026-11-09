@@ -235,9 +235,15 @@ describe("불러온 줄(PR J)", () => {
     name: "웨이퍼",
   };
 
-  it("코드 · 버전은 칸이 아니다 — 머리글 줄 · 칸 순서에 들지 않고, 사용 여부는 맨 뒤 칸이다", () => {
+  it("코드 · 버전은 칸이 아니다 — 머리글 줄 · 칸 순서에 들지 않고, 사용 여부는 PR J 의 맨 뒤 칸 그대로 · 재고 칸 넷은 그 뒤", () => {
     expect(headerLine(items).split("\t")).not.toContain("코드");
-    expect(items.at(-1)!.label).toBe("사용 여부");
+    expect(items.slice(-5).map((c) => c.label)).toEqual([
+      "사용 여부",
+      "LOT 관리",
+      "LOT 번호 규칙",
+      "기본 입고 창고",
+      "기본 출고 창고",
+    ]);
     expect(partnerSheetColumns([]).at(-1)!.label).toBe("사용 여부");
     expect(items.filter((c) => c.fixed).map((c) => c.label)).toEqual(["유형"]);
   });

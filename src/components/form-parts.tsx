@@ -232,3 +232,29 @@ export function Check({
     </div>
   );
 }
+
+/** 고르기 단추 하나 — 라디오를 숨기고 이름표를 단추처럼 보인다(유형 · 조달구분 · 구분자 따위). */
+export function Choice({
+  name,
+  value,
+  checked,
+  onChange,
+  children,
+}: {
+  name: string;
+  value: string;
+  checked: boolean;
+  onChange: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <label
+      className={`cursor-pointer rounded border px-4 py-2 has-focus-visible:outline-2 has-focus-visible:outline-machine ${
+        checked ? "border-machine bg-machine font-semibold text-white" : "border-rule bg-white hover:border-machine"
+      }`}
+    >
+      <input type="radio" name={name} value={value} checked={checked} onChange={onChange} className="sr-only" />
+      {children}
+    </label>
+  );
+}

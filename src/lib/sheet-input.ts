@@ -1,5 +1,6 @@
 import { parseItemUpdate, parseNewItem, type ItemUpdateInput, type NewItemInput } from "./item-input";
 import { ITEM_CLASSES, type ItemClassField, type ItemValues } from "./item-fields";
+import { warehouseCodeOf, type StockLists } from "./item-stock";
 import { ITEM_TYPE_DEFAULTS, ITEM_TYPES, KOREA, PROC_TYPES, type ItemType } from "./master-codes";
 import {
   PARTNER_TEXT_FIELDS,
@@ -52,6 +53,7 @@ const AMBIGUOUS = (what: string) => `같은 이름의 ${what}가 둘 이상입�
 type ItemCurrent = { itemType: string; unit: string; cls1: string | null; cls2: string | null; cls3: string | null };
 type Classes = Readonly<Record<ItemClassField, readonly CodeOption[]>>;
 const NO_CLASSES: Classes = { cls1: [], cls2: [], cls3: [] };
+const NO_STOCK: StockLists = { rules: [], warehouses: [] };
 
 const NEW_ONLY_ACTIVE = "새 행은 사용(Y)으로만 등록합니다 — 비우거나 Y 를 넣으세요";
 
@@ -70,7 +72,13 @@ function readActive(text: string, editing: boolean, errors: SheetErrors): "Y" | 
  * 품목 한 줄의 글자를 한 건 등록 · 수정의 값으로 — 이름 · 코드 · Y/N · 빈 칸의 기본값. current 가 있으면 불러온 줄의 고침이다:
  * 유형은 그 품목의 것(시트의 유형 칸은 보지 않는다), 「사용 안 함」 단위 · 분류도 그 품목의 지금 값이면 남는다(한 건 수정과 같다).
  */
-function itemRowValues(row: SheetRow, units: readonly CodeOption[], classes: Classes, current?: ItemCurrent) {
+function itemRowValues(
+  row: SheetRow,
+  units: readonly CodeOption[],
+  classes: Classes,
+  lists: StockLists,
+  current?: ItemCurrent,
+) {
   const errors: SheetErrors = {};
   const values: ItemValues = {
     name: row.name ?? "",
@@ -115,7 +123,26 @@ function itemRowValues(row: SheetRow, units: readonly CodeOption[], classes: Cla
     else values[field] = picked.code;
   }
 
-  for (const key of ["inspectIn", "inspectOut"] as const) {
+  // 재고 칸(조각 「재고 수불」 PR B) — 규칙 · 창고는 이름 · 코드 둘 다 받고, 비우면 규칙은 유형의 기본 · 창고는 없음.
+  // 「사용 안 함」 · 불량창고 · 만드는 품목인지는 한 건 등록과 같은 검사(src/lib/item-stock.ts)가 본다.
+  const rule = pickOption(row.lotRuleCode ?? "", lists.rules);
+  if (rule === "blank") values.lotRuleCode = "";
+  else if (rule === "ambiguous") errors.lotRuleCode = AMBIGUOUS("LOT 번호 규칙");
+  else if (rule === "none")
+    errors.lotRuleCode = "번호 규칙에 없는 규칙입니다 — 「시스템 관리 › 번호 규칙」의 코드를 넣으세요";
+  else values.lotRuleCode = rule.code;
+  for (const [key, label] of [
+    ["defaultInWarehouse", "기본 입고 창고"],
+    ["defaultOutWarehouse", "기본 출고 창고"],
+  ] as const) {
+    const picked = pickOption(row[key] ?? "", lists.warehouses);
+    if (picked === "blank") values[key] = "";
+    else if (picked === "ambiguous") errors[key] = AMBIGUOUS(label);
+    else if (picked === "none") errors[key] = "없는 창고입니다 — 창고 코드(WH-01 꼴)나 이름을 넣으세요";
+    else values[key] = picked.code;
+  }
+
+  for (const key of ["inspectIn", "inspectOut", "lotManaged"] as const) {
     const v = yesNo(row[key] ?? "");
     if (v === "bad") errors[key] = YES_NO_BAD;
     else if (v === "blank") values[key] = defaults?.[key] ? "on" : "off";
@@ -140,8 +167,9 @@ export function readItemRow(
   row: SheetRow,
   units: readonly CodeOption[],
   classes: Classes = NO_CLASSES,
+  lists: StockLists = NO_STOCK,
 ): { ok: true; value: NewItemInput } | { ok: false; errors: SheetErrors } {
-  const { values, errors, procBlank } = itemRowValues(row, units, classes);
+  const { values, errors, procBlank } = itemRowValues(row, units, classes, lists);
   const parsed = parseNewItem(values);
   if (!parsed.ok) mergeItemErrors(errors, parsed.errors, procBlank);
   if (parsed.ok && Object.keys(errors).length === 0) return { ok: true, value: parsed.value };
@@ -154,8 +182,9 @@ export function readItemEditRow(
   units: readonly CodeOption[],
   classes: Classes,
   current: ItemCurrent,
+  lists: StockLists = NO_STOCK,
 ): { ok: true; value: ItemUpdateInput } | { ok: false; errors: SheetErrors } {
-  const { values, errors, procBlank } = itemRowValues(row, units, classes, current);
+  const { values, errors, procBlank } = itemRowValues(row, units, classes, lists, current);
   const parsed = parseItemUpdate(values);
   if (!parsed.ok) mergeItemErrors(errors, parsed.errors, procBlank);
   if (parsed.ok && Object.keys(errors).length === 0) return { ok: true, value: parsed.value };
@@ -240,26 +269,33 @@ const yn = (b: boolean) => (b ? "Y" : "N");
  * 기존 품목을 시트의 한 줄로 — 고르는 값은 코드로 둔다(이름은 겹칠 수 있어 그대로 저장하면 거절될 수 있다).
  * 숨은 칸에 코드와 불러온 때의 버전을 둔다.
  */
-export function itemSheetRow(item: {
-  code: string;
-  version: string;
-  itemType: string;
-  name: string;
-  spec: string;
-  unit: string;
-  procurement: string;
-  inspectIn: boolean;
-  inspectOut: boolean;
-  leadTimeDays: number;
-  safetyStock: number;
-  minLot: number;
-  lotMultiple: number;
-  cls1: string | null;
-  cls2: string | null;
-  cls3: string | null;
-  note: string;
-  active: boolean;
-}): SheetRow {
+export function itemSheetRow(
+  item: {
+    code: string;
+    version: string;
+    itemType: string;
+    name: string;
+    spec: string;
+    unit: string;
+    procurement: string;
+    inspectIn: boolean;
+    inspectOut: boolean;
+    leadTimeDays: number;
+    safetyStock: number;
+    minLot: number;
+    lotMultiple: number;
+    cls1: string | null;
+    cls2: string | null;
+    cls3: string | null;
+    note: string;
+    active: boolean;
+    lotManaged: boolean;
+    lotRuleCode: string | null;
+    defaultInWarehouseId: number | null;
+    defaultOutWarehouseId: number | null;
+  },
+  lists: Pick<StockLists, "warehouses"> = NO_STOCK,
+): SheetRow {
   return {
     [CODE_KEY]: item.code,
     [VERSION_KEY]: item.version,
@@ -279,6 +315,10 @@ export function itemSheetRow(item: {
     cls3: item.cls3 ?? "",
     note: item.note,
     active: yn(item.active),
+    lotManaged: yn(item.lotManaged),
+    lotRuleCode: item.lotRuleCode ?? "",
+    defaultInWarehouse: warehouseCodeOf(lists, item.defaultInWarehouseId),
+    defaultOutWarehouse: warehouseCodeOf(lists, item.defaultOutWarehouseId),
   };
 }
 

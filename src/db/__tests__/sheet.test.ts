@@ -5,6 +5,7 @@ import { saveItemRows, getItem, ITEM_LIMIT } from "@/db/items";
 import { savePartnerRows, getPartner, PARTNER_LIMIT } from "@/db/partners";
 import { REGISTER_LOCK, registerRowsWithCode } from "@/db/master-shared";
 import { resetToSample } from "@/db/reset";
+import { SAMPLE_ITEMS } from "@/db/sample";
 import { items, partners } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { ROW_ERROR, type SheetRow } from "@/lib/sheet";
@@ -48,7 +49,7 @@ describe("품목 시트", () => {
       { row: item({ name: "솔더 볼 C", unit: "BOX" }), errors: { unit: "공통코드의 단위(UNIT)에 없는 단위입니다" } },
     ]);
     expect(r.formError).toBeUndefined();
-    expect(await itemCount()).toBe(14);
+    expect(await itemCount()).toBe(SAMPLE_ITEMS.length + 4);
   });
 
   it("고르는 값은 이름 · 코드 둘 다 받는다", async () => {
@@ -116,7 +117,7 @@ describe("품목 시트", () => {
   });
 
   it(`등록 상한 ${ITEM_LIMIT}개를 넘는 줄은 저장되지 않고 남는다`, async () => {
-    const filler = Array.from({ length: ITEM_LIMIT - 12 }, (_, i) => ({
+    const filler = Array.from({ length: ITEM_LIMIT - SAMPLE_ITEMS.length - 2 }, (_, i) => ({
       code: `RM-${String(i + 100).padStart(4, "0")}`,
       name: "채움",
       itemType: "RM",
@@ -257,7 +258,7 @@ describe("여러 줄의 등록 — 줄마다 저장점", () => {
     expect(r[0]).toEqual({ ok: true, code: "RM-0007" });
     expect(r[1]).toMatchObject({ ok: false, reason: "rejected" });
     expect(r[2]).toEqual({ ok: true, code: "RM-0008" });
-    expect(await itemCount()).toBe(12);
+    expect(await itemCount()).toBe(SAMPLE_ITEMS.length + 2);
   });
 
   it("제약 위반이 아닌 실패는 던지고, 아무것도 저장하지 않는다", async () => {
@@ -271,7 +272,7 @@ describe("여러 줄의 등록 — 줄마다 저장점", () => {
         rows: [raw("가"), boom],
       }),
     ).rejects.toThrow("끊김");
-    expect(await itemCount()).toBe(10);
+    expect(await itemCount()).toBe(SAMPLE_ITEMS.length);
   });
 });
 
@@ -318,6 +319,6 @@ describe("저장한 뒤의 실패 — 리뷰 1회차", () => {
         afterAll: () => Promise.reject(new Error("끊김")),
       }),
     ).rejects.toThrow("끊김");
-    expect(await itemCount()).toBe(10);
+    expect(await itemCount()).toBe(SAMPLE_ITEMS.length);
   });
 });

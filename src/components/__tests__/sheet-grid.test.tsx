@@ -36,7 +36,7 @@ const save = async () => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("시트", () => {
-  it("칸은 한 건 등록 화면의 순서이고(PR H 의 분류 · 비고, PR J 의 사용 여부는 지금 칸의 뒤), 처음에 다섯 줄이다", () => {
+  it("칸은 한 건 등록 화면의 순서이고(PR H 의 분류 · 비고, PR J 의 사용 여부, 재고 수불 PR B 의 재고 칸 넷은 지금 칸의 뒤), 처음에 다섯 줄이다", () => {
     renderItems();
     const heads = screen.getAllByRole("columnheader").map((th) => th.textContent);
     // 코드는 붙여넣는 칸이 아니라 줄 번호 옆에 보이기만 한다(PR J).
@@ -58,6 +58,10 @@ describe("시트", () => {
       "소분류",
       "비고",
       "사용 여부",
+      "LOT 관리",
+      "LOT 번호 규칙",
+      "기본 입고 창고",
+      "기본 출고 창고",
     ]);
     expect(dataRows()).toHaveLength(5);
   });

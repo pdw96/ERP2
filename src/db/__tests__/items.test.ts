@@ -17,7 +17,7 @@ import { codes, items } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { ItemValues } from "@/lib/item-input";
 import { ITEM_TYPE_DEFAULTS } from "@/lib/master-codes";
-import { SAMPLE_CODES } from "@/db/sample";
+import { SAMPLE_CODES, SAMPLE_ITEMS } from "@/db/sample";
 import { migratedDb } from "./pglite";
 
 // 품목의 목록 · 등록 · 수정 — PGlite 에서 실제 SQL 로(설계 ⑤).
@@ -66,6 +66,8 @@ const deactivateUnit = (code: string) => db.update(codes).set({ active: false })
 describe("목록", () => {
   it("기본 보기 — 사용 중인 품목을 코드 순으로", async () => {
     expect(codesOf(await listItems(db, all))).toEqual([
+      "CS-0001",
+      "CS-0002",
       "FG-0001",
       "FG-0002",
       "RM-0001",
@@ -76,6 +78,8 @@ describe("목록", () => {
       "RM-0006",
       "SF-0001",
       "SF-0002",
+      "SM-0001",
+      "SM-0002",
     ]);
   });
 
@@ -92,7 +96,8 @@ describe("목록", () => {
 
   it("유형 · 조달구분으로 거른다", async () => {
     expect(codesOf(await listItems(db, { ...all, itemType: "SF" }))).toEqual(["SF-0001", "SF-0002"]);
-    expect(await listItems(db, { ...all, procurement: "BUY" })).toHaveLength(6);
+    // 구매 — 원자재 여섯과 부자재 · 소모품 넷(ADR 0019).
+    expect(await listItems(db, { ...all, procurement: "BUY" })).toHaveLength(10);
     await db.update(items).set({ procurement: "BUY" }).where(eq(items.code, "SF-0001"));
     expect(codesOf(await listItems(db, { ...all, itemType: "SF", procurement: "BUY" }))).toEqual(["SF-0001"]);
   });
@@ -189,13 +194,13 @@ describe("등록", () => {
       errors: { name: "품명을 넣으세요", unit: "단위를 고르세요" },
       values: { ...newRm, name: "", unit: "" },
     });
-    expect(await db.select().from(items)).toHaveLength(10);
+    expect(await db.select().from(items)).toHaveLength(SAMPLE_ITEMS.length);
   });
 
   it("공통코드에 없는 단위는 거절한다", async () => {
     const r = await createItem(db, { ...newRm, unit: "BOX" });
     expect(r).toMatchObject({ ok: false, errors: { unit: "단위를 고르세요" } });
-    expect(await db.select().from(items)).toHaveLength(10);
+    expect(await db.select().from(items)).toHaveLength(SAMPLE_ITEMS.length);
   });
 
   it("공통코드에 더한 단위는 받는다", async () => {
@@ -207,7 +212,7 @@ describe("등록", () => {
     await deactivateUnit("G");
     const r = await createItem(db, { ...newRm, unit: "G" });
     expect(r).toMatchObject({ ok: false, errors: { unit: "「사용 안 함」인 단위입니다 — 다른 단위를 고르세요" } });
-    expect(await db.select().from(items)).toHaveLength(10);
+    expect(await db.select().from(items)).toHaveLength(SAMPLE_ITEMS.length);
   });
 
   it("두 사람이 같은 번호를 받으면 다음 번호로 한 번 더 넣는다", async () => {
@@ -227,14 +232,14 @@ describe("등록", () => {
     try {
       const r = await createItem(db, newRm);
       expect(r).toMatchObject({ ok: false, formError: expect.stringContaining("다시 저장하세요") });
-      expect(await db.select().from(items)).toHaveLength(10);
+      expect(await db.select().from(items)).toHaveLength(SAMPLE_ITEMS.length);
     } finally {
       spy.mockRestore();
     }
   });
 
   it(`등록 상한 ${ITEM_LIMIT}개에 닿으면 저장하지 않는다`, async () => {
-    const filler = Array.from({ length: ITEM_LIMIT - 10 }, (_, i) => ({
+    const filler = Array.from({ length: ITEM_LIMIT - SAMPLE_ITEMS.length }, (_, i) => ({
       code: `RM-${String(i + 100).padStart(4, "0")}`,
       name: "채움",
       itemType: "RM",
@@ -247,7 +252,7 @@ describe("등록", () => {
     expect(await db.select().from(items)).toHaveLength(ITEM_LIMIT);
   });
   it(`동시에 등록해도 상한 ${ITEM_LIMIT}개를 넘지 않는다 — 세기 · 번호 · 넣기가 잠금 안에서 차례로`, async () => {
-    const filler = Array.from({ length: ITEM_LIMIT - 11 }, (_, i) => ({
+    const filler = Array.from({ length: ITEM_LIMIT - SAMPLE_ITEMS.length - 1 }, (_, i) => ({
       code: `RM-${String(i + 100).padStart(4, "0")}`,
       name: "채움",
       itemType: "RM",
@@ -339,6 +344,12 @@ describe("입력 화면이 고르는 값", () => {
   });
 
   it("유형마다 등록하면 붙을 코드", async () => {
-    expect(await previewCodes(db)).toEqual({ RM: "RM-0007", SF: "SF-0003", FG: "FG-0003" });
+    expect(await previewCodes(db)).toEqual({
+      RM: "RM-0007",
+      SF: "SF-0003",
+      FG: "FG-0003",
+      SM: "SM-0003",
+      CS: "CS-0003",
+    });
   });
 });

@@ -9,6 +9,11 @@ export const ITEM_FIELDS = [
   "unit",
   "inspectIn",
   "inspectOut",
+  // 재고(조각 「재고 수불」 PR B, ADR 0015 · 0016) — 창고는 코드(WH-01 꼴)로 주고받는다.
+  "lotManaged",
+  "lotRuleCode",
+  "defaultInWarehouse",
+  "defaultOutWarehouse",
   "leadTimeDays",
   "safetyStock",
   "minLot",

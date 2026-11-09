@@ -194,11 +194,13 @@ export const AREAS: readonly Area[] = [
   {
     href: "/system",
     label: "시스템 관리",
-    summary: "공통코드, 회사 정보, 사용자 · 메뉴와 권한",
+    summary: "공통코드 · 번호 규칙, 회사 정보, 사용자 · 메뉴와 권한",
     groups: [
       {
         menus: [
           { label: "공통코드", slice: "기준정보", href: "/system/codes" },
+          // LOT 번호의 규칙만 든다(ADR 0016). 전표 · 발주 · 작업지시 번호를 얹을지는 그 조각의 착공에서 정한다.
+          { label: "번호 규칙", slice: "재고 수불", href: "/system/number-rules" },
           { label: "회사 정보", slice: "인사" },
           { label: "사용자", slice: "인사" },
           // 메뉴를 DB 의 표로 두어 권한이 가리킨다 — 처음 값은 이 목록을 옮긴다(마스터플랜 범위 변경 2026-11-05).

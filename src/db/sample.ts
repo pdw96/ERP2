@@ -1,5 +1,5 @@
-import { ITEM_TYPES, PROC_TYPES } from "@/lib/master-codes";
-import type { codeGroups, codes, items, partners, unitSpecs, warehouses } from "./schema";
+import { ITEM_TYPES, PROC_TYPES, type ItemType } from "@/lib/master-codes";
+import type { codeGroups, codes, items, numberRules, partners, unitSpecs, warehouses } from "./schema";
 
 // 샘플 데이터 — 가상 반도체 후공정(패키징) 회사. 매일 밤 되돌림(ADR 0004)과 첫 배포가 이 값으로 테이블을 채운다.
 // 실제 회사명 · 실제 사람의 정보를 쓰지 않는다(CLAUDE.md). 거래처 이름은 「(가상)」으로 시작하고,
@@ -46,6 +46,9 @@ export const SAMPLE_CODES: New<typeof codes>[] = [
   { groupCode: "ITEM_CLS1", code: "CHEM", name: "화학재료", sortOrder: 40 },
   { groupCode: "ITEM_CLS1", code: "WIP", name: "공정품", sortOrder: 50 },
   { groupCode: "ITEM_CLS1", code: "IC", name: "IC", sortOrder: 60 },
+  // 부자재 · 소모품의 종류(조각 「재고 수불」 PR B — 저자 판정 2026-11-06). 마이그레이션 0008 이 데이터가 있는 DB 에 같은 값을 넣는다.
+  { groupCode: "ITEM_CLS1", code: "PACK", name: "포장재", sortOrder: 70 },
+  { groupCode: "ITEM_CLS1", code: "TOOL", name: "공구", sortOrder: 80 },
   { groupCode: "ITEM_CLS2", code: "SOP", name: "SOP", sortOrder: 10 },
   { groupCode: "ITEM_CLS2", code: "QFN", name: "QFN", sortOrder: 20 },
   { groupCode: "ITEM_CLS2", code: "COMMON", name: "공용", sortOrder: 30 },
@@ -73,8 +76,47 @@ export const SAMPLE_WAREHOUSES: New<typeof warehouses>[] = [
   { code: "WH-01", name: "자재창고" },
   { code: "WH-02", name: "생산현장" },
   { code: "WH-03", name: "제품창고" },
-  { code: "WH-04", name: "불량창고" },
+  // 불량창고 표시(조각 「재고 수불」 PR B, ADR 0015) — 이 창고의 재고는 불량이라 가용에 들지 않는다.
+  { code: "WH-04", name: "불량창고", isDefect: true },
 ];
+
+/**
+ * LOT 번호 규칙(조각 「재고 수불」 PR B, ADR 0016 · 저자 판정 2026-11-06) — 반제품 · 완제품의 기본 규칙 둘과,
+ * 품목에서 다른 규칙을 고르는 것을 보이는 숫자형 하나(센서 IC 가 고른다). 마이그레이션 0008 이 데이터가 있는 DB 에 같은 값을 넣는다.
+ */
+export const SAMPLE_NUMBER_RULES: New<typeof numberRules>[] = [
+  {
+    code: "LOT_SF",
+    name: "반제품 LOT",
+    prefix: "SF",
+    separator: "-",
+    dateFormat: "YYMMDD",
+    seqDigits: 3,
+    defaultFor: "SF",
+  },
+  {
+    code: "LOT_FG",
+    name: "완제품 LOT",
+    prefix: "FG",
+    separator: "-",
+    dateFormat: "YYMMDD",
+    seqDigits: 3,
+    defaultFor: "FG",
+  },
+  { code: "LOT_NUM", name: "숫자형 LOT", prefix: "", separator: "", dateFormat: "YYMMDD", seqDigits: 3 },
+];
+
+/**
+ * 유형마다 품목의 기본 입고 · 출고 창고(저자 판정 2026-11-06 — 설계 「PR B 를 열기 전에 정한 것」). 사 오는 품목은 자재창고에 들어와
+ * 생산현장으로 옮긴 뒤 현장에서 나간다. 되돌림이 창고 코드를 번호(id)로 바꿔 샘플 품목에 넣는다.
+ */
+export const SAMPLE_DEFAULT_WAREHOUSES: Record<ItemType, { in: string; out: string }> = {
+  RM: { in: "WH-01", out: "WH-02" },
+  SM: { in: "WH-01", out: "WH-02" },
+  CS: { in: "WH-01", out: "WH-02" },
+  SF: { in: "WH-02", out: "WH-02" },
+  FG: { in: "WH-03", out: "WH-03" },
+};
 
 export const SAMPLE_PARTNERS: New<typeof partners>[] = [
   {
@@ -179,9 +221,12 @@ export const SAMPLE_PARTNERS: New<typeof partners>[] = [
 ];
 
 // 원자재 → 구매 · 수입검사, 반제품 · 완제품 → 생산, 완제품 → 출하검사(ADR 0003 의 기본값).
+// 부자재 · 소모품 → 구매 · LOT 관리 끔 · 검사 끔(ADR 0019). LOT 관리는 DB 의 기본값(켬)이라 끄는 것만 적는다.
 const rm = { itemType: "RM", procurement: "BUY", inspectIn: true } as const;
 const sf = { itemType: "SF", procurement: "MAKE" } as const;
 const fg = { itemType: "FG", procurement: "MAKE", inspectOut: true } as const;
+const sm = { itemType: "SM", procurement: "BUY", lotManaged: false } as const;
+const cs = { itemType: "CS", procurement: "BUY", lotManaged: false } as const;
 
 export const SAMPLE_ITEMS: New<typeof items>[] = [
   {
@@ -313,5 +358,60 @@ export const SAMPLE_ITEMS: New<typeof items>[] = [
     safetyStock: 1000,
     minLot: 500,
     lotMultiple: 500,
+    // 품목에서 다른 LOT 규칙을 고른다 — 숫자만인 꼴(ADR 0016, 저자 판정 2026-11-06).
+    lotRuleCode: "LOT_NUM",
+  },
+  // 부자재 · 소모품(조각 「재고 수불」 PR B — 저자 판정 2026-11-06). 마이그레이션 0008 이 데이터가 있는 DB 에 같은 값을 넣는다.
+  {
+    ...sm,
+    code: "SM-0001",
+    cls1: "PACK",
+    cls2: "SOP",
+    name: "캐리어 테이프",
+    spec: "폭 12mm · SOP-8 용",
+    unit: "M",
+    leadTimeDays: 7,
+    safetyStock: 2000,
+    minLot: 1000,
+    lotMultiple: 500,
+  },
+  {
+    ...sm,
+    code: "SM-0002",
+    cls1: "PACK",
+    cls2: "COMMON",
+    name: "방습백",
+    spec: "알루미늄 · 건조제 동봉",
+    unit: "EA",
+    leadTimeDays: 7,
+    safetyStock: 500,
+    minLot: 500,
+    lotMultiple: 100,
+  },
+  {
+    ...cs,
+    code: "CS-0001",
+    cls1: "TOOL",
+    cls2: "COMMON",
+    name: "다이싱 블레이드",
+    spec: "두께 30µm",
+    unit: "EA",
+    leadTimeDays: 14,
+    safetyStock: 10,
+    minLot: 5,
+    lotMultiple: 5,
+  },
+  {
+    ...cs,
+    code: "CS-0002",
+    cls1: "CHEM",
+    cls2: "COMMON",
+    name: "세정용 IPA",
+    spec: "순도 99.9%",
+    unit: "L",
+    leadTimeDays: 5,
+    safetyStock: 20,
+    minLot: 20,
+    lotMultiple: 20,
   },
 ];
