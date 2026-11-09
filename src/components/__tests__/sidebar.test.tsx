@@ -83,7 +83,7 @@ describe("Sidebar", () => {
     }
   });
 
-  it("재고를 열면 「재고 기준정보 › 창고」와 「수불관리 › 수불 등록」은 링크, 나머지 수불관리는 준비 중으로 보인다", () => {
+  it("재고를 열면 「재고 기준정보 › 창고」와 「수불관리 › 수불 등록 · 수불 이력 · 수불부」는 링크, 재고 실사는 준비 중으로 보인다", () => {
     nav.pathname = "/inventory/warehouses/WH-01";
     render(<Sidebar />);
     const menu = within(screen.getByRole("list", { name: "재고 메뉴" }));
@@ -91,6 +91,8 @@ describe("Sidebar", () => {
     expect(menu.getByRole("link", { name: "창고" })).toHaveAttribute("href", "/inventory/warehouses");
     expect(menu.getByRole("link", { name: "창고" })).toHaveAttribute("aria-current", "page");
     expect(menu.getByRole("link", { name: "수불 등록" })).toHaveAttribute("href", "/inventory/moves");
+    expect(menu.getByRole("link", { name: "수불 이력" })).toHaveAttribute("href", "/inventory/history");
+    expect(menu.getByRole("link", { name: "수불부" })).toHaveAttribute("href", "/inventory/ledger");
     expect(menu.getByText("재고 실사").parentElement).toHaveTextContent("재고 실사준비 중");
     expect(screen.getByRole("link", { name: /^재고/ })).not.toHaveTextContent("준비 중");
   });
