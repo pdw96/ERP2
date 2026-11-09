@@ -218,6 +218,13 @@ export async function updateCode(
   try {
     // 값과 사양을 한 트랜잭션에서 고친다 — 버전이 어긋나면 둘 다 바뀌지 않는다.
     return await db.transaction(async (tx): Promise<CodeSaveResult> => {
+      // 자릿수를 줄이는 것은 그 단위의 수불 수량이 다 맞을 때만이다(ADR 0017) — 재고의 잠금을 쥐고 본다. 잠금은 표를 고치기 전에
+      // 쥔다 — 수불 저장 · 매일 밤 되돌림과 같은 차례(잠금 → 표). 고친 뒤 쥐면 되돌림과 교착한다(PR C 리뷰 2회차).
+      if (decimals?.ok) {
+        await lockStock(tx);
+        if (!(await unitQuantitiesFit(tx, current.code, decimals.value.decimals)))
+          throw new DecimalsMisfit(decimals.value.decimals);
+      }
       const done = await tx
         .update(codes)
         .set({ ...parsed.value, updatedAt: touched() })
@@ -228,12 +235,6 @@ export async function updateCode(
         )
         .returning({ id: codes.id });
       if (done.length === 0) return { ok: false, errors: {}, formError: STALE, values };
-      // 자릿수를 줄이는 것은 그 단위의 수불 수량이 다 맞을 때만이다(ADR 0017) — 재고의 잠금을 쥐고 본다.
-      if (decimals?.ok) {
-        await lockStock(tx);
-        if (!(await unitQuantitiesFit(tx, current.code, decimals.value.decimals)))
-          throw new DecimalsMisfit(decimals.value.decimals);
-      }
       if (decimals?.ok)
         await tx
           .update(unitSpecs)
