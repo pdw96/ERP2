@@ -311,9 +311,30 @@ const CONSTRAINT_FIELD: Record<string, ItemField> = {
 };
 
 /** 제약 위반이면 칸의 거절로 바꾸고, 아니면 그대로 던진다(부르는 쪽이 코드만 남기고 알린다). */
+// 칸의 말이 「받을 수 없는 값」보다 더 알려 줄 수 있는 제약 — 기본 창고의 참조는 고른 뒤 그 창고가 불량창고로 바뀌었을 때 걸린다(리뷰 1회차).
+const DEFECT_SINCE = "그 사이 불량창고로 바뀐 창고입니다 — 다른 창고를 고르세요";
+const CONSTRAINT_MESSAGE: Record<string, string> = {
+  items_default_in_warehouse_fk: DEFECT_SINCE,
+  items_default_out_warehouse_fk: DEFECT_SINCE,
+};
+const rejectedField = (error: unknown): ItemErrors | undefined => {
+  const name = constraintOf(error) ?? "";
+  const field = CONSTRAINT_FIELD[name];
+  return field && { [field]: CONSTRAINT_MESSAGE[name] ?? "받을 수 없는 값입니다" };
+};
+
+/** 그 창고를 기본 입고 · 출고 창고로 쓰는 품목의 수 — 창고를 불량창고로 바꿀 수 있는지 본다(src/db/warehouses.ts). */
+export async function itemsDefaultingTo(db: Db, warehouseId: number): Promise<number> {
+  const [{ n }] = await db
+    .select({ n: count() })
+    .from(items)
+    .where(or(eq(items.defaultInWarehouseId, warehouseId), eq(items.defaultOutWarehouseId, warehouseId)));
+  return n;
+}
+
 function asRejection(error: unknown, values: ItemValues): SaveResult {
-  const field = CONSTRAINT_FIELD[constraintOf(error) ?? ""];
-  if (field) return { ok: false, errors: { [field]: "받을 수 없는 값입니다" }, values };
+  const errors = rejectedField(error);
+  if (errors) return { ok: false, errors, values };
   if (pgError(error).code === "23514")
     return { ok: false, errors: {}, formError: "받을 수 없는 값이 있습니다 — 수량은 0 이상입니다", values };
   throw error;
@@ -404,10 +425,11 @@ function rowRejection(r: RegisteredRow | UpdatedRow): SheetErrors {
   if (r.reason === "limit") return { [ROW_ERROR]: limitMessage("품목", ITEM_LIMIT) };
   if (r.reason === "collided") return { [ROW_ERROR]: COLLIDED };
   if (r.reason === "stale") return { [ROW_ERROR]: STALE_ROW };
-  const field = CONSTRAINT_FIELD[constraintOf(r.error) ?? ""];
-  return field
-    ? { [field]: "받을 수 없는 값입니다" }
-    : { [ROW_ERROR]: "받을 수 없는 값이 있습니다 — 수량은 0 이상입니다" };
+  return (
+    (rejectedField(r.error) as SheetErrors | undefined) ?? {
+      [ROW_ERROR]: "받을 수 없는 값이 있습니다 — 수량은 0 이상입니다",
+    }
+  );
 }
 
 /** 시트가 고치려는 품목들 — 코드의 꼴이 맞는 것만 DB 에 묻는다. */

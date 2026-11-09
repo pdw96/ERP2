@@ -116,6 +116,8 @@ export const warehouses = pgTable(
     ...timestamps(),
   },
   (t) => [
+    // 품목의 기본 창고가 (번호, 불량창고 아님)을 가리키는 열쇠 — 불량창고를 기본 창고로 두는 것을 DB 가 막는다(ADR 0015).
+    unique("warehouses_id_defect_unique").on(t.id, t.isDefect),
     check("warehouses_code_format", sql`${t.code} ~ '^WH-[0-9]{2,}$'`),
     check("warehouses_name_length", sql`char_length(${t.name}) between 1 and 50`),
   ],
@@ -211,6 +213,9 @@ export const items = pgTable(
     lotRuleCode: text("lot_rule_code"),
     defaultInWarehouseId: integer("default_in_warehouse_id"),
     defaultOutWarehouseId: integer("default_out_warehouse_id"),
+    // 늘 false — 기본 창고의 참조가 (창고 번호, 이 칸)으로 창고의 (번호, 불량창고)를 가리킨다. 불량창고는 가리킬 수 없고,
+    // 기본 창고인 창고를 불량창고로 바꾸는 쓰기도 DB 가 거절한다 — 동시에 저장해도 깨지지 않는다(리뷰 1회차).
+    defaultWarehouseDefect: boolean("default_warehouse_defect").notNull().default(false),
     active: boolean("active").notNull().default(true),
     ...timestamps(),
   },
@@ -222,14 +227,15 @@ export const items = pgTable(
     }),
     foreignKey({
       name: "items_default_in_warehouse_fk",
-      columns: [t.defaultInWarehouseId],
-      foreignColumns: [warehouses.id],
+      columns: [t.defaultInWarehouseId, t.defaultWarehouseDefect],
+      foreignColumns: [warehouses.id, warehouses.isDefect],
     }),
     foreignKey({
       name: "items_default_out_warehouse_fk",
-      columns: [t.defaultOutWarehouseId],
-      foreignColumns: [warehouses.id],
+      columns: [t.defaultOutWarehouseId, t.defaultWarehouseDefect],
+      foreignColumns: [warehouses.id, warehouses.isDefect],
     }),
+    check("items_default_warehouse_defect_fixed", sql`${t.defaultWarehouseDefect} = false`),
     check("items_lot_rule_made_only", sql`${t.lotRuleCode} is null or ${t.itemType} in ('SF', 'FG')`),
     foreignKey({
       name: "items_item_type_fk",

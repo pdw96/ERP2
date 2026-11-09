@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { asc, eq } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createItem, getItem, loadItemsForSheet, saveItemRows, stockLists, updateItem } from "@/db/items";
 import { resetToSample } from "@/db/reset";
 import { SAMPLE_DEFAULT_WAREHOUSES, SAMPLE_ITEMS } from "@/db/sample";
@@ -345,5 +345,66 @@ describe("창고의 불량창고 표시(ADR 0015, 성공 기준 6)", () => {
     expect(await updateWarehouse(db, "WH-04", { name: "불량창고 A", isDefect: "on", active: "Y" })).toMatchObject({
       ok: true,
     });
+  });
+});
+
+describe("불량창고와 기본 창고를 동시에 저장해도(리뷰 1회차) — DB 가 막는다", () => {
+  it("DB — 불량창고를 기본 창고로 두는 쓰기, 기본 창고인 창고를 불량창고로 바꾸는 쓰기를 거절한다", async () => {
+    const defect = await whId("WH-04");
+    expect(
+      await rejection(db.update(items).set({ defaultInWarehouseId: defect }).where(eq(items.code, "RM-0001"))),
+    ).toMatchObject({ constraint: "items_default_in_warehouse_fk" });
+    expect(
+      await rejection(db.update(items).set({ defaultOutWarehouseId: defect }).where(eq(items.code, "RM-0001"))),
+    ).toMatchObject({ constraint: "items_default_out_warehouse_fk" });
+    expect(
+      await rejection(db.update(warehouses).set({ isDefect: true }).where(eq(warehouses.code, "WH-01"))),
+    ).toMatchObject({ code: "23503" });
+    expect(await getWarehouse(db, "WH-01")).toMatchObject({ isDefect: false });
+    // 늘 false 인 칸을 바꿔 불량창고를 가리키는 길도 막는다.
+    expect(
+      await rejection(db.update(items).set({ defaultWarehouseDefect: true }).where(eq(items.code, "RM-0001"))),
+    ).toMatchObject({ constraint: "items_default_warehouse_defect_fixed" });
+  });
+
+  it("창고 — 서버가 센 뒤 그 사이 누가 기본 창고로 골랐으면 DB 가 막고, 그 칸의 말로 알린다", async () => {
+    const shared = await import("@/db/items");
+    // 센 때는 0 개였다 — 저장하려는 사이 품목들이 이 창고를 기본 창고로 골랐다.
+    const spy = vi.spyOn(shared, "itemsDefaultingTo").mockResolvedValue(0);
+    try {
+      const before = await getWarehouse(db, "WH-01");
+      const r = await updateWarehouse(db, "WH-01", { name: "자재창고", isDefect: "on", active: "Y" });
+      expect(r).toMatchObject({
+        ok: false,
+        errors: { isDefect: expect.stringContaining("기본 입고 · 출고 창고라 불량창고로 바꿀 수 없습니다") },
+      });
+      expect(await getWarehouse(db, "WH-01")).toEqual(before);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("품목 — 고른 뒤 그 사이 창고가 불량창고로 바뀌었으면 DB 가 막고, 그 칸의 말로 알린다", async () => {
+    const stock = await import("@/lib/item-stock");
+    const defect = await whId("WH-04");
+    // 대어 본 때는 불량창고가 아니었다 — 저장하려는 사이 불량창고로 바뀌었다.
+    const spy = vi.spyOn(stock, "resolveStock").mockReturnValue({
+      ok: true,
+      value: { lotRuleCode: null, defaultInWarehouseId: defect, defaultOutWarehouseId: null },
+    });
+    try {
+      const before = await allItems();
+      expect(await createItem(db, newItem())).toMatchObject({
+        ok: false,
+        errors: { defaultInWarehouse: "그 사이 불량창고로 바뀐 창고입니다 — 다른 창고를 고르세요" },
+      });
+      const r = await saveItemRows(db, [{ itemType: "완제품", name: "시트 IC", unit: "EA" }]);
+      expect(r.rejected.map((x) => x.errors)).toEqual([
+        { defaultInWarehouse: "그 사이 불량창고로 바뀐 창고입니다 — 다른 창고를 고르세요" },
+      ]);
+      expect(await allItems()).toEqual(before);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

@@ -37,6 +37,7 @@ const item = (over: Partial<Item>): Item => ({
   lotRuleCode: null,
   defaultInWarehouseId: 1,
   defaultOutWarehouseId: 2,
+  defaultWarehouseDefect: false,
   active: true,
   createdAt: new Date("2026-11-01T00:00:00Z"),
   // 한국 시각으로는 11월 4일 새벽이다.

@@ -1,4 +1,4 @@
-import { and, asc, count, eq, getTableColumns, ilike, or, type SQL } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, ilike, or, type SQL } from "drizzle-orm";
 import {
   parseNewWarehouse,
   parseWarehouseUpdate,
@@ -23,7 +23,8 @@ import {
   type Params,
 } from "./master-shared";
 import { nextCode } from "./numbering";
-import { items, warehouses } from "./schema";
+import { itemsDefaultingTo } from "./items";
+import { warehouses } from "./schema";
 import type { Db } from "./types";
 
 // 창고의 목록 · 등록 · 수정(조각 「기준정보」 PR D). 화면(src/app/inventory/warehouses/)은 이 함수만 부른다.
@@ -90,7 +91,19 @@ export type WarehouseSaveResult =
 const CONSTRAINT_FIELD: Record<string, WarehouseField> = { warehouses_name_length: "name" };
 
 /** 제약 위반이면 칸의 거절로 바꾸고, 아니면 그대로 던진다(부르는 쪽이 코드만 남기고 알린다). */
+// 품목의 기본 창고 참조가 (번호, 불량창고 아님)을 가리켜, 기본 창고인 창고를 불량창고로 바꾸는 쓰기를 DB 가 거절한다 —
+// 서버가 센 뒤 그 사이 누가 그 창고를 기본 창고로 고른 때다(리뷰 1회차).
+const DEFAULT_REFERENCE = new Set(["items_default_in_warehouse_fk", "items_default_out_warehouse_fk"]);
+
 function asRejection(error: unknown, values: WarehouseValues): WarehouseSaveResult {
+  if (DEFAULT_REFERENCE.has(constraintOf(error) ?? ""))
+    return {
+      ok: false,
+      errors: {
+        isDefect: "품목의 기본 입고 · 출고 창고라 불량창고로 바꿀 수 없습니다 — 그 품목의 기본 창고를 먼저 바꾸세요",
+      },
+      values,
+    };
   const field = CONSTRAINT_FIELD[constraintOf(error) ?? ""];
   if (field) return { ok: false, errors: { [field]: "받을 수 없는 값입니다" }, values };
   throw error;
@@ -126,7 +139,8 @@ const DEFAULT_OF_ITEMS = (n: number) =>
 
 /**
  * 수정 — 코드는 바꾸지 않는다. 창고명 · 불량창고 표시 · 사용 여부.
- * 품목의 기본 창고인 창고는 불량창고로 바꾸지 못한다 — 기본 창고는 불량창고가 아니다(ADR 0015).
+ * 품목의 기본 창고인 창고는 불량창고로 바꾸지 못한다 — 기본 창고는 불량창고가 아니다(ADR 0015). 서버가 세어 알리고,
+ * 센 뒤 그 사이 누가 그 창고를 고른 때는 DB 의 참조가 막는다(리뷰 1회차).
  * 재고가 있는 창고의 표시를 막는 것은 재고(잔액)의 표가 생기는 PR C 가 더한다(설계 「2026-11-06 — PR B 에서 정한 것」).
  * version 은 화면을 연 때의 버전이다 — 그 사이 다른 사람이 고쳤으면 저장하지 않는다(저자 판정 2026-11-05 — 품목 · 거래처와 같다).
  * 주지 않으면 버전을 보지 않는다(서버 안의 시험용 — 화면의 입구는 늘 준다).
@@ -142,10 +156,7 @@ export async function updateWarehouse(
   const parsed = parseWarehouseUpdate(values);
   if (!parsed.ok) return { ok: false, errors: parsed.errors, values };
   if (parsed.value.isDefect && !current.isDefect) {
-    const [{ n }] = await db
-      .select({ n: count() })
-      .from(items)
-      .where(or(eq(items.defaultInWarehouseId, current.id), eq(items.defaultOutWarehouseId, current.id)));
+    const n = await itemsDefaultingTo(db, current.id);
     if (n > 0) return { ok: false, errors: { isDefect: DEFAULT_OF_ITEMS(n) }, values };
   }
   if (version !== undefined && !VERSION.test(version)) return { ok: false, errors: {}, formError: STALE, values };

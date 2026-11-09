@@ -33,6 +33,7 @@ const item = (over: Partial<Item>): Item => ({
   lotRuleCode: null,
   defaultInWarehouseId: null,
   defaultOutWarehouseId: null,
+  defaultWarehouseDefect: false,
   active: true,
   createdAt: new Date(),
   updatedAt: new Date(),

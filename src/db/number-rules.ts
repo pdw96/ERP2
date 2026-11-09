@@ -84,6 +84,7 @@ const CONSTRAINT_FIELD: Record<string, NumberRuleField> = {
   number_rules_seq_digits_range: "seqDigits",
   number_rules_default_for_values: "defaultFor",
   number_rules_default_active: "active",
+  number_rules_default_for_unique: "defaultFor",
 };
 
 function asRejection(error: unknown, values: NumberRuleValues): NumberRuleSaveResult {
@@ -148,6 +149,9 @@ export async function updateNumberRule(
   if (version !== undefined && !VERSION.test(version)) return { ok: false, errors: {}, formError: STALE, values };
   try {
     return await db.transaction(async (tx): Promise<NumberRuleSaveResult> => {
+      // 등록과 같은 잠금 — 기본을 옮기는 고침 · 등록이 차례로 돈다. 아니면 두 사람이 같은 유형의 기본을 동시에 옮길 때
+      // 뒤의 것이 앞의 새 기본을 보지 못해 「유형마다 기본 하나」에 걸린다(리뷰 1회차).
+      await tx.execute(sql`select pg_advisory_xact_lock(${REGISTER_LOCK.numberRules})`);
       const done = await tx
         .update(numberRules)
         .set({ ...parsed.value, defaultFor: current.defaultFor, updatedAt: touched() })
