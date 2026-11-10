@@ -271,31 +271,35 @@ describe("저장(작성 중)", () => {
     expect(errors[0][field as "item"]).toContain(message);
   });
 
-  it("「사용 안 함」 품목은 더하지 못하고, 장부에서 불려 온 줄은 그대로 저장된다", async () => {
+  it("「사용 안 함」 품목은 더하지 못하고(더한 줄 표시를 지워 보내도), 장부에서 불려 온 줄은 그대로 저장된다", async () => {
     await db.update(items).set({ active: false }).where(eq(items.code, "CS-0001"));
     const sheet = await open("WH-01");
     expect(sheet.lines.some((l) => l.itemCode === "CS-0001")).toBe(true);
     await saved(saveCount(db, valuesOf(sheet, linesOf(sheet)), TODAY));
-    const sheet2 = await open("WH-02");
-    const r = await expectRejected(() =>
-      saveCount(
-        db,
-        valuesOf(sheet2, [
-          ...linesOf(sheet2).filter((l) => l.item !== "CS-0001"),
-          { item: "CS-0001", counted: "1", added: "1" },
-        ]),
-        TODAY,
-      ),
-    );
-    expect(Object.values(r.errors.lines)[0].item).toContain("사용 안 함");
+    // 불량창고의 장부에는 CS-0001 이 없다 — 더한 줄이다
+    const sheet2 = await open("WH-04");
+    for (const added of ["1", ""]) {
+      const r = await expectRejected(() =>
+        saveCount(db, valuesOf(sheet2, [...linesOf(sheet2), { item: "CS-0001", counted: "1", added }]), TODAY),
+      );
+      expect(Object.values(r.errors.lines)[0].item).toContain("사용 안 함");
+    }
   });
 
-  it("더한 줄은 상태를 보내도 늘 가용이다(저자 판정)", async () => {
+  it("더한 줄은 늘 가용이다 — 장부에 없는 줄을 검사대기로 보내면 거절한다(저자 판정, 대장 NC-20)", async () => {
     const sheet = await open("WH-01");
-    const r = await saved(
+    const qc = await expectRejected(() =>
       saveCount(
         db,
         valuesOf(sheet, [...linesOf(sheet), { item: "SF-0001", lot: "", status: "QC", counted: "3", added: "1" }]),
+        TODAY,
+      ),
+    );
+    expect(Object.values(qc.errors.lines)[0].row).toContain("검사대기");
+    const r = await saved(
+      saveCount(
+        db,
+        valuesOf(sheet, [...linesOf(sheet), { item: "SF-0001", lot: "", counted: "3", added: "1" }]),
         TODAY,
       ),
     );
@@ -327,6 +331,91 @@ describe("저장(작성 중)", () => {
     const sheet = await open("WH-01");
     const r = await expectRejected(() => saveCount(db, valuesOf(sheet, linesOf(sheet)), TODAY));
     expect(r.formError).toContain("500개까지");
+  });
+});
+
+describe("장부 줄인지는 화면이 아니라 서버가 정한다(대장 NC-20)", () => {
+  it("새 실사에서 장부 줄을 빼고 저장하면 거절한다 — 빠진 줄을 보인다", async () => {
+    const sheet = await open("WH-01");
+    const r = await expectRejected(() =>
+      saveCount(
+        db,
+        valuesOf(
+          sheet,
+          linesOf(sheet).filter((l) => l.item !== "RM-0001"),
+        ),
+        TODAY,
+      ),
+    );
+    expect(r.formError).toContain("장부 줄 1개가 빠졌습니다(RM-0001 MW-A1021)");
+  });
+
+  it("작성 중 실사를 다시 저장하며 장부 줄을 빼면 거절한다 — 불려 온 줄은 지우지 못한다", async () => {
+    const sheet = await open("WH-03");
+    expect(sheet.code).toBe("PI-20261108-002");
+    const r = await expectRejected(() =>
+      saveCount(
+        db,
+        valuesOf(
+          sheet,
+          linesOf(sheet).filter((l) => l.item !== "FG-0001"),
+        ),
+        TODAY,
+      ),
+    );
+    expect(r.formError).toContain("장부 줄 1개가 빠졌습니다(FG-0001 FG-261102-001)");
+    expect(r.formError).toContain("지우지 못합니다");
+  });
+
+  it("더한 줄 표시는 믿지 않는다 — 장부 줄에 붙여도 장부 줄, 장부에 없는 줄에서 지워도 더한 줄로 남는다", async () => {
+    const sheet = await open("WH-04");
+    const forged = [
+      ...linesOf(sheet).map((l) => ({ ...l, added: "1" })),
+      { item: "RM-0003", lot: "NW-25-0799", counted: "5", added: "" },
+    ];
+    const r = await saved(saveCount(db, valuesOf(sheet, forged), TODAY));
+    const view = (await getCount(db, r.code))!;
+    expect(view.lineRows.map((l) => [l.itemCode, l.added])).toEqual([
+      ["SF-0002", false],
+      ["RM-0003", true],
+    ]);
+    // 다시 저장해도 같다 — 작성 중 실사의 장부 줄은 처음 저장한 장부에서 온다
+    const reopened = await open("WH-04");
+    const again = await saved(
+      saveCount(
+        db,
+        valuesOf(
+          reopened,
+          linesOf(reopened).map((l) => ({ ...l, added: l.added ? "" : "1" })),
+        ),
+        TODAY,
+      ),
+    );
+    expect((await getCount(db, again.code))!.lineRows.map((l) => [l.itemCode, l.added])).toEqual([
+      ["SF-0002", false],
+      ["RM-0003", true],
+    ]);
+  });
+
+  it("연 뒤 처음 저장하기 전에 그 창고에 장부 줄이 새로 생기면 처음 저장을 거절한다 — 화면을 새로 연다", async () => {
+    const sheet = await open("WH-04");
+    expect(
+      (
+        await saveMove(
+          db,
+          {
+            moveDate: TODAY,
+            moveType: "XFER",
+            lines: [{ item: "SM-0001", lot: "", warehouse: "WH-02", toWarehouse: "WH-04", qty: "1" }],
+          },
+          TODAY,
+        )
+      ).ok,
+    ).toBe(true);
+    const r = await expectRejected(() => saveCount(db, valuesOf(sheet, linesOf(sheet)), TODAY));
+    expect(r.formError).toContain("장부가 바뀌었습니다");
+    const fresh = await open("WH-04");
+    await saved(saveCount(db, valuesOf(fresh, linesOf(fresh)), TODAY));
   });
 });
 

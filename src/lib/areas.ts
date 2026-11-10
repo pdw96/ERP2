@@ -102,7 +102,7 @@ export const AREAS: readonly Area[] = [
           { label: "창고별 재고", slice: "재고 현황" },
           { label: "LOT별 재고", slice: "재고 현황" },
           { label: "예상재고", slice: "재고 현황" },
-          { label: "할당 현황", slice: "재고 현황" },
+          { label: "할당 현황", slice: "작업지시" },
         ],
       },
     ],

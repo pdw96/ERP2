@@ -277,13 +277,47 @@ export type CountSaveResult =
   | { ok: true; code: string; version: string }
   | { ok: false; errors: CountErrors; formError?: string; values: CountValues };
 
-type ResolvedLine = ParsedCountLine & { itemId: number };
+type ResolvedLine = ParsedCountLine & { itemId: number; added: boolean };
 
-/** 실사 줄을 DB 에 대어 본다 — 품목 · LOT · 상태 · 자릿수. 잠금 안에서 부른다. */
+/** 장부 줄의 키(품목 · LOT · 상태)와 그 이름(「RM-0001 MW-A1021」) — 저장한 실사가 지워서는 안 되는 줄이다. */
+type BookKeys = Map<string, string>;
+
+const bookLabel = (code: string, lot: string, status: string) =>
+  [code, lot, status === "QC" ? "검사대기" : ""].filter(Boolean).join(" ");
+
+/** 새 실사의 장부 줄 — 지금 그 창고의 잔액(0 보다 큰 것). 화면이 연 장부와 같아야 한다. */
+async function bookKeysNow(tx: Db, warehouseId: number): Promise<BookKeys> {
+  const rows = await tx
+    .select({ itemId: stockBalances.itemId, code: items.code, lot: stockBalances.lot, status: stockBalances.status })
+    .from(stockBalances)
+    .innerJoin(items, eq(items.id, stockBalances.itemId))
+    .where(and(eq(stockBalances.warehouseId, warehouseId), gt(stockBalances.qty, 0)));
+  return new Map(rows.map((r) => [keyOf(r.itemId, r.lot, r.status), bookLabel(r.code, r.lot, r.status)]));
+}
+
+/** 작성 중 실사의 장부 줄 — 처음 저장할 때 장부에서 불려 온 줄(더한 줄이 아닌 것). */
+async function bookKeysOfCount(tx: Db, countId: number): Promise<BookKeys> {
+  const rows = await tx
+    .select({
+      itemId: stockCountLines.itemId,
+      code: items.code,
+      lot: stockCountLines.lot,
+      status: stockCountLines.status,
+    })
+    .from(stockCountLines)
+    .innerJoin(items, eq(items.id, stockCountLines.itemId))
+    .where(and(eq(stockCountLines.countId, countId), eq(stockCountLines.added, false)));
+  return new Map(rows.map((r) => [keyOf(r.itemId, r.lot, r.status), bookLabel(r.code, r.lot, r.status)]));
+}
+
+/**
+ * 실사 줄을 DB 에 대어 본다 — 품목 · LOT · 상태 · 자릿수. 잠금 안에서 부른다.
+ * 장부 줄인지(`added`)는 화면이 보낸 값이 아니라 장부 줄의 키로 정한다(대장 NC-20) — 장부에 없는 줄은 더한 줄이라 「사용」인 품목 · 가용만 받는다.
+ */
 async function resolveCountLines(
   tx: Db,
-  warehouseId: number,
   lines: ParsedCountLine[],
+  book: BookKeys,
 ): Promise<{ ok: true; lines: ResolvedLine[] } | { ok: false; lines: Record<number, CountLineErrors> }> {
   const codes = [...new Set(lines.map((l) => l.itemCode))];
   const itemRows = codes.length
@@ -293,30 +327,26 @@ async function resolveCountLines(
         .leftJoin(unitSpecs, eq(unitSpecs.unit, items.unit))
         .where(inArray(items.code, codes))
     : [];
-  // 검사대기 줄은 장부에서 불려 온 줄뿐이다 — 그 키의 잔액 행이 있어야 한다(이 조각은 검사대기를 만들지 않는다, 설계 ②).
-  const qcRows = await tx
-    .select({ itemId: stockBalances.itemId, lot: stockBalances.lot })
-    .from(stockBalances)
-    .where(and(eq(stockBalances.warehouseId, warehouseId), eq(stockBalances.status, "QC")));
   const errors: Record<number, CountLineErrors> = {};
   const out: ResolvedLine[] = [];
   for (const l of lines) {
     const e: CountLineErrors = {};
     const item = itemRows.find((i) => i.code === l.itemCode);
+    const added = !item || !book.has(keyOf(item.id, l.lot, l.status));
     if (!item) e.item = "없는 품목입니다 — 목록에서 고르세요";
     else {
-      if (l.added && !item.active) e.item = "「사용 안 함」인 품목입니다 — 다른 품목을 고르세요";
+      if (added && !item.active) e.item = "「사용 안 함」인 품목입니다 — 다른 품목을 고르세요";
       if (!item.lotManaged && l.lot) e.lot = "LOT 관리를 하지 않는 품목입니다 — LOT 를 비우세요";
       else if (item.lotManaged && !l.lot && !isMadeType(item.itemType)) e.lot = "사 오는 품목은 LOT 를 넣어 주세요";
       const decimals = item.decimals ?? 3;
       if (l.counted !== null && l.countedDecimals > decimals)
         e.counted =
           decimals === 0 ? `${eun(item.unit)} 정수로 넣습니다` : `${eun(item.unit)} 소수 ${decimals}자리까지 넣습니다`;
-      if (l.status === "QC" && !qcRows.some((q) => q.itemId === item.id && q.lot === l.lot))
-        e.row = "장부에 없는 검사대기 줄입니다 — 더한 줄은 가용입니다";
+      // 검사대기 줄은 장부에서 불려 온 줄뿐이다 — 이 조각은 검사대기를 만들지 않고, 더한 줄은 늘 가용이다(저자 판정, 설계 ②).
+      if (added && l.status === "QC") e.row = "장부에 없는 검사대기 줄입니다 — 더한 줄은 가용입니다";
     }
     if (Object.keys(e).length || !item) errors[l.index] = e;
-    else out.push({ ...l, itemId: item.id });
+    else out.push({ ...l, itemId: item.id, added });
   }
   return Object.keys(errors).length ? { ok: false, lines: errors } : { ok: true, lines: out };
 }
@@ -344,6 +374,7 @@ export async function saveCount(db: Db, values: CountValues, today: string): Pro
       let countId: number;
       let code: string;
       let oldLines = 0;
+      let book: BookKeys;
       if (p.code) {
         const [head] = await tx
           .select({ id: stockCounts.id, status: stockCounts.status, warehouseId: stockCounts.warehouseId })
@@ -363,6 +394,7 @@ export async function saveCount(db: Db, values: CountValues, today: string): Pro
           .select({ n: count() })
           .from(stockCountLines)
           .where(eq(stockCountLines.countId, head.id));
+        book = await bookKeysOfCount(tx, head.id);
       } else {
         if (!wh.active) return fail("「사용 안 함」인 창고입니다 — 다른 창고를 고르세요");
         const [draft] = await tx
@@ -372,6 +404,7 @@ export async function saveCount(db: Db, values: CountValues, today: string): Pro
         if (draft) return fail(`이 창고에 작성 중인 실사 ${draft.code} 가 있습니다 — 화면을 새로 열어 이어 넣으세요`);
         const [{ n }] = await tx.select({ n: count() }).from(stockCounts);
         if (n >= COUNT_LIMIT) return fail(limitMessage("재고 실사", COUNT_LIMIT));
+        book = await bookKeysNow(tx, wh.id);
         const prefix = `PI-${today.replaceAll("-", "")}-`;
         const [{ max }] = await tx
           .select({ max: sql<number | string | null>`max(substring(${stockCounts.code} from 13)::int)` })
@@ -391,8 +424,20 @@ export async function saveCount(db: Db, values: CountValues, today: string): Pro
       if (allLines - oldLines + p.lines.length > COUNT_LINE_LIMIT)
         throw new CountRollback(fail(limitMessage("재고 실사 줄", COUNT_LINE_LIMIT)));
 
-      const r = await resolveCountLines(tx, wh.id, p.lines);
+      const r = await resolveCountLines(tx, p.lines, book);
       if (!r.ok) throw new CountRollback(fail(undefined, r.lines));
+      // 장부에서 불려 온 줄은 지우지 못한다 — 모두 세는 것이 실사다(설계 「PR E 에서 정한 것」, 대장 NC-20).
+      const sent = new Set(r.lines.map((l) => keyOf(l.itemId, l.lot, l.status)));
+      const missing = [...book].filter(([key]) => !sent.has(key)).map(([, label]) => label);
+      if (missing.length)
+        throw new CountRollback(
+          fail(
+            `장부 줄 ${missing.length}개가 빠졌습니다(${missing.slice(0, 3).join(" · ")}${missing.length > 3 ? " …" : ""}) — ` +
+              (p.code
+                ? "장부에서 불려 온 줄은 지우지 못합니다. 화면을 새로 여세요"
+                : "그 사이 이 창고의 장부가 바뀌었습니다. 화면을 새로 여세요"),
+          ),
+        );
 
       await tx.delete(stockCountLines).where(eq(stockCountLines.countId, countId));
       await tx.insert(stockCountLines).values(

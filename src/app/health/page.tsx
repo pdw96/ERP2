@@ -31,7 +31,7 @@ async function DatabaseStatus() {
   return <DbStatusView status={await cachedDatabaseStatus()} />;
 }
 
-// 같은 결과를 1분 동안 돌려준다 — 자주 열어도 DB 는 1분에 한 번만 묻는다.
+// 결과를 재사용한다 — 1분이 지나면 다음 요청 때 새로 묻고, 그 사이 최대 2분 지난 결과를 보일 수 있다(대장 NC-16 · NC-25).
 // 수명이 5분보다 짧아 빌드 때 미리 만들지 않고 요청이 올 때 채운다.
 async function cachedDatabaseStatus() {
   "use cache";

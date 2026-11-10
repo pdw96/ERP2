@@ -28,9 +28,10 @@ describe("parseCount", () => {
     ]);
   });
 
-  it("더한 줄은 상태를 보내도 늘 가용이다(저자 판정)", () => {
+  it("상태는 보낸 대로 읽고, 더한 줄인지는 읽지 않는다 — 서버가 장부와 견줘 정한다(대장 NC-20)", () => {
     const r = parseCount(base([{ item: "SF-0001", status: "QC", counted: "1", added: "1" }]));
-    expect(r.ok && r.value.lines[0]).toMatchObject({ status: "AVAILABLE", added: true });
+    expect(r.ok && r.value.lines[0]).toMatchObject({ status: "QC" });
+    expect(r.ok && r.value.lines[0]).not.toHaveProperty("added");
   });
 
   it("품목 · LOT · 실물 수량이 모두 빈 줄은 없는 줄로 친다", () => {

@@ -36,8 +36,6 @@ export type ParsedCountLine = {
   itemCode: string;
   lot: string;
   status: "AVAILABLE" | "QC";
-  /** 장부에 없어 더한 줄 — 늘 가용(저자 판정). */
-  added: boolean;
   /** 실물 수량(천분의 일 단위) — 비우면 null(작성 중에만). */
   counted: Milli | null;
   countedDecimals: number;
@@ -85,8 +83,8 @@ export function parseCount(values: CountValues): CountParseResult {
     const lot = t(line.lot);
     if (lot && !LOT.test(lot)) e.lot = "LOT 는 영문 · 숫자 · - · _ · . 30자까지입니다";
 
-    const added = t(line.added) === "1";
-    const status = t(line.status) === "QC" && !added ? "QC" : "AVAILABLE";
+    // 「더한 줄」인지는 화면이 보낸 `added` 를 믿지 않고 서버가 장부와 견줘 정한다(대장 NC-20) — 여기서는 상태만 읽는다.
+    const status = t(line.status) === "QC" ? "QC" : "AVAILABLE";
 
     const countedText = t(line.counted);
     let counted: Milli | null = null;
@@ -107,7 +105,7 @@ export function parseCount(values: CountValues): CountParseResult {
     seen.add(key);
 
     if (Object.keys(e).length) errors.lines[index] = e;
-    else lines.push({ index, itemCode, lot, status, added, counted, countedDecimals });
+    else lines.push({ index, itemCode, lot, status, counted, countedDecimals });
   });
 
   if (!formError && count === 0) formError = "줄을 하나 이상 넣으세요";
