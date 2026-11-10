@@ -580,11 +580,11 @@ describe("수불이 있는 품목 — LOT 관리 · 단위를 바꾸지 못한�
   it("단위 · LOT 관리를 바꾸면 거절 — 다른 칸은 고친다", async () => {
     expect(await updateItem(db, "RM-0003", edit({ unit: "MM" }))).toMatchObject({
       ok: false,
-      errors: { unit: expect.stringContaining("수불이 있는 품목") },
+      errors: { unit: expect.stringContaining("수불이 있거나") },
     });
     expect(await updateItem(db, "RM-0003", edit({ lotManaged: "off" }))).toMatchObject({
       ok: false,
-      errors: { lotManaged: expect.stringContaining("수불이 있는 품목") },
+      errors: { lotManaged: expect.stringContaining("수불이 있거나") },
     });
     expect(await updateItem(db, "RM-0003", edit({ spec: "지름 20µm" }))).toEqual({ ok: true, code: "RM-0003" });
   });

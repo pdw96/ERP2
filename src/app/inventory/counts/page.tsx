@@ -49,7 +49,9 @@ async function Entry({ searchParams }: Pick<PageProps<"/inventory/counts">, "sea
   }
   return (
     <>
+      {/* 창고마다 새로 그린다 — 앞 창고의 확정 화면 · 결과가 남지 않게(PR E 리뷰 1회차). */}
       <CountEntry
+        key={picked}
         options={options}
         picked={picked}
         sheet={opened?.ok ? opened.sheet : null}

@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { asc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { updateCode } from "@/db/codes";
+import { createItem, updateItem } from "@/db/items";
 import { resetToSample } from "@/db/reset";
 import {
   items,
@@ -561,6 +563,75 @@ describe("확정 — 확정하는 순간의 장부와의 차이가 「실사 차
     expect(await expectRejected(() => confirmCount(db, s.code, s.version, TODAY))).toMatchObject({
       formError: expect.stringContaining("수불 전표는 5,000개까지"),
     });
+  });
+});
+
+describe("작성 중 실사의 수량을 기준정보의 고침이 지킨다(PR E 리뷰 1회차)", () => {
+  const base = {
+    procurement: "BUY",
+    name: "솔더 볼",
+    leadTimeDays: "0",
+    safetyStock: "0",
+    minLot: "0",
+    lotMultiple: "0",
+  };
+
+  it("작성 중 실사에 든 품목은 단위 · LOT 관리를 바꾸지 못하고, 실사를 취소하면 바꾼다", async () => {
+    // 수불이 없는 새 품목을 자재창고 실사에 더한다
+    expect(await createItem(db, { ...base, itemType: "RM", unit: "EA", lotManaged: "on" })).toMatchObject({
+      code: "RM-0007",
+    });
+    const sheet = await open("WH-01");
+    const s = await saved(
+      saveCount(
+        db,
+        valuesOf(sheet, [...linesOf(sheet), { item: "RM-0007", lot: "N-1", counted: "3", added: "1" }]),
+        TODAY,
+      ),
+    );
+    expect(await updateItem(db, "RM-0007", { ...base, unit: "KG", lotManaged: "on", active: "Y" })).toMatchObject({
+      ok: false,
+      errors: { unit: expect.stringContaining("작성 중인 실사에 든 품목") },
+    });
+    expect(await updateItem(db, "RM-0007", { ...base, unit: "EA", lotManaged: "off", active: "Y" })).toMatchObject({
+      ok: false,
+      errors: { lotManaged: expect.stringContaining("작성 중인 실사에 든 품목") },
+    });
+    await cancelCount(db, s.code);
+    expect(await updateItem(db, "RM-0007", { ...base, unit: "KG", lotManaged: "off", active: "Y" })).toEqual({
+      ok: true,
+      code: "RM-0007",
+    });
+  });
+
+  it("작성 중 실사의 실물 수량이 맞지 않으면 단위의 자릿수를 줄이지 못한다", async () => {
+    const decimals = (d: string) =>
+      updateCode(db, "UNIT", "M", { name: "미터", sortOrder: "20", active: "Y", decimals: d });
+    const sheet = await open("WH-01");
+    const s = await saved(saveCount(db, valuesOf(sheet, linesOf(sheet, { "RM-0003|NW-25-0701": "5999.5" })), TODAY));
+    expect(await decimals("0")).toMatchObject({
+      ok: false,
+      errors: { decimals: expect.stringContaining("작성 중 실사의 실물 수량") },
+    });
+    expect(await decimals("1")).toEqual({ ok: true, code: "M" });
+    await cancelCount(db, s.code);
+    expect(await decimals("0")).toEqual({ ok: true, code: "M" }); // 취소한 실사는 세지 않는다
+  });
+});
+
+describe("확정의 LOT 저절로 — 실사의 다른 줄이 쓴 LOT 는 건너뛴다(PR E 리뷰 1회차)", () => {
+  it("차이 없는 줄이 다음 번호를 들고 있어도 비운 LOT 는 그 다음 번호를 받는다", async () => {
+    const r = await countAndConfirm("WH-01", {}, [
+      { item: "FG-0001", lot: "", counted: "4", added: "1" },
+      { item: "FG-0001", lot: "FG-261109-001", counted: "0", added: "1" },
+    ]);
+    const move = (await getMove(db, r.moveCode!))!;
+    expect(move.lineRows.map((l) => [l.itemCode, l.lot, l.qty])).toEqual([["FG-0001", "FG-261109-002", "4"]]);
+    const view = (await getCount(db, r.code))!;
+    expect(view.lineRows.filter((l) => l.itemCode === "FG-0001").map((l) => l.lot)).toEqual([
+      "FG-261109-002",
+      "FG-261109-001",
+    ]);
   });
 });
 

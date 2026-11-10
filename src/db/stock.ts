@@ -16,7 +16,17 @@ import {
 } from "@/lib/move-input";
 import { REGISTER_LOCK, constraintOf, limitMessage, pgError, touched } from "./master-shared";
 import { issueLotNumber, ruleForItem } from "./number-rules";
-import { codes, items, stockBalances, stockCounts, stockMoveLines, stockMoves, unitSpecs, warehouses } from "./schema";
+import {
+  codes,
+  items,
+  stockBalances,
+  stockCountLines,
+  stockCounts,
+  stockMoveLines,
+  stockMoves,
+  unitSpecs,
+  warehouses,
+} from "./schema";
 import type { Db } from "./types";
 
 // 재고 계산의 한 곳(조각 「재고 수불」 설계 ② 「재고 계산은 한 곳이다」, ADR 0015 · 0016 · 0018).
@@ -55,6 +65,8 @@ export type StockMove = {
   note: string;
   cancelsMoveId?: number;
   lines: StockLine[];
+  /** 저절로 붙이는 LOT 가 건너뛸 번호 — 전표 밖에서 이미 쓴 것(실사의 차이 없는 줄 따위, PR E 리뷰 1회차). */
+  reservedLots?: readonly { itemId: number; lot: string }[];
 };
 
 /** 음수 검사에 걸린 키와 모자란 수량. 던져 트랜잭션을 되돌린다. */
@@ -124,6 +136,7 @@ async function recordMove(tx: Db, move: StockMove): Promise<{ id: number; code: 
       if (!rule) throw new Error("LOT 번호 규칙이 없다");
       line.lot = await issueLotNumber(tx, rule, move.moveDate, async (lot) => {
         if (move.lines.some((l) => l.itemId === line.itemId && l.lot === lot)) return true;
+        if (move.reservedLots?.some((r) => r.itemId === line.itemId && r.lot === lot)) return true;
         const [hit] = await tx
           .select({ id: stockMoveLines.id })
           .from(stockMoveLines)
@@ -267,7 +280,12 @@ async function recordMove(tx: Db, move: StockMove): Promise<{ id: number; code: 
  */
 export function recordCountAdjustment(
   tx: Db,
-  adjustment: { date: string; note: string; lines: StockLine[] },
+  adjustment: {
+    date: string;
+    note: string;
+    lines: StockLine[];
+    reservedLots?: readonly { itemId: number; lot: string }[];
+  },
 ): Promise<{ id: number; code: string; lots: string[] }> {
   return recordMove(tx, {
     moveDate: adjustment.date,
@@ -275,6 +293,7 @@ export function recordCountAdjustment(
     reason: COUNT_REASON,
     note: adjustment.note,
     lines: adjustment.lines,
+    reservedLots: adjustment.reservedLots,
   });
 }
 
@@ -923,14 +942,24 @@ export async function getMove(db: Db, code: string): Promise<MoveDetail | undefi
 
 // ── 다른 화면이 묻는 것(품목 · 창고 · 단위의 고침) ───────────────────────
 
-/** 수불이 있는 품목 — LOT 관리 · 단위를 바꾸지 못한다(ADR 0015). */
+/**
+ * 수불이 있거나 작성 중 실사에 든 품목 — LOT 관리 · 단위를 바꾸지 못한다(ADR 0015). 작성 중 실사의 실물 수량은 저장한 때의 단위 · LOT 규칙으로
+ * 넣은 것이라, 확정 전에 바뀌면 확정이 그 뜻이 바뀐 수량으로 조정을 남긴다(PR E 리뷰 1회차).
+ */
 export async function itemsWithMoves(db: Db, itemIds: readonly number[]): Promise<Set<number>> {
   if (itemIds.length === 0) return new Set();
-  const rows = await db
-    .selectDistinct({ itemId: stockMoveLines.itemId })
-    .from(stockMoveLines)
-    .where(inArray(stockMoveLines.itemId, [...itemIds]));
-  return new Set(rows.map((r) => r.itemId));
+  const [moved, counting] = await Promise.all([
+    db
+      .selectDistinct({ itemId: stockMoveLines.itemId })
+      .from(stockMoveLines)
+      .where(inArray(stockMoveLines.itemId, [...itemIds])),
+    db
+      .selectDistinct({ itemId: stockCountLines.itemId })
+      .from(stockCountLines)
+      .innerJoin(stockCounts, eq(stockCounts.id, stockCountLines.countId))
+      .where(and(inArray(stockCountLines.itemId, [...itemIds]), eq(stockCounts.status, "DRAFT"))),
+  ]);
+  return new Set([...moved, ...counting].map((r) => r.itemId));
 }
 
 /** 재고(잔액)가 있는 창고인가 — 불량창고 표시를 바꾸지 못한다(설계 ③ 「창고의 새 칸」). */
@@ -944,8 +973,8 @@ export async function warehouseHasStock(db: Db, warehouseId: number): Promise<bo
 }
 
 /**
- * 단위의 소수 자릿수를 decimals 로 줄여도 그 단위의 수량이 다 맞는가(ADR 0017) — 그 단위로 넣은 수량과, 그 단위를 쓰는 품목의 수량(줄).
- * 잔액은 줄의 합이라 줄이 맞으면 맞는다.
+ * 단위의 소수 자릿수를 decimals 로 줄여도 그 단위의 수량이 다 맞는가(ADR 0017) — 그 단위로 넣은 수량과, 그 단위를 쓰는 품목의 수량(줄),
+ * 그리고 그 단위를 쓰는 품목의 작성 중 실사의 실물 수량(확정하면 수불이 된다 — PR E 리뷰 1회차). 잔액은 줄의 합이라 줄이 맞으면 맞는다.
  */
 export async function unitQuantitiesFit(db: Db, unit: string, decimals: number): Promise<boolean> {
   const misfit = (col: typeof stockMoveLines.qty | typeof stockMoveLines.enteredQty): SQL =>
@@ -960,5 +989,17 @@ export async function unitQuantitiesFit(db: Db, unit: string, decimals: number):
         and(eq(items.unit, unit), misfit(stockMoveLines.qty)),
       ),
     );
-  return n === 0;
+  const [{ n: drafts }] = await db
+    .select({ n: count() })
+    .from(stockCountLines)
+    .innerJoin(stockCounts, eq(stockCounts.id, stockCountLines.countId))
+    .innerJoin(items, eq(items.id, stockCountLines.itemId))
+    .where(
+      and(
+        eq(stockCounts.status, "DRAFT"),
+        eq(items.unit, unit),
+        sql`${stockCountLines.countedQty} <> round(${stockCountLines.countedQty}, ${decimals}::int)`,
+      ),
+    );
+  return n === 0 && drafts === 0;
 }

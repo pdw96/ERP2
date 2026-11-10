@@ -666,7 +666,13 @@ export async function confirmCount(db: Db, code: string, version: string, today:
       let moveId: number | null = null;
       let moveCode: string | null = null;
       if (stockLines.length) {
-        const saved = await recordCountAdjustment(tx, { date: today, note: `${code} 실사 차이`, lines: stockLines });
+        // 실사의 다른 줄이 이미 쓴 LOT(차이가 없어 전표에 들지 않는 줄도)는 저절로 붙이는 번호가 건너뛴다(PR E 리뷰 1회차).
+        const saved = await recordCountAdjustment(tx, {
+          date: today,
+          note: `${code} 실사 차이`,
+          lines: stockLines,
+          reservedLots: d.lines.filter((l) => l.lot).map((l) => ({ itemId: l.itemId, lot: l.lot })),
+        });
         moveId = saved.id;
         moveCode = saved.code;
         // 저절로 받은 LOT 를 실사 줄에도 적는다 — 실사 보기가 그 LOT 를 보인다.

@@ -417,8 +417,9 @@ export async function updateItem(
   }
 }
 
-const MOVED_UNIT = "수불이 있는 품목이라 단위를 바꾸지 못합니다 — 이미 쌓인 수량의 뜻이 바뀝니다";
-const MOVED_LOT = "수불이 있는 품목이라 LOT 관리를 바꾸지 못합니다 — 이미 쌓인 수량의 뜻이 바뀝니다";
+const MOVED_UNIT = "수불이 있거나 작성 중인 실사에 든 품목이라 단위를 바꾸지 못합니다 — 이미 넣은 수량의 뜻이 바뀝니다";
+const MOVED_LOT =
+  "수불이 있거나 작성 중인 실사에 든 품목이라 LOT 관리를 바꾸지 못합니다 — 이미 넣은 수량의 뜻이 바뀝니다";
 
 /** 바꾸려는 칸 가운데 수불이 있으면 막는 것(단위 · LOT 관리)의 까닭 — 바꾸지 않으면 비어 있다. */
 function movedErrors(next: { unit: string; lotManaged: boolean }, current: Item): ItemErrors {

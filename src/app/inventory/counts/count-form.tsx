@@ -15,6 +15,11 @@ import { cancelCountAction, type CountActionState, type CountFormState } from ".
 type Line = {
   /** 장부에서 불려 온 줄이면 그 정보 — 품목 · LOT · 상태를 고치지 못한다. */
   book?: CountSheetLine;
+  /**
+   * 더한 줄의 장부 — 저장한 더한 줄을 다시 열면 그 품목 · LOT 의 지금 장부(그 사이 들어왔으면 0 이 아님, PR E 리뷰 1회차). 품목 · LOT 를
+   * 바꾸면 0 으로 돌아간다 — 장부에 없어 더하는 줄이고, 저장하면 다시 연 화면 · 확정 화면이 지금의 장부를 보인다.
+   */
+  addedBook?: string;
   item: string;
   lot: string;
   counted: string;
@@ -49,7 +54,7 @@ export function CountForm({
   const [lines, setLines] = useState<Line[]>(() =>
     sheet.lines.map((l) =>
       l.added
-        ? { item: `${l.itemCode} ${l.itemName}`, lot: l.lot, counted: l.counted }
+        ? { item: `${l.itemCode} ${l.itemName}`, lot: l.lot, counted: l.counted, addedBook: l.book }
         : { book: l, item: l.itemCode, lot: l.lot, counted: l.counted },
     ),
   );
@@ -252,7 +257,8 @@ function LineRow({
   const cell = (invalid: boolean) => `${inputClass(invalid)} px-2 py-1.5`;
   const book = line.book;
   const unit = book?.unit ?? item?.unit ?? "";
-  const diff = diffOf(book?.book ?? "0", line.counted);
+  const bookQty = book?.book ?? line.addedBook ?? "0";
+  const diff = diffOf(bookQty, line.counted);
   const message = (field: keyof CountLineErrors) =>
     e[field] ? <p className="mt-1 text-xs font-semibold text-red-700">{e[field]}</p> : null;
 
@@ -274,7 +280,7 @@ function LineRow({
                 aria-label={`줄 ${n} 품목`}
                 list="count-items"
                 value={line.item}
-                onChange={(ev) => onChange({ item: ev.target.value, lot: "" })}
+                onChange={(ev) => onChange({ item: ev.target.value, lot: "", addedBook: undefined })}
                 autoComplete="off"
                 placeholder="장부에 없는 품목 — 코드 · 이름"
                 aria-invalid={!!e.item || undefined}
@@ -298,7 +304,7 @@ function LineRow({
               name={name("lot")}
               aria-label={`줄 ${n} LOT번호`}
               value={line.lot}
-              onChange={(ev) => onChange({ lot: ev.target.value })}
+              onChange={(ev) => onChange({ lot: ev.target.value, addedBook: undefined })}
               maxLength={30}
               autoComplete="off"
               placeholder={item && isMadeType(item.itemType) ? "비우면 번호 규칙으로" : "LOT번호"}
@@ -313,7 +319,7 @@ function LineRow({
           {stockStatusName(book?.status ?? "AVAILABLE")}
         </td>
         <td className="px-2 py-2 text-right whitespace-nowrap tabular-nums">
-          {book?.book ?? "0"} <span className="text-xs text-muted">{unit}</span>
+          {bookQty} <span className="text-xs text-muted">{unit}</span>
         </td>
         <td className="px-2 py-2">
           <input

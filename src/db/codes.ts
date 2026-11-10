@@ -247,7 +247,7 @@ export async function updateCode(
       return {
         ok: false,
         errors: {
-          decimals: `이 단위의 수불 수량 가운데 소수 ${error.decimals}자리에 맞지 않는 것이 있어 줄이지 못합니다`,
+          decimals: `이 단위의 수불 수량 · 작성 중 실사의 실물 수량 가운데 소수 ${error.decimals}자리에 맞지 않는 것이 있어 줄이지 못합니다`,
         },
         values,
       };
