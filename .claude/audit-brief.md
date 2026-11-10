@@ -1,8 +1,8 @@
 # 감사 브리핑
 
-- 만든 시각: 2026-11-10 06:01:46 UTC
+- 만든 시각: 2026-11-10 06:09:00 UTC
 - 기준: `3e7977a` = `3e7977a` (2026-11-05 Merge pull request #23 from pdw96/claude/great-gauss-pciga8), 머지 베이스 `3e7977a5002269b4216d776a9d7d38b98204d156`
-- 대상: `6469405` (브랜치 `claude/compassionate-keller-lu068h`). origin/main `26e3a9a` 위에 감사 브리핑 · 회차 기록 · 대장 커밋만 더한 것이라 코드는 `26e3a9a` 와 같다
+- 대상: `c362eca` (브랜치 `claude/compassionate-keller-lu068h`). origin/main `26e3a9a` 위에 감사 브리핑 · 회차 23 · 24 기록 · 대장 커밋만 더한 것이라 코드는 `26e3a9a` 와 같다
 - 커밋 안 된 변경: 없음
 - 추적 안 된 파일: 없음
 - 자름: 있음 — diff 전체 31189줄 중 3745줄. 담은 것은 **고친(M) 파일 가운데 시험 · `drizzle/meta/` 를 뺀 41개**의 diff 를 통째로. 새로 생긴(A) 파일과 고친 시험 · drizzle meta 는 본문을 담지 않았다 — 대상이 지금 HEAD 라 감사자가 작업트리에서 그대로 읽으면 된다(새 파일은 diff 가 곧 지금 내용이다). 목록은 「이 브리핑이 담지 않은 것」
@@ -173,6 +173,8 @@
 ## 커밋
 
 ```
+c362eca 감사 회차 24(audit-secrets) — NC-20 · U-20 등록, U-19 · U-20 근거(메인 세션)
+f481395 감사 브리핑 — 회차 24 용으로 대상을 새 머리로(코드 diff 는 같음)
 6469405 감사 회차 23(audit-data) — 조각 「재고 수불」 닫기 전, NC-18 · NC-19 등록(저자 판정 대기)
 1294727 감사 브리핑 — 조각 「재고 수불」 닫기 전 감사 회차(3e7977a…26e3a9a)
 26e3a9a Merge pull request #35 from pdw96/claude/compassionate-keller-lu068h
