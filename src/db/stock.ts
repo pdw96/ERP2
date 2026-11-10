@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, gt, inArray, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { eun } from "@/lib/josa";
-import { isMadeType, moveTypeName, type MoveType } from "@/lib/master-codes";
+import { COUNT_REASON, isMadeType, moveTypeName, type MoveType } from "@/lib/master-codes";
 import {
   formatMilli,
   parseMove,
@@ -16,7 +16,7 @@ import {
 } from "@/lib/move-input";
 import { REGISTER_LOCK, constraintOf, limitMessage, pgError, touched } from "./master-shared";
 import { issueLotNumber, ruleForItem } from "./number-rules";
-import { codes, items, stockBalances, stockMoveLines, stockMoves, unitSpecs, warehouses } from "./schema";
+import { codes, items, stockBalances, stockCounts, stockMoveLines, stockMoves, unitSpecs, warehouses } from "./schema";
 import type { Db } from "./types";
 
 // 재고 계산의 한 곳(조각 「재고 수불」 설계 ② 「재고 계산은 한 곳이다」, ADR 0015 · 0016 · 0018).
@@ -58,14 +58,14 @@ export type StockMove = {
 };
 
 /** 음수 검사에 걸린 키와 모자란 수량. 던져 트랜잭션을 되돌린다. */
-class ShortageError extends Error {
+export class ShortageError extends Error {
   constructor(readonly shortages: readonly { key: string; short: Milli }[]) {
     super("재고가 모자란다");
   }
 }
 
 /** 상한에 닿았다. 던져 트랜잭션을 되돌린다. */
-class LimitError extends Error {
+export class LimitError extends Error {
   constructor(readonly what: "move" | "line") {
     super("수불 등록 상한");
   }
@@ -258,6 +258,24 @@ async function recordMove(tx: Db, move: StockMove): Promise<{ id: number; code: 
       });
   }
   return { id: saved.id, code, lots };
+}
+
+/**
+ * 실사 차이의 조정 전표(조각 「재고 수불」 PR E, ADR 0021) — 재고 실사의 확정(src/db/stock-counts.ts)이 부른다. 부르는 쪽이 같은 트랜잭션에서
+ * 잠금(REGISTER_LOCK.stock)을 쥔 뒤 부른다. 사유는 늘 「실사 차이」이고, 전표 · 음수 검사 · 상한은 수불 등록과 같은 길(recordMove)을 지난다 —
+ * 실사가 잔액 표를 따로 고치지 않는다(설계 ② 「재고 계산은 한 곳이다」). 모자라면 ShortageError, 상한이면 LimitError 를 던진다.
+ */
+export function recordCountAdjustment(
+  tx: Db,
+  adjustment: { date: string; note: string; lines: StockLine[] },
+): Promise<{ id: number; code: string; lots: string[] }> {
+  return recordMove(tx, {
+    moveDate: adjustment.date,
+    moveType: "ADJ",
+    reason: COUNT_REASON,
+    note: adjustment.note,
+    lines: adjustment.lines,
+  });
 }
 
 /** 재고의 잠금 — 저장 · 취소와 재고에 기대는 고침이 차례로 돈다. 트랜잭션이 끝나면 풀린다. */
@@ -491,6 +509,16 @@ export async function saveMove(db: Db, values: MoveValues, today: string): Promi
   try {
     return await db.transaction(async (tx): Promise<MoveSaveResult> => {
       await lockStock(tx);
+      // 「실사 차이」는 재고 실사의 확정만 쓴다 — 그 전표는 늘 실사 번호를 가리킨다(저자 판정, 설계 「PR E 를 열기 전에 정한 것」).
+      if (move.reason === COUNT_REASON)
+        return {
+          ok: false,
+          errors: {
+            header: { reason: "「실사 차이」는 재고 실사의 확정만 씁니다 — 다른 조정사유를 고르세요" },
+            lines: {},
+          },
+          values,
+        };
       if (move.reason) {
         const [r] = await tx
           .select({ active: codes.active })
@@ -647,7 +675,10 @@ export type MoveFormOptions = {
   reasons: { code: string; name: string }[];
 };
 
-/** 수불 등록 화면의 고르는 목록 — 「사용」인 것만. 품목은 기본 입고 · 출고 창고(코드)를 함께 싣는다(성공 기준 2). */
+/**
+ * 수불 등록 화면의 고르는 목록 — 「사용」인 것만. 품목은 기본 입고 · 출고 창고(코드)를 함께 싣는다(성공 기준 2).
+ * 조정사유에서 「실사 차이」는 뺀다 — 재고 실사의 확정만 쓴다(설계 「PR E 를 열기 전에 정한 것」).
+ */
 export async function moveFormOptions(db: Db): Promise<MoveFormOptions> {
   const inWh = alias(warehouses, "in_wh");
   const outWh = alias(warehouses, "out_wh");
@@ -681,7 +712,7 @@ export async function moveFormOptions(db: Db): Promise<MoveFormOptions> {
     db
       .select({ code: codes.code, name: codes.name })
       .from(codes)
-      .where(and(eq(codes.groupCode, "ADJ_REASON"), eq(codes.active, true)))
+      .where(and(eq(codes.groupCode, "ADJ_REASON"), eq(codes.active, true), sql`${codes.code} <> ${COUNT_REASON}`))
       .orderBy(asc(codes.sortOrder), asc(codes.code)),
   ]);
   return {
@@ -811,7 +842,12 @@ export type MoveLineView = {
   qty: string;
   entered: string | null;
 };
-export type MoveDetail = MoveSummary & { reasonName: string | null; lineRows: MoveLineView[] };
+export type MoveDetail = MoveSummary & {
+  reasonName: string | null;
+  /** 이 전표를 만든 재고 실사의 번호 — 실사 차이의 조정 전표만. */
+  countCode: string | null;
+  lineRows: MoveLineView[];
+};
 
 /** 전표 하나와 그 줄 — 보내는 · 받는 창고는 「코드 이름」, 다른 단위로 넣었으면 넣은 값도(성공 기준 8). */
 export async function getMove(db: Db, code: string): Promise<MoveDetail | undefined> {
@@ -827,10 +863,12 @@ export async function getMove(db: Db, code: string): Promise<MoveDetail | undefi
       note: stockMoves.note,
       canceledBy: cancelOf.code,
       cancels: original.code,
+      countCode: stockCounts.code,
     })
     .from(stockMoves)
     .leftJoin(cancelOf, eq(cancelOf.cancelsMoveId, stockMoves.id))
     .leftJoin(original, eq(original.id, stockMoves.cancelsMoveId))
+    .leftJoin(stockCounts, eq(stockCounts.adjustMoveId, stockMoves.id))
     .leftJoin(codes, and(eq(codes.groupCode, stockMoves.reasonGroup), eq(codes.code, stockMoves.reason)))
     .where(eq(stockMoves.code, code));
   if (!head) return undefined;
@@ -866,6 +904,7 @@ export async function getMove(db: Db, code: string): Promise<MoveDetail | undefi
     note: head.note,
     canceledBy: head.canceledBy,
     cancels: head.cancels,
+    countCode: head.countCode,
     moveTypeName: moveTypeName(head.moveType),
     lines: rows.length,
     lineRows: rows.map((r) => ({

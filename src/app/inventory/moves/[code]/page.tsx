@@ -85,6 +85,17 @@ async function Move({ params, searchParams }: Pick<PageProps<"/inventory/moves/[
             </dd>
           </>
         )}
+        {move.countCode && (
+          <>
+            <dt className="text-muted">재고 실사</dt>
+            <dd>
+              <Link href={`/inventory/counts/${move.countCode}`} className="font-mono underline underline-offset-4">
+                {move.countCode}
+              </Link>{" "}
+              <span className="text-sm text-muted">의 확정이 만든 실사 차이입니다</span>
+            </dd>
+          </>
+        )}
         {move.canceledBy && (
           <>
             <dt className="text-muted">취소 전표</dt>

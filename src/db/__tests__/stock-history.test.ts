@@ -65,9 +65,10 @@ function expectBalanced(r: LedgerRow) {
 }
 
 describe("수불 이력 — 거르기", () => {
-  it("처음 열면 최근 30일 — 샘플 줄 31 이 다 보이고, 오래된 것부터 일자 → 전표 번호 → 줄 번호", async () => {
+  it("처음 열면 최근 30일 — 샘플 줄 32 가 다 보이고, 오래된 것부터 일자 → 전표 번호 → 줄 번호", async () => {
+    // 샘플 수불의 줄 31 과, 샘플 실사의 「실사 차이」 조정 한 줄(조각 「재고 수불」 PR E).
     const page = await history();
-    expect(page.total).toBe(31);
+    expect(page.total).toBe(32);
     expect(page.rows.map((r) => r.moveDate)).toEqual([...page.rows.map((r) => r.moveDate)].sort());
     expect(page.rows[0]).toMatchObject({ moveDate: "2026-11-02", code: "IV-20261102-001", itemCode: "RM-0001" });
     const firstMove = page.rows.filter((r) => r.code === "IV-20261102-001").map((r) => r.itemCode);
@@ -162,7 +163,7 @@ const HISTORY_VALUE: Record<HistorySort, (r: HistoryRow) => string | number | nu
   unit: (r) => r.unit,
   entered: (r) => (r.entered ? num(r.entered.split(" ")[0]) : null),
   cancel: (r) => (r.cancels ? 1 : r.canceledBy ? 2 : null),
-  ref: (r) => r.cancels ?? r.canceledBy,
+  ref: (r) => r.cancels ?? r.canceledBy ?? r.count,
   note: (r) => r.note || null,
 };
 
@@ -195,7 +196,7 @@ describe("수불 이력 — 칸 머리로 세우기", () => {
     "%s %s — 거른 줄 전체를 그 칸으로 세우고, 빈 값은 맨 뒤",
     async (sort, dir) => {
       const page = await history({ sort, dir });
-      expect(page.total).toBe(33);
+      expect(page.total).toBe(34);
       expectSorted(page.rows, HISTORY_VALUE[sort], dir);
     },
   );
@@ -215,16 +216,27 @@ describe("수불 이력 — 칸 머리로 세우기", () => {
   });
 });
 
+describe("수불 이력 — 실사 차이(조각 「재고 수불」 PR E)", () => {
+  it("샘플 실사의 「실사 차이」 줄은 관련전표에 그 실사 번호를 보인다", async () => {
+    const page = await history({ moveType: "ADJ" });
+    const counted = page.rows.filter((r) => r.reasonName === "실사 차이");
+    expect(counted.map((r) => [r.code, r.itemCode, r.outQty, r.count])).toEqual([
+      ["IV-20261108-003", "RM-0003", "5", "PI-20261108-001"],
+    ]);
+    expect(page.rows.filter((r) => r.reasonName !== "실사 차이").every((r) => r.count === null)).toBe(true);
+  });
+});
+
 describe("수불 이력 — 100줄씩", () => {
   it("넘치면 쪽을 넘기고, 마지막 쪽을 넘는 쪽은 마지막 쪽", async () => {
     const lines = Array.from({ length: 100 }, () => ({ item: "SM-0002", warehouse: "WH-01", qty: "1" }));
     await ok(save({ lines }));
     const p1 = await history();
-    expect(p1).toMatchObject({ total: 131, page: 1, pages: 2 });
+    expect(p1).toMatchObject({ total: 132, page: 1, pages: 2 });
     expect(p1.rows).toHaveLength(100);
     const p2 = await history({ page: "2" });
-    expect(p2.rows).toHaveLength(31);
-    expect(new Set([...p1.rows, ...p2.rows].map((r) => r.id)).size).toBe(131);
+    expect(p2.rows).toHaveLength(32);
+    expect(new Set([...p1.rows, ...p2.rows].map((r) => r.id)).size).toBe(132);
     expect((await history({ page: "9" })).page).toBe(2);
   });
 
@@ -251,11 +263,12 @@ describe("수불부", () => {
 
   it("창고를 고르지 않으면 이동이 빠지고, 고르면 그 창고의 들고 남이 「이동」에 든다", async () => {
     const all = await ledger({ item: "RM-0003" });
-    expect(all.rows[0]).toMatchObject({ inXfer: "0", outXfer: "0", inIn: "10,000", closing: "10,000" });
+    // 생산현장의 금 와이어는 샘플 실사의 「실사 차이」로 5 줄었다(조정의 출고).
+    expect(all.rows[0]).toMatchObject({ inXfer: "0", outXfer: "0", inIn: "10,000", outAdj: "5", closing: "9,995" });
     const [wh1] = (await ledger({ item: "RM-0003", wh: "WH-01" })).rows;
     const [wh2] = (await ledger({ item: "RM-0003", wh: "WH-02" })).rows;
     expect(wh1).toMatchObject({ inIn: "10,000", outXfer: "2,000", closing: "8,000" });
-    expect(wh2).toMatchObject({ inXfer: "2,000", inIn: "0", closing: "2,000" });
+    expect(wh2).toMatchObject({ inXfer: "2,000", inIn: "0", outAdj: "5", closing: "1,995" });
   });
 
   it("기초는 시작일 앞의 수불 — 앞 기간의 기말이 다음 기간의 기초다", async () => {
@@ -325,8 +338,9 @@ describe("수불부 — 품목의 거래", () => {
     expect(all.rows.map((r) => [r.moveTypeName, r.in, r.out, r.balance])).toEqual([
       ["기타입고", "8,000", null, "8,000"],
       ["기타입고", "2,000", null, "10,000"],
+      ["조정", null, "5", "9,995"],
     ]);
-    expect(all.closing).toBe("10,000");
+    expect(all.closing).toBe("9,995");
     const wh1 = (await getLedgerDetail(db, "RM-0003", { from: "2026-11-03", to: TODAY, warehouse: "WH-01", page: 1 }))!;
     expect(wh1.opening).toBe("8,000");
     expect(wh1.rows.map((r) => [r.moveTypeName, r.in, r.out, r.balance])).toEqual([

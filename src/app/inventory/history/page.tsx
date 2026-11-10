@@ -205,13 +205,26 @@ function HistoryTable({ rows, query, filters }: { rows: HistoryRow[]; query: His
                 {r.cancels ? <Tag>취소 전표</Tag> : r.canceledBy ? <Tag>취소됨</Tag> : dash(null)}
               </td>
               <td className="px-3 py-2 font-mono whitespace-nowrap">
-                {r.cancels || r.canceledBy ? (
-                  <Link
-                    href={`/inventory/moves/${r.cancels ?? r.canceledBy}`}
-                    className="underline underline-offset-4 hover:text-machine"
-                  >
-                    {r.cancels ?? r.canceledBy}
-                  </Link>
+                {r.cancels || r.canceledBy || r.count ? (
+                  <>
+                    {(r.cancels || r.canceledBy) && (
+                      <Link
+                        href={`/inventory/moves/${r.cancels ?? r.canceledBy}`}
+                        className="block underline underline-offset-4 hover:text-machine"
+                      >
+                        {r.cancels ?? r.canceledBy}
+                      </Link>
+                    )}
+                    {/* 실사 차이의 조정 전표는 그 실사를 가리킨다(조각 「재고 수불」 PR E). */}
+                    {r.count && (
+                      <Link
+                        href={`/inventory/counts/${r.count}`}
+                        className="block underline underline-offset-4 hover:text-machine"
+                      >
+                        {r.count}
+                      </Link>
+                    )}
+                  </>
                 ) : (
                   dash(null)
                 )}

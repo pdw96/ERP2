@@ -85,7 +85,7 @@ describe("Sidebar", () => {
     }
   });
 
-  it("재고를 열면 「재고 기준정보 › 창고」와 「수불관리 › 등록 넷 · 수불 이력 · 수불부」는 링크, 재고 실사는 준비 중으로 보인다", () => {
+  it("재고를 열면 「재고 기준정보 › 창고」와 「수불관리 › 등록 넷 · 재고 실사 · 수불 이력 · 수불부」는 링크다", () => {
     nav.pathname = "/inventory/warehouses/WH-01";
     render(<Sidebar />);
     const menu = within(screen.getByRole("list", { name: "재고 메뉴" }));
@@ -99,7 +99,7 @@ describe("Sidebar", () => {
     expect(menu.queryByText("수불 등록")).toBeNull();
     expect(menu.getByRole("link", { name: "수불 이력" })).toHaveAttribute("href", "/inventory/history");
     expect(menu.getByRole("link", { name: "수불부" })).toHaveAttribute("href", "/inventory/ledger");
-    expect(menu.getByText("재고 실사").parentElement).toHaveTextContent("재고 실사준비 중");
+    expect(menu.getByRole("link", { name: "재고 실사" })).toHaveAttribute("href", "/inventory/counts");
     expect(screen.getByRole("link", { name: "재고" })).not.toHaveTextContent("준비 중");
   });
 
@@ -118,6 +118,13 @@ describe("Sidebar", () => {
       "수불부",
     ]);
     expect(menu.getByRole("link", { name: "기타입고 등록" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("실사 보기(/inventory/counts/<실사 번호>)는 메뉴 「재고 실사」를 가리킨다", () => {
+    nav.pathname = "/inventory/counts/PI-20261108-001";
+    render(<Sidebar />);
+    const menu = within(screen.getByRole("list", { name: "재고 메뉴" }));
+    expect(menu.getByRole("link", { name: "재고 실사" })).toHaveAttribute("aria-current", "page");
   });
 
   it("전표 보기는 주소에 수불구분이 없어, 화면이 알린 그 구분의 등록 메뉴를 가리킨다 — 다른 주소의 알림은 쓰지 않는다", () => {

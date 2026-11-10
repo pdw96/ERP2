@@ -58,6 +58,8 @@ export type HistoryRow = {
   /** 이 전표가 취소한 전표 · 이 전표를 취소한 전표. */
   cancels: string | null;
   canceledBy: string | null;
+  /** 이 전표를 만든 재고 실사 — 「실사 차이」 조정 전표만(조각 「재고 수불」 PR E). */
+  count: string | null;
   note: string;
 };
 
@@ -86,7 +88,7 @@ const HISTORY_KEY: Record<Exclude<HistorySort, "date" | "code" | "inQty" | "outQ
   unit: sql`i.unit`,
   entered: sql`case when ml.entered_unit <> i.unit then ml.entered_qty end`,
   cancel: sql`case when m.is_cancel then 1 when cb.id is not null then 2 end`,
-  ref: sql`coalesce(og.code, cb.code)`,
+  ref: sql`coalesce(og.code, cb.code, sc.code)`,
   note: sql`nullif(m.note, '')`,
 };
 
@@ -107,7 +109,8 @@ const HISTORY_FROM = sql`
   left join codes mt on mt.group_code = m.move_type_group and mt.code = m.move_type
   left join codes rc on rc.group_code = m.reason_group and rc.code = m.reason
   left join stock_moves cb on cb.cancels_move_id = m.id
-  left join stock_moves og on og.id = m.cancels_move_id`;
+  left join stock_moves og on og.id = m.cancels_move_id
+  left join stock_counts sc on sc.adjust_move_id = m.id`;
 
 function historyWhere(q: HistoryQuery): SQL {
   const where: SQL[] = [sql`ml.move_date between ${q.from} and ${q.to}`];
@@ -153,6 +156,7 @@ export async function listHistory(db: Db, q: HistoryQuery): Promise<Page<History
     entered_unit: string;
     cancels: string | null;
     canceled_by: string | null;
+    count_code: string | null;
     note: string;
   }>(
     await db.execute(sql`
@@ -160,7 +164,7 @@ export async function listHistory(db: Db, q: HistoryQuery): Promise<Page<History
         i.code as item_code, i.name as item_name, ml.lot,
         fw.code as from_code, fw.name as from_name, tw.code as to_code, tw.name as to_name,
         ${inQtyOf(q.warehouse)}::text as in_qty, ${outQtyOf(q.warehouse)}::text as out_qty, i.unit, ml.entered_qty::text as entered_qty, ml.entered_unit,
-        og.code as cancels, cb.code as canceled_by, m.note
+        og.code as cancels, cb.code as canceled_by, sc.code as count_code, m.note
       ${HISTORY_FROM}
       where ${where}
       order by ${historyOrder(q)}
@@ -187,6 +191,7 @@ export async function listHistory(db: Db, q: HistoryQuery): Promise<Page<History
       entered: r.entered_unit === r.unit ? null : `${fmt(r.entered_qty)} ${r.entered_unit}`,
       cancels: r.cancels,
       canceledBy: r.canceled_by,
+      count: r.count_code,
       note: r.note,
     })),
   };

@@ -90,7 +90,7 @@ export const AREAS: readonly Area[] = [
         menus: [
           // 등록은 수불구분마다 메뉴 하나다(ADR 0020) — 이름 · 주소는 src/lib/move-menus.ts 가 든다.
           ...MOVE_MENUS.map((m) => ({ label: m.label, slice: "재고 수불", href: m.href })),
-          { label: "재고 실사", slice: "재고 수불" },
+          { label: "재고 실사", slice: "재고 수불", href: "/inventory/counts" },
           { label: "수불 이력", slice: "재고 수불", href: "/inventory/history" },
           { label: "수불부", slice: "재고 수불", href: "/inventory/ledger" },
         ],
