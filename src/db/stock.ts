@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, gt, inArray, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { eun } from "@/lib/josa";
-import { isMadeType, moveTypeName, type MoveType } from "@/lib/master-codes";
+import { COUNT_REASON, isMadeType, moveTypeName, type MoveType } from "@/lib/master-codes";
 import {
   formatMilli,
   parseMove,
@@ -16,7 +16,17 @@ import {
 } from "@/lib/move-input";
 import { REGISTER_LOCK, constraintOf, limitMessage, pgError, touched } from "./master-shared";
 import { issueLotNumber, ruleForItem } from "./number-rules";
-import { codes, items, stockBalances, stockMoveLines, stockMoves, unitSpecs, warehouses } from "./schema";
+import {
+  codes,
+  items,
+  stockBalances,
+  stockCountLines,
+  stockCounts,
+  stockMoveLines,
+  stockMoves,
+  unitSpecs,
+  warehouses,
+} from "./schema";
 import type { Db } from "./types";
 
 // 재고 계산의 한 곳(조각 「재고 수불」 설계 ② 「재고 계산은 한 곳이다」, ADR 0015 · 0016 · 0018).
@@ -55,17 +65,19 @@ export type StockMove = {
   note: string;
   cancelsMoveId?: number;
   lines: StockLine[];
+  /** 저절로 붙이는 LOT 가 건너뛸 번호 — 전표 밖에서 이미 쓴 것(실사의 차이 없는 줄 따위, PR E 리뷰 1회차). */
+  reservedLots?: readonly { itemId: number; lot: string }[];
 };
 
 /** 음수 검사에 걸린 키와 모자란 수량. 던져 트랜잭션을 되돌린다. */
-class ShortageError extends Error {
+export class ShortageError extends Error {
   constructor(readonly shortages: readonly { key: string; short: Milli }[]) {
     super("재고가 모자란다");
   }
 }
 
 /** 상한에 닿았다. 던져 트랜잭션을 되돌린다. */
-class LimitError extends Error {
+export class LimitError extends Error {
   constructor(readonly what: "move" | "line") {
     super("수불 등록 상한");
   }
@@ -124,6 +136,7 @@ async function recordMove(tx: Db, move: StockMove): Promise<{ id: number; code: 
       if (!rule) throw new Error("LOT 번호 규칙이 없다");
       line.lot = await issueLotNumber(tx, rule, move.moveDate, async (lot) => {
         if (move.lines.some((l) => l.itemId === line.itemId && l.lot === lot)) return true;
+        if (move.reservedLots?.some((r) => r.itemId === line.itemId && r.lot === lot)) return true;
         const [hit] = await tx
           .select({ id: stockMoveLines.id })
           .from(stockMoveLines)
@@ -258,6 +271,30 @@ async function recordMove(tx: Db, move: StockMove): Promise<{ id: number; code: 
       });
   }
   return { id: saved.id, code, lots };
+}
+
+/**
+ * 실사 차이의 조정 전표(조각 「재고 수불」 PR E, ADR 0021) — 재고 실사의 확정(src/db/stock-counts.ts)이 부른다. 부르는 쪽이 같은 트랜잭션에서
+ * 잠금(REGISTER_LOCK.stock)을 쥔 뒤 부른다. 사유는 늘 「실사 차이」이고, 전표 · 음수 검사 · 상한은 수불 등록과 같은 길(recordMove)을 지난다 —
+ * 실사가 잔액 표를 따로 고치지 않는다(설계 ② 「재고 계산은 한 곳이다」). 모자라면 ShortageError, 상한이면 LimitError 를 던진다.
+ */
+export function recordCountAdjustment(
+  tx: Db,
+  adjustment: {
+    date: string;
+    note: string;
+    lines: StockLine[];
+    reservedLots?: readonly { itemId: number; lot: string }[];
+  },
+): Promise<{ id: number; code: string; lots: string[] }> {
+  return recordMove(tx, {
+    moveDate: adjustment.date,
+    moveType: "ADJ",
+    reason: COUNT_REASON,
+    note: adjustment.note,
+    lines: adjustment.lines,
+    reservedLots: adjustment.reservedLots,
+  });
 }
 
 /** 재고의 잠금 — 저장 · 취소와 재고에 기대는 고침이 차례로 돈다. 트랜잭션이 끝나면 풀린다. */
@@ -491,6 +528,16 @@ export async function saveMove(db: Db, values: MoveValues, today: string): Promi
   try {
     return await db.transaction(async (tx): Promise<MoveSaveResult> => {
       await lockStock(tx);
+      // 「실사 차이」는 재고 실사의 확정만 쓴다 — 그 전표는 늘 실사 번호를 가리킨다(저자 판정, 설계 「PR E 를 열기 전에 정한 것」).
+      if (move.reason === COUNT_REASON)
+        return {
+          ok: false,
+          errors: {
+            header: { reason: "「실사 차이」는 재고 실사의 확정만 씁니다 — 다른 조정사유를 고르세요" },
+            lines: {},
+          },
+          values,
+        };
       if (move.reason) {
         const [r] = await tx
           .select({ active: codes.active })
@@ -647,7 +694,10 @@ export type MoveFormOptions = {
   reasons: { code: string; name: string }[];
 };
 
-/** 수불 등록 화면의 고르는 목록 — 「사용」인 것만. 품목은 기본 입고 · 출고 창고(코드)를 함께 싣는다(성공 기준 2). */
+/**
+ * 수불 등록 화면의 고르는 목록 — 「사용」인 것만. 품목은 기본 입고 · 출고 창고(코드)를 함께 싣는다(성공 기준 2).
+ * 조정사유에서 「실사 차이」는 뺀다 — 재고 실사의 확정만 쓴다(설계 「PR E 를 열기 전에 정한 것」).
+ */
 export async function moveFormOptions(db: Db): Promise<MoveFormOptions> {
   const inWh = alias(warehouses, "in_wh");
   const outWh = alias(warehouses, "out_wh");
@@ -681,7 +731,7 @@ export async function moveFormOptions(db: Db): Promise<MoveFormOptions> {
     db
       .select({ code: codes.code, name: codes.name })
       .from(codes)
-      .where(and(eq(codes.groupCode, "ADJ_REASON"), eq(codes.active, true)))
+      .where(and(eq(codes.groupCode, "ADJ_REASON"), eq(codes.active, true), sql`${codes.code} <> ${COUNT_REASON}`))
       .orderBy(asc(codes.sortOrder), asc(codes.code)),
   ]);
   return {
@@ -811,7 +861,12 @@ export type MoveLineView = {
   qty: string;
   entered: string | null;
 };
-export type MoveDetail = MoveSummary & { reasonName: string | null; lineRows: MoveLineView[] };
+export type MoveDetail = MoveSummary & {
+  reasonName: string | null;
+  /** 이 전표를 만든 재고 실사의 번호 — 실사 차이의 조정 전표만. */
+  countCode: string | null;
+  lineRows: MoveLineView[];
+};
 
 /** 전표 하나와 그 줄 — 보내는 · 받는 창고는 「코드 이름」, 다른 단위로 넣었으면 넣은 값도(성공 기준 8). */
 export async function getMove(db: Db, code: string): Promise<MoveDetail | undefined> {
@@ -827,10 +882,12 @@ export async function getMove(db: Db, code: string): Promise<MoveDetail | undefi
       note: stockMoves.note,
       canceledBy: cancelOf.code,
       cancels: original.code,
+      countCode: stockCounts.code,
     })
     .from(stockMoves)
     .leftJoin(cancelOf, eq(cancelOf.cancelsMoveId, stockMoves.id))
     .leftJoin(original, eq(original.id, stockMoves.cancelsMoveId))
+    .leftJoin(stockCounts, eq(stockCounts.adjustMoveId, stockMoves.id))
     .leftJoin(codes, and(eq(codes.groupCode, stockMoves.reasonGroup), eq(codes.code, stockMoves.reason)))
     .where(eq(stockMoves.code, code));
   if (!head) return undefined;
@@ -866,6 +923,7 @@ export async function getMove(db: Db, code: string): Promise<MoveDetail | undefi
     note: head.note,
     canceledBy: head.canceledBy,
     cancels: head.cancels,
+    countCode: head.countCode,
     moveTypeName: moveTypeName(head.moveType),
     lines: rows.length,
     lineRows: rows.map((r) => ({
@@ -884,14 +942,24 @@ export async function getMove(db: Db, code: string): Promise<MoveDetail | undefi
 
 // ── 다른 화면이 묻는 것(품목 · 창고 · 단위의 고침) ───────────────────────
 
-/** 수불이 있는 품목 — LOT 관리 · 단위를 바꾸지 못한다(ADR 0015). */
+/**
+ * 수불이 있거나 작성 중 실사에 든 품목 — LOT 관리 · 단위를 바꾸지 못한다(ADR 0015). 작성 중 실사의 실물 수량은 저장한 때의 단위 · LOT 규칙으로
+ * 넣은 것이라, 확정 전에 바뀌면 확정이 그 뜻이 바뀐 수량으로 조정을 남긴다(PR E 리뷰 1회차).
+ */
 export async function itemsWithMoves(db: Db, itemIds: readonly number[]): Promise<Set<number>> {
   if (itemIds.length === 0) return new Set();
-  const rows = await db
-    .selectDistinct({ itemId: stockMoveLines.itemId })
-    .from(stockMoveLines)
-    .where(inArray(stockMoveLines.itemId, [...itemIds]));
-  return new Set(rows.map((r) => r.itemId));
+  const [moved, counting] = await Promise.all([
+    db
+      .selectDistinct({ itemId: stockMoveLines.itemId })
+      .from(stockMoveLines)
+      .where(inArray(stockMoveLines.itemId, [...itemIds])),
+    db
+      .selectDistinct({ itemId: stockCountLines.itemId })
+      .from(stockCountLines)
+      .innerJoin(stockCounts, eq(stockCounts.id, stockCountLines.countId))
+      .where(and(inArray(stockCountLines.itemId, [...itemIds]), eq(stockCounts.status, "DRAFT"))),
+  ]);
+  return new Set([...moved, ...counting].map((r) => r.itemId));
 }
 
 /** 재고(잔액)가 있는 창고인가 — 불량창고 표시를 바꾸지 못한다(설계 ③ 「창고의 새 칸」). */
@@ -905,8 +973,8 @@ export async function warehouseHasStock(db: Db, warehouseId: number): Promise<bo
 }
 
 /**
- * 단위의 소수 자릿수를 decimals 로 줄여도 그 단위의 수량이 다 맞는가(ADR 0017) — 그 단위로 넣은 수량과, 그 단위를 쓰는 품목의 수량(줄).
- * 잔액은 줄의 합이라 줄이 맞으면 맞는다.
+ * 단위의 소수 자릿수를 decimals 로 줄여도 그 단위의 수량이 다 맞는가(ADR 0017) — 그 단위로 넣은 수량과, 그 단위를 쓰는 품목의 수량(줄),
+ * 그리고 그 단위를 쓰는 품목의 작성 중 실사의 실물 수량(확정하면 수불이 된다 — PR E 리뷰 1회차). 잔액은 줄의 합이라 줄이 맞으면 맞는다.
  */
 export async function unitQuantitiesFit(db: Db, unit: string, decimals: number): Promise<boolean> {
   const misfit = (col: typeof stockMoveLines.qty | typeof stockMoveLines.enteredQty): SQL =>
@@ -921,5 +989,17 @@ export async function unitQuantitiesFit(db: Db, unit: string, decimals: number):
         and(eq(items.unit, unit), misfit(stockMoveLines.qty)),
       ),
     );
-  return n === 0;
+  const [{ n: drafts }] = await db
+    .select({ n: count() })
+    .from(stockCountLines)
+    .innerJoin(stockCounts, eq(stockCounts.id, stockCountLines.countId))
+    .innerJoin(items, eq(items.id, stockCountLines.itemId))
+    .where(
+      and(
+        eq(stockCounts.status, "DRAFT"),
+        eq(items.unit, unit),
+        sql`${stockCountLines.countedQty} <> round(${stockCountLines.countedQty}, ${decimals}::int)`,
+      ),
+    );
+  return n === 0 && drafts === 0;
 }

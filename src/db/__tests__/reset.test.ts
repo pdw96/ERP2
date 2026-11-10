@@ -21,6 +21,8 @@ import {
   numberRules,
   partners,
   stockBalances,
+  stockCountLines,
+  stockCounts,
   stockMoveLines,
   stockMoves,
   unitSpecs,
@@ -58,6 +60,8 @@ async function snapshot() {
     stockMoves: strip(await db.select().from(stockMoves).orderBy(asc(stockMoves.id))),
     stockMoveLines: strip(await db.select().from(stockMoveLines).orderBy(asc(stockMoveLines.id))),
     stockBalances: strip(await db.select().from(stockBalances).orderBy(asc(stockBalances.id))),
+    stockCounts: strip(await db.select().from(stockCounts).orderBy(asc(stockCounts.id))),
+    stockCountLines: strip(await db.select().from(stockCountLines).orderBy(asc(stockCountLines.id))),
   };
 }
 
@@ -98,6 +102,8 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
     const counts = await resetToSample(db);
     expect(await snapshot()).toEqual(clean);
     expect(counts).toEqual({
+      stock_count_lines: clean.stockCountLines.length,
+      stock_counts: clean.stockCounts.length,
       stock_balances: clean.stockBalances.length,
       stock_move_lines: clean.stockMoveLines.length,
       stock_moves: clean.stockMoves.length,
@@ -117,7 +123,9 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
       ["LOT_FG", 1],
       ["LOT_NUM", 1],
     ]);
-    expect(clean.stockMoves).toHaveLength(10);
+    // 샘플 수불 열 장과, 샘플 실사(생산현장)의 확정이 만든 「실사 차이」 조정 전표 한 장.
+    expect(clean.stockMoves).toHaveLength(11);
+    expect(clean.stockCounts.map((c) => c.status)).toEqual(["CONFIRMED", "DRAFT"]);
     // 품목의 기본 창고는 창고 코드로 넣은 샘플대로 — 사 오는 품목은 자재창고 → 생산현장, 완제품은 제품창고.
     const whId = (code: string) => clean.warehouses.find((w) => w.code === code)!.id;
     const rm = clean.items.find((i) => i.code === "RM-0003")!;
@@ -195,7 +203,7 @@ describe("코드 번호 — 같은 머리의 가장 큰 번호 + 1", () => {
     expect(await nextCode(db, "BP")).toBe("BP-0008");
     expect(await nextCode(db, "SM")).toBe("SM-0003");
     expect(await nextCode(db, "CS")).toBe("CS-0003");
-    await db.execute(sql.raw(`truncate table "stock_balances", "stock_move_lines", "items"`));
+    await db.execute(sql.raw(`truncate table "stock_count_lines", "stock_balances", "stock_move_lines", "items"`));
     expect(await nextCode(db, "RM")).toBe("RM-0001");
   });
 

@@ -4,6 +4,7 @@ import { koreaToday } from "@/lib/today";
 import {
   SAMPLE_CODE_GROUPS,
   SAMPLE_CODES,
+  SAMPLE_COUNTS,
   SAMPLE_DEFAULT_WAREHOUSES,
   SAMPLE_ITEMS,
   SAMPLE_MOVES,
@@ -20,16 +21,21 @@ import {
   numberRuleSeqs,
   partners,
   stockBalances,
+  stockCountLines,
+  stockCounts,
   stockMoveLines,
   stockMoves,
   unitSpecs,
   warehouses,
 } from "./schema";
 import { cancelMove, lockStock, saveMove } from "./stock";
+import { confirmCount, openCountSheet, saveCount } from "./stock-counts";
 import type { Db } from "./types";
 
 /** 되돌림이 비우고 다시 채우는 테이블 — 테이블을 더하는 조각은 여기에도 더한다(시험이 스키마와 견준다). */
 export const RESET_TABLES = [
+  "stock_count_lines",
+  "stock_counts",
   "stock_balances",
   "stock_move_lines",
   "stock_moves",
@@ -72,9 +78,19 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
       }),
     );
     await insertSampleMoves(tx, today);
-    const n = async (t: typeof stockMoves | typeof stockMoveLines | typeof stockBalances | typeof numberRuleSeqs) =>
-      (await tx.select({ n: count() }).from(t))[0].n;
+    await insertSampleCounts(tx, today);
+    const n = async (
+      t:
+        | typeof stockMoves
+        | typeof stockMoveLines
+        | typeof stockBalances
+        | typeof numberRuleSeqs
+        | typeof stockCounts
+        | typeof stockCountLines,
+    ) => (await tx.select({ n: count() }).from(t))[0].n;
     return {
+      stock_count_lines: await n(stockCountLines),
+      stock_counts: await n(stockCounts),
       stock_balances: await n(stockBalances),
       stock_move_lines: await n(stockMoveLines),
       stock_moves: await n(stockMoves),
@@ -128,6 +144,34 @@ async function insertSampleMoves(tx: Db, today: string) {
     if (m.cancel) {
       const cancel = await cancelMove(tx, saved.code, moveDate);
       if (!cancel.ok) throw new Error(`샘플 수불 취소 실패: ${saved.code}`);
+    }
+  }
+}
+
+/**
+ * 샘플 재고 실사를 넣는다 — 그 창고의 장부를 불러(openCountSheet) 실물 수량을 채워 저장하고, confirm 이면 확정한다. 화면과 같은 길이라
+ * 번호 · 조정 전표 · 잔액이 맞는다. 틀리면 던져 되돌림 전체를 되돌린다.
+ */
+async function insertSampleCounts(tx: Db, today: string) {
+  for (const c of SAMPLE_COUNTS) {
+    const date = daysBefore(today, c.daysAgo);
+    const opened = await openCountSheet(tx, c.warehouse);
+    if (!opened.ok) throw new Error(`샘플 실사를 열지 못했다(${c.warehouse}): ${opened.message}`);
+    const lines = opened.sheet.lines.map((l) => {
+      const hit = c.counted[`${l.itemCode}|${l.lot}`] ?? c.counted[l.itemCode];
+      return {
+        item: l.itemCode,
+        lot: l.lot,
+        status: l.status,
+        counted: hit ?? (c.rest === "book" ? l.book : ""),
+      };
+    });
+    const saved = await saveCount(tx, { warehouse: c.warehouse, baseline: String(opened.sheet.baseline), lines }, date);
+    if (!saved.ok)
+      throw new Error(`샘플 실사 저장 실패(${c.warehouse}): ${JSON.stringify([saved.errors, saved.formError])}`);
+    if (c.confirm) {
+      const done = await confirmCount(tx, saved.code, saved.version, date);
+      if (!done.ok) throw new Error(`샘플 실사 확정 실패: ${saved.code}`);
     }
   }
 }

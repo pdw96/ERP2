@@ -198,7 +198,12 @@ export const MODULE_MAP: readonly MapModule[] = [
       },
       { id: "stock", name: "잔액 — 품목 × 창고 × LOT · 상태", table: "stock_balances", slice: "재고 수불" },
       { id: "alloc", name: "할당", slice: "작업지시" },
-      { id: "count", name: "실사", slice: "재고 수불" },
+      {
+        id: "count",
+        name: "실사 — 창고 · 작성 중 · 확정 · 실사 차이 전표",
+        table: "stock_counts",
+        slice: "재고 수불",
+      },
     ],
   },
   {
@@ -344,6 +349,23 @@ export const DATA_MODEL = `erDiagram
     text status "상태"
     numeric qty "지금 수량 — 0 밑으로 못 감, 줄의 합"
   }
+  STOCK_COUNTS["재고 실사 stock_counts"] {
+    text code UK "PI-YYYYMMDD-NNN — 처음 저장한 날 · 그날의 일련"
+    integer warehouse_id FK "창고 — 작성 중은 창고마다 하나"
+    text status "작성 중 · 확정 · 취소"
+    integer baseline_line_id "장부를 불러온 때의 마지막 수불 줄 — 연 뒤의 수불 경고"
+    date confirmed_date "확정한 날"
+    integer adjust_move_id FK "실사 차이의 조정 전표 — 차이가 없으면 없음"
+  }
+  STOCK_COUNT_LINES["실사 줄 stock_count_lines"] {
+    integer count_id FK "실사 — 줄 1 ~ 100"
+    integer item_id FK "품목"
+    text lot "LOT"
+    text status "상태 — 더한 줄은 가용"
+    boolean added "장부에 없어 더한 줄"
+    numeric counted_qty "실물 수량 — 작성 중에만 비울 수 있음"
+    numeric book_qty "확정하는 순간의 장부"
+  }
   CODES ||--|| UNIT_SPECS : "단위의 사양"
   UNIT_SPECS ||--o{ UNIT_SPECS : "기준 단위"
   NUMBER_RULES ||--o{ NUMBER_RULE_SEQS : "기간마다 일련"
@@ -355,7 +377,11 @@ export const DATA_MODEL = `erDiagram
   WAREHOUSES |o--o{ STOCK_MOVE_LINES : "출고창고 · 입고창고"
   ITEMS ||--o{ STOCK_BALANCES : "품목"
   WAREHOUSES ||--o{ STOCK_BALANCES : "창고"
-  CODES ||--o{ STOCK_MOVES : "수불 유형 · 조정 사유"`;
+  CODES ||--o{ STOCK_MOVES : "수불 유형 · 조정 사유"
+  WAREHOUSES ||--o{ STOCK_COUNTS : "창고"
+  STOCK_COUNTS ||--|{ STOCK_COUNT_LINES : "줄 1 ~ 100"
+  ITEMS ||--o{ STOCK_COUNT_LINES : "품목"
+  STOCK_COUNTS |o--o| STOCK_MOVES : "확정 → 실사 차이 조정 전표"`;
 
 // 시스템 구성 — 화면 · 서버 · DB · 자동 검사 · 알림.
 export const SYSTEM = `flowchart LR

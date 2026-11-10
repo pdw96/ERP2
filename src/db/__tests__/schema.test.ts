@@ -28,7 +28,7 @@ const item = (over: Partial<typeof items.$inferInsert> = {}) => ({
 });
 
 describe("테이블", () => {
-  it("스키마의 테이블은 열하나다 — 기준정보 다섯과 단위 사양 · 번호 규칙 · 번호 규칙의 일련 · 수불 전표 · 수불 줄 · 잔액", () => {
+  it("스키마의 테이블은 열셋이다 — 기준정보 다섯과 단위 사양 · 번호 규칙 · 번호 규칙의 일련 · 수불 전표 · 수불 줄 · 잔액 · 실사 · 실사 줄", () => {
     const names = Object.values(schema).filter(isTable).map(getTableName).sort();
     expect(names).toEqual([
       "code_groups",
@@ -38,6 +38,8 @@ describe("테이블", () => {
       "number_rules",
       "partners",
       "stock_balances",
+      "stock_count_lines",
+      "stock_counts",
       "stock_move_lines",
       "stock_moves",
       "unit_specs",

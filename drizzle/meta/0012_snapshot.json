@@ -1,0 +1,2379 @@
+{
+  "id": "42098fb0-c2cf-4e94-b043-ecdb6d8516ac",
+  "prevId": "f8e52a02-647c-443d-ac6c-3fb3b320bcfb",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.code_groups": {
+      "name": "code_groups",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "code_groups_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_system": {
+          "name": "is_system",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "code_groups_code_unique": {
+          "name": "code_groups_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "code_groups_code_format": {
+          "name": "code_groups_code_format",
+          "value": "\"code_groups\".\"code\" ~ '^[A-Z][A-Z0-9_]{1,19}$'"
+        },
+        "code_groups_name_length": {
+          "name": "code_groups_name_length",
+          "value": "char_length(\"code_groups\".\"name\") between 1 and 50"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.codes": {
+      "name": "codes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "codes_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "group_code": {
+          "name": "group_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "codes_group_code_code_groups_code_fk": {
+          "name": "codes_group_code_code_groups_code_fk",
+          "tableFrom": "codes",
+          "tableTo": "code_groups",
+          "columnsFrom": [
+            "group_code"
+          ],
+          "columnsTo": [
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "codes_group_code_code_unique": {
+          "name": "codes_group_code_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "group_code",
+            "code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "codes_code_format": {
+          "name": "codes_code_format",
+          "value": "\"codes\".\"code\" ~ '^[A-Z0-9][A-Z0-9_]{0,19}$'"
+        },
+        "codes_name_length": {
+          "name": "codes_name_length",
+          "value": "char_length(\"codes\".\"name\") between 1 and 50"
+        },
+        "codes_sort_order_range": {
+          "name": "codes_sort_order_range",
+          "value": "\"codes\".\"sort_order\" between 0 and 999"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.items": {
+      "name": "items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "items_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "spec": {
+          "name": "spec",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "item_type_group": {
+          "name": "item_type_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ITEM_TYPE'"
+        },
+        "item_type": {
+          "name": "item_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "procurement_group": {
+          "name": "procurement_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PROC_TYPE'"
+        },
+        "procurement": {
+          "name": "procurement",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unit_group": {
+          "name": "unit_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'UNIT'"
+        },
+        "unit": {
+          "name": "unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "inspect_in": {
+          "name": "inspect_in",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "inspect_out": {
+          "name": "inspect_out",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "lead_time_days": {
+          "name": "lead_time_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "safety_stock": {
+          "name": "safety_stock",
+          "type": "numeric(12, 3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "min_lot": {
+          "name": "min_lot",
+          "type": "numeric(12, 3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "lot_multiple": {
+          "name": "lot_multiple",
+          "type": "numeric(12, 3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "cls1_group": {
+          "name": "cls1_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ITEM_CLS1'"
+        },
+        "cls1": {
+          "name": "cls1",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cls2_group": {
+          "name": "cls2_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ITEM_CLS2'"
+        },
+        "cls2": {
+          "name": "cls2",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cls3_group": {
+          "name": "cls3_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ITEM_CLS3'"
+        },
+        "cls3": {
+          "name": "cls3",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "lot_managed": {
+          "name": "lot_managed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "lot_rule_code": {
+          "name": "lot_rule_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "default_in_warehouse_id": {
+          "name": "default_in_warehouse_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "default_out_warehouse_id": {
+          "name": "default_out_warehouse_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "default_warehouse_defect": {
+          "name": "default_warehouse_defect",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "items_lot_rule_fk": {
+          "name": "items_lot_rule_fk",
+          "tableFrom": "items",
+          "tableTo": "number_rules",
+          "columnsFrom": [
+            "lot_rule_code"
+          ],
+          "columnsTo": [
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "items_default_in_warehouse_fk": {
+          "name": "items_default_in_warehouse_fk",
+          "tableFrom": "items",
+          "tableTo": "warehouses",
+          "columnsFrom": [
+            "default_in_warehouse_id",
+            "default_warehouse_defect"
+          ],
+          "columnsTo": [
+            "id",
+            "is_defect"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "items_default_out_warehouse_fk": {
+          "name": "items_default_out_warehouse_fk",
+          "tableFrom": "items",
+          "tableTo": "warehouses",
+          "columnsFrom": [
+            "default_out_warehouse_id",
+            "default_warehouse_defect"
+          ],
+          "columnsTo": [
+            "id",
+            "is_defect"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "items_item_type_fk": {
+          "name": "items_item_type_fk",
+          "tableFrom": "items",
+          "tableTo": "codes",
+          "columnsFrom": [
+            "item_type_group",
+            "item_type"
+          ],
+          "columnsTo": [
+            "group_code",
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "items_procurement_fk": {
+          "name": "items_procurement_fk",
+          "tableFrom": "items",
+          "tableTo": "codes",
+          "columnsFrom": [
+            "procurement_group",
+            "procurement"
+          ],
+          "columnsTo": [
+            "group_code",
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "items_unit_fk": {
+          "name": "items_unit_fk",
+          "tableFrom": "items",
+          "tableTo": "codes",
+          "columnsFrom": [
+            "unit_group",
+            "unit"
+          ],
+          "columnsTo": [
+            "group_code",
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "items_cls1_fk": {
+          "name": "items_cls1_fk",
+          "tableFrom": "items",
+          "tableTo": "codes",
+          "columnsFrom": [
+            "cls1_group",
+            "cls1"
+          ],
+          "columnsTo": [
+            "group_code",
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "items_cls2_fk": {
+          "name": "items_cls2_fk",
+          "tableFrom": "items",
+          "tableTo": "codes",
+          "columnsFrom": [
+            "cls2_group",
+            "cls2"
+          ],
+          "columnsTo": [
+            "group_code",
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "items_cls3_fk": {
+          "name": "items_cls3_fk",
+          "tableFrom": "items",
+          "tableTo": "codes",
+          "columnsFrom": [
+            "cls3_group",
+            "cls3"
+          ],
+          "columnsTo": [
+            "group_code",
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "items_code_unique": {
+          "name": "items_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "items_default_warehouse_defect_fixed": {
+          "name": "items_default_warehouse_defect_fixed",
+          "value": "\"items\".\"default_warehouse_defect\" = false"
+        },
+        "items_lot_rule_made_only": {
+          "name": "items_lot_rule_made_only",
+          "value": "\"items\".\"lot_rule_code\" is null or \"items\".\"item_type\" in ('SF', 'FG')"
+        },
+        "items_item_type_group_fixed": {
+          "name": "items_item_type_group_fixed",
+          "value": "\"items\".\"item_type_group\" = 'ITEM_TYPE'"
+        },
+        "items_procurement_group_fixed": {
+          "name": "items_procurement_group_fixed",
+          "value": "\"items\".\"procurement_group\" = 'PROC_TYPE'"
+        },
+        "items_unit_group_fixed": {
+          "name": "items_unit_group_fixed",
+          "value": "\"items\".\"unit_group\" = 'UNIT'"
+        },
+        "items_cls1_group_fixed": {
+          "name": "items_cls1_group_fixed",
+          "value": "\"items\".\"cls1_group\" = 'ITEM_CLS1'"
+        },
+        "items_cls2_group_fixed": {
+          "name": "items_cls2_group_fixed",
+          "value": "\"items\".\"cls2_group\" = 'ITEM_CLS2'"
+        },
+        "items_cls3_group_fixed": {
+          "name": "items_cls3_group_fixed",
+          "value": "\"items\".\"cls3_group\" = 'ITEM_CLS3'"
+        },
+        "items_code_format": {
+          "name": "items_code_format",
+          "value": "\"items\".\"code\" ~ '^(RM|SF|FG|SM|CS)-[0-9]{4,}$' and left(\"items\".\"code\", 2) = \"items\".\"item_type\""
+        },
+        "items_name_length": {
+          "name": "items_name_length",
+          "value": "char_length(\"items\".\"name\") between 1 and 100"
+        },
+        "items_spec_length": {
+          "name": "items_spec_length",
+          "value": "char_length(\"items\".\"spec\") <= 100"
+        },
+        "items_lead_time_range": {
+          "name": "items_lead_time_range",
+          "value": "\"items\".\"lead_time_days\" between 0 and 365"
+        },
+        "items_quantities_not_negative": {
+          "name": "items_quantities_not_negative",
+          "value": "\"items\".\"safety_stock\" >= 0 and \"items\".\"min_lot\" >= 0 and \"items\".\"lot_multiple\" >= 0"
+        },
+        "items_note_length": {
+          "name": "items_note_length",
+          "value": "char_length(\"items\".\"note\") <= 500"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.number_rule_seqs": {
+      "name": "number_rule_seqs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "number_rule_seqs_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "rule_code": {
+          "name": "rule_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "period": {
+          "name": "period",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "last_seq": {
+          "name": "last_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "number_rule_seqs_rule_code_number_rules_code_fk": {
+          "name": "number_rule_seqs_rule_code_number_rules_code_fk",
+          "tableFrom": "number_rule_seqs",
+          "tableTo": "number_rules",
+          "columnsFrom": [
+            "rule_code"
+          ],
+          "columnsTo": [
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "number_rule_seqs_rule_period_unique": {
+          "name": "number_rule_seqs_rule_period_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "rule_code",
+            "period"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "number_rule_seqs_period_format": {
+          "name": "number_rule_seqs_period_format",
+          "value": "\"number_rule_seqs\".\"period\" ~ '^([0-9]{4}|[0-9]{6}|[0-9]{8})?$'"
+        },
+        "number_rule_seqs_last_seq_positive": {
+          "name": "number_rule_seqs_last_seq_positive",
+          "value": "\"number_rule_seqs\".\"last_seq\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.number_rules": {
+      "name": "number_rules",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "number_rules_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prefix": {
+          "name": "prefix",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "separator": {
+          "name": "separator",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "date_format": {
+          "name": "date_format",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "seq_digits": {
+          "name": "seq_digits",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "default_for": {
+          "name": "default_for",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "number_rules_code_unique": {
+          "name": "number_rules_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "code"
+          ]
+        },
+        "number_rules_default_for_unique": {
+          "name": "number_rules_default_for_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "default_for"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "number_rules_code_format": {
+          "name": "number_rules_code_format",
+          "value": "\"number_rules\".\"code\" ~ '^[A-Z][A-Z0-9_]{1,19}$'"
+        },
+        "number_rules_name_length": {
+          "name": "number_rules_name_length",
+          "value": "char_length(\"number_rules\".\"name\") between 1 and 50"
+        },
+        "number_rules_prefix_format": {
+          "name": "number_rules_prefix_format",
+          "value": "\"number_rules\".\"prefix\" ~ '^[A-Z0-9]{0,6}$'"
+        },
+        "number_rules_separator_values": {
+          "name": "number_rules_separator_values",
+          "value": "\"number_rules\".\"separator\" in ('', '-', '_', '.')"
+        },
+        "number_rules_date_format_values": {
+          "name": "number_rules_date_format_values",
+          "value": "\"number_rules\".\"date_format\" in ('', 'YYMMDD', 'YYYYMMDD', 'YYMM')"
+        },
+        "number_rules_seq_digits_range": {
+          "name": "number_rules_seq_digits_range",
+          "value": "\"number_rules\".\"seq_digits\" between 2 and 6"
+        },
+        "number_rules_default_for_values": {
+          "name": "number_rules_default_for_values",
+          "value": "\"number_rules\".\"default_for\" in ('SF', 'FG')"
+        },
+        "number_rules_default_active": {
+          "name": "number_rules_default_active",
+          "value": "\"number_rules\".\"default_for\" is null or \"number_rules\".\"active\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.partners": {
+      "name": "partners",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "partners_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_supplier": {
+          "name": "is_supplier",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "is_customer": {
+          "name": "is_customer",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "country_group": {
+          "name": "country_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'COUNTRY'"
+        },
+        "country": {
+          "name": "country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'KR'"
+        },
+        "biz_no": {
+          "name": "biz_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "foreign_biz_no": {
+          "name": "foreign_biz_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ceo": {
+          "name": "ceo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "biz_type": {
+          "name": "biz_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "biz_item": {
+          "name": "biz_item",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "phone": {
+          "name": "phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "contact_name": {
+          "name": "contact_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "contact_phone": {
+          "name": "contact_phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "partners_country_fk": {
+          "name": "partners_country_fk",
+          "tableFrom": "partners",
+          "tableTo": "codes",
+          "columnsFrom": [
+            "country_group",
+            "country"
+          ],
+          "columnsTo": [
+            "group_code",
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "partners_code_unique": {
+          "name": "partners_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "partners_country_group_fixed": {
+          "name": "partners_country_group_fixed",
+          "value": "\"partners\".\"country_group\" = 'COUNTRY'"
+        },
+        "partners_code_format": {
+          "name": "partners_code_format",
+          "value": "\"partners\".\"code\" ~ '^BP-[0-9]{4,}$'"
+        },
+        "partners_name_length": {
+          "name": "partners_name_length",
+          "value": "char_length(\"partners\".\"name\") between 1 and 100"
+        },
+        "partners_role_required": {
+          "name": "partners_role_required",
+          "value": "\"partners\".\"is_supplier\" or \"partners\".\"is_customer\""
+        },
+        "partners_biz_no_format": {
+          "name": "partners_biz_no_format",
+          "value": "\"partners\".\"biz_no\" is null or \"partners\".\"biz_no\" ~ '^[0-9]{3}-[0-9]{2}-[0-9]{5}$'"
+        },
+        "partners_foreign_biz_no_length": {
+          "name": "partners_foreign_biz_no_length",
+          "value": "\"partners\".\"foreign_biz_no\" is null or char_length(\"partners\".\"foreign_biz_no\") between 1 and 30"
+        },
+        "partners_biz_no_by_country": {
+          "name": "partners_biz_no_by_country",
+          "value": "(\"partners\".\"country\" = 'KR' and \"partners\".\"foreign_biz_no\" is null) or (\"partners\".\"country\" <> 'KR' and \"partners\".\"biz_no\" is null)"
+        },
+        "partners_ceo_length": {
+          "name": "partners_ceo_length",
+          "value": "char_length(\"partners\".\"ceo\") <= 50"
+        },
+        "partners_biz_type_length": {
+          "name": "partners_biz_type_length",
+          "value": "char_length(\"partners\".\"biz_type\") <= 50"
+        },
+        "partners_biz_item_length": {
+          "name": "partners_biz_item_length",
+          "value": "char_length(\"partners\".\"biz_item\") <= 50"
+        },
+        "partners_address_length": {
+          "name": "partners_address_length",
+          "value": "char_length(\"partners\".\"address\") <= 200"
+        },
+        "partners_contact_name_length": {
+          "name": "partners_contact_name_length",
+          "value": "char_length(\"partners\".\"contact_name\") <= 50"
+        },
+        "partners_note_length": {
+          "name": "partners_note_length",
+          "value": "char_length(\"partners\".\"note\") <= 500"
+        },
+        "partners_phone_format": {
+          "name": "partners_phone_format",
+          "value": "\"partners\".\"phone\" = '' or (\"partners\".\"phone\" ~ '^[0-9+() -]{1,20}$' and \"partners\".\"phone\" ~ '[0-9]')"
+        },
+        "partners_contact_phone_format": {
+          "name": "partners_contact_phone_format",
+          "value": "\"partners\".\"contact_phone\" = '' or (\"partners\".\"contact_phone\" ~ '^[0-9+() -]{1,20}$' and \"partners\".\"contact_phone\" ~ '[0-9]')"
+        },
+        "partners_email_format": {
+          "name": "partners_email_format",
+          "value": "\"partners\".\"email\" = '' or (char_length(\"partners\".\"email\") <= 100 and \"partners\".\"email\" ~ '^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+$')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.stock_balances": {
+      "name": "stock_balances",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "stock_balances_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "warehouse_id": {
+          "name": "warehouse_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lot": {
+          "name": "lot",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'AVAILABLE'"
+        },
+        "qty": {
+          "name": "qty",
+          "type": "numeric(14, 3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "stock_balances_warehouse_idx": {
+          "name": "stock_balances_warehouse_idx",
+          "columns": [
+            {
+              "expression": "warehouse_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "stock_balances_item_id_items_id_fk": {
+          "name": "stock_balances_item_id_items_id_fk",
+          "tableFrom": "stock_balances",
+          "tableTo": "items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "stock_balances_warehouse_id_warehouses_id_fk": {
+          "name": "stock_balances_warehouse_id_warehouses_id_fk",
+          "tableFrom": "stock_balances",
+          "tableTo": "warehouses",
+          "columnsFrom": [
+            "warehouse_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "stock_balances_key_unique": {
+          "name": "stock_balances_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "item_id",
+            "warehouse_id",
+            "lot",
+            "status"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "stock_balances_qty_not_negative": {
+          "name": "stock_balances_qty_not_negative",
+          "value": "\"stock_balances\".\"qty\" >= 0"
+        },
+        "stock_balances_lot_format": {
+          "name": "stock_balances_lot_format",
+          "value": "\"stock_balances\".\"lot\" ~ '^[A-Za-z0-9._-]{0,30}$'"
+        },
+        "stock_balances_status_values": {
+          "name": "stock_balances_status_values",
+          "value": "\"stock_balances\".\"status\" in ('AVAILABLE', 'QC')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.stock_count_lines": {
+      "name": "stock_count_lines",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "stock_count_lines_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "count_id": {
+          "name": "count_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "line_no": {
+          "name": "line_no",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lot": {
+          "name": "lot",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'AVAILABLE'"
+        },
+        "added": {
+          "name": "added",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "counted_qty": {
+          "name": "counted_qty",
+          "type": "numeric(14, 3)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "book_qty": {
+          "name": "book_qty",
+          "type": "numeric(14, 3)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "stock_count_lines_count_id_stock_counts_id_fk": {
+          "name": "stock_count_lines_count_id_stock_counts_id_fk",
+          "tableFrom": "stock_count_lines",
+          "tableTo": "stock_counts",
+          "columnsFrom": [
+            "count_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "stock_count_lines_item_id_items_id_fk": {
+          "name": "stock_count_lines_item_id_items_id_fk",
+          "tableFrom": "stock_count_lines",
+          "tableTo": "items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "stock_count_lines_line_unique": {
+          "name": "stock_count_lines_line_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "count_id",
+            "line_no"
+          ]
+        },
+        "stock_count_lines_key_unique": {
+          "name": "stock_count_lines_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "count_id",
+            "item_id",
+            "lot",
+            "status"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "stock_count_lines_line_no_range": {
+          "name": "stock_count_lines_line_no_range",
+          "value": "\"stock_count_lines\".\"line_no\" between 1 and 100"
+        },
+        "stock_count_lines_lot_format": {
+          "name": "stock_count_lines_lot_format",
+          "value": "\"stock_count_lines\".\"lot\" ~ '^[A-Za-z0-9._-]{0,30}$'"
+        },
+        "stock_count_lines_status_values": {
+          "name": "stock_count_lines_status_values",
+          "value": "\"stock_count_lines\".\"status\" in ('AVAILABLE', 'QC')"
+        },
+        "stock_count_lines_added_available": {
+          "name": "stock_count_lines_added_available",
+          "value": "not \"stock_count_lines\".\"added\" or \"stock_count_lines\".\"status\" = 'AVAILABLE'"
+        },
+        "stock_count_lines_counted_not_negative": {
+          "name": "stock_count_lines_counted_not_negative",
+          "value": "\"stock_count_lines\".\"counted_qty\" is null or \"stock_count_lines\".\"counted_qty\" >= 0"
+        },
+        "stock_count_lines_book_not_negative": {
+          "name": "stock_count_lines_book_not_negative",
+          "value": "\"stock_count_lines\".\"book_qty\" is null or \"stock_count_lines\".\"book_qty\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.stock_counts": {
+      "name": "stock_counts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "stock_counts_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "count_date": {
+          "name": "count_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "warehouse_id": {
+          "name": "warehouse_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'DRAFT'"
+        },
+        "baseline_line_id": {
+          "name": "baseline_line_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "confirmed_date": {
+          "name": "confirmed_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "adjust_move_id": {
+          "name": "adjust_move_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "stock_counts_one_draft_per_warehouse": {
+          "name": "stock_counts_one_draft_per_warehouse",
+          "columns": [
+            {
+              "expression": "warehouse_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"stock_counts\".\"status\" = 'DRAFT'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "stock_counts_warehouse_id_warehouses_id_fk": {
+          "name": "stock_counts_warehouse_id_warehouses_id_fk",
+          "tableFrom": "stock_counts",
+          "tableTo": "warehouses",
+          "columnsFrom": [
+            "warehouse_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "stock_counts_adjust_move_id_stock_moves_id_fk": {
+          "name": "stock_counts_adjust_move_id_stock_moves_id_fk",
+          "tableFrom": "stock_counts",
+          "tableTo": "stock_moves",
+          "columnsFrom": [
+            "adjust_move_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "stock_counts_code_unique": {
+          "name": "stock_counts_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "code"
+          ]
+        },
+        "stock_counts_adjust_move_id_unique": {
+          "name": "stock_counts_adjust_move_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "adjust_move_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "stock_counts_code_format": {
+          "name": "stock_counts_code_format",
+          "value": "\"stock_counts\".\"code\" ~ '^PI-[0-9]{8}-[0-9]{3,}$'"
+        },
+        "stock_counts_code_date": {
+          "name": "stock_counts_code_date",
+          "value": "substring(\"stock_counts\".\"code\" from 4 for 8) = to_char(\"stock_counts\".\"count_date\", 'YYYYMMDD')"
+        },
+        "stock_counts_status_values": {
+          "name": "stock_counts_status_values",
+          "value": "\"stock_counts\".\"status\" in ('DRAFT', 'CONFIRMED', 'CANCELED')"
+        },
+        "stock_counts_confirmed_date": {
+          "name": "stock_counts_confirmed_date",
+          "value": "(\"stock_counts\".\"status\" = 'CONFIRMED') = (\"stock_counts\".\"confirmed_date\" is not null)"
+        },
+        "stock_counts_adjust_confirmed_only": {
+          "name": "stock_counts_adjust_confirmed_only",
+          "value": "\"stock_counts\".\"adjust_move_id\" is null or \"stock_counts\".\"status\" = 'CONFIRMED'"
+        },
+        "stock_counts_baseline_not_negative": {
+          "name": "stock_counts_baseline_not_negative",
+          "value": "\"stock_counts\".\"baseline_line_id\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.stock_move_lines": {
+      "name": "stock_move_lines",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "stock_move_lines_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "move_id": {
+          "name": "move_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "line_no": {
+          "name": "line_no",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "move_date": {
+          "name": "move_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lot": {
+          "name": "lot",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'AVAILABLE'"
+        },
+        "from_warehouse_id": {
+          "name": "from_warehouse_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "to_warehouse_id": {
+          "name": "to_warehouse_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "qty": {
+          "name": "qty",
+          "type": "numeric(14, 3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entered_qty": {
+          "name": "entered_qty",
+          "type": "numeric(14, 3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entered_unit_group": {
+          "name": "entered_unit_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'UNIT'"
+        },
+        "entered_unit": {
+          "name": "entered_unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "stock_move_lines_to_key_idx": {
+          "name": "stock_move_lines_to_key_idx",
+          "columns": [
+            {
+              "expression": "item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "to_warehouse_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lot",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "move_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "stock_move_lines_from_key_idx": {
+          "name": "stock_move_lines_from_key_idx",
+          "columns": [
+            {
+              "expression": "item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "from_warehouse_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lot",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "move_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "stock_move_lines_move_id_stock_moves_id_fk": {
+          "name": "stock_move_lines_move_id_stock_moves_id_fk",
+          "tableFrom": "stock_move_lines",
+          "tableTo": "stock_moves",
+          "columnsFrom": [
+            "move_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "stock_move_lines_item_id_items_id_fk": {
+          "name": "stock_move_lines_item_id_items_id_fk",
+          "tableFrom": "stock_move_lines",
+          "tableTo": "items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "stock_move_lines_from_warehouse_id_warehouses_id_fk": {
+          "name": "stock_move_lines_from_warehouse_id_warehouses_id_fk",
+          "tableFrom": "stock_move_lines",
+          "tableTo": "warehouses",
+          "columnsFrom": [
+            "from_warehouse_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "stock_move_lines_to_warehouse_id_warehouses_id_fk": {
+          "name": "stock_move_lines_to_warehouse_id_warehouses_id_fk",
+          "tableFrom": "stock_move_lines",
+          "tableTo": "warehouses",
+          "columnsFrom": [
+            "to_warehouse_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "stock_move_lines_entered_unit_fk": {
+          "name": "stock_move_lines_entered_unit_fk",
+          "tableFrom": "stock_move_lines",
+          "tableTo": "codes",
+          "columnsFrom": [
+            "entered_unit_group",
+            "entered_unit"
+          ],
+          "columnsTo": [
+            "group_code",
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "stock_move_lines_move_line_unique": {
+          "name": "stock_move_lines_move_line_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "move_id",
+            "line_no"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "stock_move_lines_line_no_range": {
+          "name": "stock_move_lines_line_no_range",
+          "value": "\"stock_move_lines\".\"line_no\" between 1 and 100"
+        },
+        "stock_move_lines_lot_format": {
+          "name": "stock_move_lines_lot_format",
+          "value": "\"stock_move_lines\".\"lot\" ~ '^[A-Za-z0-9._-]{0,30}$'"
+        },
+        "stock_move_lines_status_values": {
+          "name": "stock_move_lines_status_values",
+          "value": "\"stock_move_lines\".\"status\" in ('AVAILABLE', 'QC')"
+        },
+        "stock_move_lines_warehouse_required": {
+          "name": "stock_move_lines_warehouse_required",
+          "value": "\"stock_move_lines\".\"from_warehouse_id\" is not null or \"stock_move_lines\".\"to_warehouse_id\" is not null"
+        },
+        "stock_move_lines_warehouses_differ": {
+          "name": "stock_move_lines_warehouses_differ",
+          "value": "\"stock_move_lines\".\"from_warehouse_id\" is distinct from \"stock_move_lines\".\"to_warehouse_id\""
+        },
+        "stock_move_lines_qty_positive": {
+          "name": "stock_move_lines_qty_positive",
+          "value": "\"stock_move_lines\".\"qty\" > 0 and \"stock_move_lines\".\"entered_qty\" > 0"
+        },
+        "stock_move_lines_entered_unit_group_fixed": {
+          "name": "stock_move_lines_entered_unit_group_fixed",
+          "value": "\"stock_move_lines\".\"entered_unit_group\" = 'UNIT'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.stock_moves": {
+      "name": "stock_moves",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "stock_moves_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "move_date": {
+          "name": "move_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "move_type_group": {
+          "name": "move_type_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'MOVE_TYPE'"
+        },
+        "move_type": {
+          "name": "move_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason_group": {
+          "name": "reason_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ADJ_REASON'"
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "cancels_move_id": {
+          "name": "cancels_move_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_cancel": {
+          "name": "is_cancel",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "cancels_move_id is not null",
+            "type": "stored"
+          }
+        },
+        "cancels_cancel": {
+          "name": "cancels_cancel",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "stock_moves_cancels_fk": {
+          "name": "stock_moves_cancels_fk",
+          "tableFrom": "stock_moves",
+          "tableTo": "stock_moves",
+          "columnsFrom": [
+            "cancels_move_id",
+            "cancels_cancel"
+          ],
+          "columnsTo": [
+            "id",
+            "is_cancel"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "stock_moves_move_type_fk": {
+          "name": "stock_moves_move_type_fk",
+          "tableFrom": "stock_moves",
+          "tableTo": "codes",
+          "columnsFrom": [
+            "move_type_group",
+            "move_type"
+          ],
+          "columnsTo": [
+            "group_code",
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "stock_moves_reason_fk": {
+          "name": "stock_moves_reason_fk",
+          "tableFrom": "stock_moves",
+          "tableTo": "codes",
+          "columnsFrom": [
+            "reason_group",
+            "reason"
+          ],
+          "columnsTo": [
+            "group_code",
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "stock_moves_code_unique": {
+          "name": "stock_moves_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "code"
+          ]
+        },
+        "stock_moves_cancels_move_id_unique": {
+          "name": "stock_moves_cancels_move_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "cancels_move_id"
+          ]
+        },
+        "stock_moves_id_cancel_unique": {
+          "name": "stock_moves_id_cancel_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "is_cancel"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "stock_moves_code_format": {
+          "name": "stock_moves_code_format",
+          "value": "\"stock_moves\".\"code\" ~ '^IV-[0-9]{8}-[0-9]{3,}$'"
+        },
+        "stock_moves_code_date": {
+          "name": "stock_moves_code_date",
+          "value": "substring(\"stock_moves\".\"code\" from 4 for 8) = to_char(\"stock_moves\".\"move_date\", 'YYYYMMDD')"
+        },
+        "stock_moves_move_type_group_fixed": {
+          "name": "stock_moves_move_type_group_fixed",
+          "value": "\"stock_moves\".\"move_type_group\" = 'MOVE_TYPE'"
+        },
+        "stock_moves_reason_group_fixed": {
+          "name": "stock_moves_reason_group_fixed",
+          "value": "\"stock_moves\".\"reason_group\" = 'ADJ_REASON'"
+        },
+        "stock_moves_reason_adjust_only": {
+          "name": "stock_moves_reason_adjust_only",
+          "value": "(\"stock_moves\".\"move_type\" = 'ADJ') = (\"stock_moves\".\"reason\" is not null)"
+        },
+        "stock_moves_note_length": {
+          "name": "stock_moves_note_length",
+          "value": "char_length(\"stock_moves\".\"note\") <= 200"
+        },
+        "stock_moves_cancels_cancel_fixed": {
+          "name": "stock_moves_cancels_cancel_fixed",
+          "value": "\"stock_moves\".\"cancels_cancel\" = false"
+        },
+        "stock_moves_cancel_not_self": {
+          "name": "stock_moves_cancel_not_self",
+          "value": "\"stock_moves\".\"cancels_move_id\" is null or \"stock_moves\".\"cancels_move_id\" <> \"stock_moves\".\"id\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.unit_specs": {
+      "name": "unit_specs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "unit_specs_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "unit_group": {
+          "name": "unit_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'UNIT'"
+        },
+        "unit": {
+          "name": "unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "base_unit": {
+          "name": "base_unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "factor": {
+          "name": "factor",
+          "type": "numeric(18, 6)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "decimals": {
+          "name": "decimals",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "unit_specs_unit_fk": {
+          "name": "unit_specs_unit_fk",
+          "tableFrom": "unit_specs",
+          "tableTo": "codes",
+          "columnsFrom": [
+            "unit_group",
+            "unit"
+          ],
+          "columnsTo": [
+            "group_code",
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "unit_specs_base_fk": {
+          "name": "unit_specs_base_fk",
+          "tableFrom": "unit_specs",
+          "tableTo": "unit_specs",
+          "columnsFrom": [
+            "base_unit",
+            "base_unit"
+          ],
+          "columnsTo": [
+            "unit",
+            "base_unit"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "unit_specs_unit_unique": {
+          "name": "unit_specs_unit_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "unit"
+          ]
+        },
+        "unit_specs_unit_base_unique": {
+          "name": "unit_specs_unit_base_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "unit",
+            "base_unit"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "unit_specs_unit_group_fixed": {
+          "name": "unit_specs_unit_group_fixed",
+          "value": "\"unit_specs\".\"unit_group\" = 'UNIT'"
+        },
+        "unit_specs_factor_positive": {
+          "name": "unit_specs_factor_positive",
+          "value": "\"unit_specs\".\"factor\" > 0"
+        },
+        "unit_specs_base_factor_one": {
+          "name": "unit_specs_base_factor_one",
+          "value": "\"unit_specs\".\"unit\" <> \"unit_specs\".\"base_unit\" or \"unit_specs\".\"factor\" = 1"
+        },
+        "unit_specs_decimals_range": {
+          "name": "unit_specs_decimals_range",
+          "value": "\"unit_specs\".\"decimals\" between 0 and 3"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.warehouses": {
+      "name": "warehouses",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "warehouses_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_defect": {
+          "name": "is_defect",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "warehouses_code_unique": {
+          "name": "warehouses_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "code"
+          ]
+        },
+        "warehouses_id_defect_unique": {
+          "name": "warehouses_id_defect_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "is_defect"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "warehouses_code_format": {
+          "name": "warehouses_code_format",
+          "value": "\"warehouses\".\"code\" ~ '^WH-[0-9]{2,}$'"
+        },
+        "warehouses_name_length": {
+          "name": "warehouses_name_length",
+          "value": "char_length(\"warehouses\".\"name\") between 1 and 50"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

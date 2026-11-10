@@ -12,6 +12,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 // 조각 「기준정보」의 테이블 다섯과 조각 「재고 수불」의 테이블(docs/schema.md · 설계도의 「이 조각의 테이블」).
@@ -491,5 +492,78 @@ export const stockBalances = pgTable(
     check("stock_balances_qty_not_negative", sql`${t.qty} >= 0`),
     check("stock_balances_lot_format", sql`${t.lot} ~ '^[A-Za-z0-9._-]{0,30}$'`),
     check("stock_balances_status_values", sql`${t.status} in ('AVAILABLE', 'QC')`),
+  ],
+);
+
+// ── 재고 실사(조각 「재고 수불」 PR E, ADR 0015 · 0021) ─────────────────────────
+
+/**
+ * 재고 실사 — 창고 하나의 실물 수량을 세어 장부와 맞춘다. 번호는 `PI-YYYYMMDD-NNN`(처음 저장한 날 · 그날의 일련, ADR 0016).
+ * 상태는 작성 중(DRAFT) · 확정(CONFIRMED) · 취소(CANCELED). 창고 하나에 작성 중인 실사는 하나다(부분 유일 인덱스).
+ * `baseline_line_id` 는 장부를 불러올 때의 마지막 수불 줄 번호 — 확정 화면이 그 뒤 그 창고에 닿은 수불을 경고한다(설계 「PR E 를 열기 전에 정한 것」).
+ * 확정하면 확정한 날과, 차이가 있었으면 그 조정 전표(사유 「실사 차이」)를 가리킨다. 확정 · 취소한 실사는 고치지 않는다.
+ */
+export const stockCounts = pgTable(
+  "stock_counts",
+  {
+    id: id(),
+    code: text("code").notNull().unique(),
+    countDate: date("count_date", { mode: "string" }).notNull(),
+    warehouseId: integer("warehouse_id")
+      .notNull()
+      .references(() => warehouses.id),
+    status: text("status").notNull().default("DRAFT"),
+    baselineLineId: integer("baseline_line_id").notNull().default(0),
+    confirmedDate: date("confirmed_date", { mode: "string" }),
+    adjustMoveId: integer("adjust_move_id")
+      .unique()
+      .references(() => stockMoves.id),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("stock_counts_one_draft_per_warehouse")
+      .on(t.warehouseId)
+      .where(sql`${t.status} = 'DRAFT'`),
+    check("stock_counts_code_format", sql`${t.code} ~ '^PI-[0-9]{8}-[0-9]{3,}$'`),
+    check("stock_counts_code_date", sql`substring(${t.code} from 4 for 8) = to_char(${t.countDate}, 'YYYYMMDD')`),
+    check("stock_counts_status_values", sql`${t.status} in ('DRAFT', 'CONFIRMED', 'CANCELED')`),
+    check("stock_counts_confirmed_date", sql`(${t.status} = 'CONFIRMED') = (${t.confirmedDate} is not null)`),
+    check("stock_counts_adjust_confirmed_only", sql`${t.adjustMoveId} is null or ${t.status} = 'CONFIRMED'`),
+    check("stock_counts_baseline_not_negative", sql`${t.baselineLineId} >= 0`),
+  ],
+);
+
+/**
+ * 실사 줄 — 품목 · LOT · 상태마다 실물 수량(품목 단위). 비운 실물 수량(null)은 작성 중에만 있다 — 확정은 모든 줄이 차야 한다.
+ * `added` 는 장부에 없어 더한 줄(늘 가용). `book_qty` 는 확정하는 순간의 장부 — 실사 보기가 그때의 장부 · 실물 · 차이를 그대로 보인다.
+ * 한 실사는 100줄까지다 — 차이가 조정 전표 한 장(100줄)에 다 들어간다(저자 판정).
+ */
+export const stockCountLines = pgTable(
+  "stock_count_lines",
+  {
+    id: id(),
+    countId: integer("count_id")
+      .notNull()
+      .references(() => stockCounts.id),
+    lineNo: smallint("line_no").notNull(),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => items.id),
+    lot: text("lot").notNull().default(""),
+    status: text("status").notNull().default("AVAILABLE"),
+    added: boolean("added").notNull().default(false),
+    countedQty: stockQty("counted_qty"),
+    bookQty: stockQty("book_qty"),
+    ...timestamps(),
+  },
+  (t) => [
+    unique("stock_count_lines_line_unique").on(t.countId, t.lineNo),
+    unique("stock_count_lines_key_unique").on(t.countId, t.itemId, t.lot, t.status),
+    check("stock_count_lines_line_no_range", sql`${t.lineNo} between 1 and 100`),
+    check("stock_count_lines_lot_format", sql`${t.lot} ~ '^[A-Za-z0-9._-]{0,30}$'`),
+    check("stock_count_lines_status_values", sql`${t.status} in ('AVAILABLE', 'QC')`),
+    check("stock_count_lines_added_available", sql`not ${t.added} or ${t.status} = 'AVAILABLE'`),
+    check("stock_count_lines_counted_not_negative", sql`${t.countedQty} is null or ${t.countedQty} >= 0`),
+    check("stock_count_lines_book_not_negative", sql`${t.bookQty} is null or ${t.bookQty} >= 0`),
   ],
 );

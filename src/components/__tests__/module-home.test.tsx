@@ -14,7 +14,7 @@ describe("ModuleHome", () => {
     expect(screen.queryByText("준비 중입니다.")).toBeNull();
   });
 
-  it("재고 — 창고 · 등록 넷 · 수불 이력 · 수불부는 링크, 재고 실사 · 재고관리는 짓는 조각과 함께 준비 중", () => {
+  it("재고 — 창고 · 등록 넷 · 재고 실사 · 수불 이력 · 수불부는 링크, 재고관리는 짓는 조각과 함께 준비 중", () => {
     render(<ModuleHome href="/inventory" />);
     expect(screen.queryByText("준비 중입니다.")).toBeNull();
     const group = within(screen.getByRole("region", { name: "재고 기준정보" }));
@@ -26,8 +26,8 @@ describe("ModuleHome", () => {
     expect(inout.getByRole("link", { name: /재고조정 등록/ })).toHaveAttribute("href", "/inventory/adjustments");
     expect(inout.getByRole("link", { name: /수불 이력/ })).toHaveAttribute("href", "/inventory/history");
     expect(inout.getByRole("link", { name: /수불부/ })).toHaveAttribute("href", "/inventory/ledger");
-    expect(inout.getByText("재고 실사").parentElement).toHaveTextContent("준비 중 · 조각 「재고 수불」");
-    expect(screen.queryAllByRole("link")).toHaveLength(7);
+    expect(inout.getByRole("link", { name: /재고 실사/ })).toHaveAttribute("href", "/inventory/counts");
+    expect(screen.queryAllByRole("link")).toHaveLength(8);
   });
 
   it("시스템 관리 — 공통코드 · 번호 규칙은 링크, 회사 정보 · 사용자 · 메뉴 관리 · 권한은 조각 「인사」가 짓는다", () => {

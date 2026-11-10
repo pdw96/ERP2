@@ -514,3 +514,23 @@ export const SAMPLE_MOVES: SampleMove[] = [
   },
   { daysAgo: 1, moveType: "IN", lines: [{ item: "CS-0002", warehouse: "WH-01", qty: "20" }], cancel: true },
 ];
+
+/**
+ * 샘플 재고 실사(조각 「재고 수불」 PR E — 저자 판정, 설계 「2026-11-09 — PR E 를 열기 전에 정한 것」). 날짜는 되돌린 날 D 에서 센다.
+ * 샘플 수불 뒤에 그 창고의 장부를 불러 넣는다. counted 는 품목 코드(LOT 가 둘 이상이면 「품목|LOT」)마다의 실물 수량이고, 나머지 줄은
+ * rest 가 「book」이면 장부 그대로, 「blank」이면 비운다. confirm 이면 같은 날 확정한다.
+ */
+export type SampleCount = {
+  daysAgo: number;
+  warehouse: string;
+  counted: Record<string, string>;
+  rest: "book" | "blank";
+  confirm?: true;
+};
+
+export const SAMPLE_COUNTS: SampleCount[] = [
+  // 생산현장 — 금 와이어만 5 M 모자라 「실사 차이」 −5 M 의 조정 전표 한 장(IV-<D-1>-003)이 생긴다.
+  { daysAgo: 1, warehouse: "WH-02", counted: { "RM-0003|NW-25-0701": "1995" }, rest: "book", confirm: true },
+  // 제품창고 — 작성 중. 전원 관리 IC 는 넣었고 센서 IC 는 비워 두어, 확정하려면 마저 넣어야 한다.
+  { daysAgo: 1, warehouse: "WH-03", counted: { "FG-0001": "2500" }, rest: "blank" },
+];

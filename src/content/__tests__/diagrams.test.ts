@@ -24,6 +24,8 @@ describe("설계도의 Mermaid 글", () => {
       "stock_moves",
       "stock_move_lines",
       "stock_balances",
+      "stock_counts",
+      "stock_count_lines",
     ]) {
       expect(DATA_MODEL).toContain(` ${table}`);
     }
@@ -53,6 +55,7 @@ describe("모듈별 전체 지도", () => {
       "number_rule_seqs",
       "number_rules",
       "stock_balances",
+      "stock_counts",
       "stock_move_lines",
       "stock_moves",
       "unit_specs",

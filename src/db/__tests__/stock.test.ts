@@ -118,7 +118,8 @@ describe("샘플 수불 — 성공 기준 13", () => {
   it("품목마다 기초 재고가 있고 이동 · 출고 · 조정 · 불량창고 격리 · 취소가 있다. 잔액은 줄의 합이다", async () => {
     await invariant();
     const moves = await db.select().from(stockMoves);
-    expect(moves).toHaveLength(10);
+    // 샘플 수불 열 장과, 샘플 실사(생산현장)의 확정이 만든 「실사 차이」 조정 전표 한 장(조각 「재고 수불」 PR E).
+    expect(moves).toHaveLength(11);
     expect(new Set(moves.map((m) => m.moveType))).toEqual(new Set(["IN", "OUT", "XFER", "ADJ"]));
     expect(moves.filter((m) => m.isCancel)).toHaveLength(1);
     expect(moves.every((m) => m.moveDate < TODAY)).toBe(true);
@@ -444,11 +445,11 @@ describe("상태 — 불량창고, 성공 기준 6", () => {
     expect(await bal("SF-0002", "WH-04", lot)).toBe(35);
   });
 
-  it("불량창고 안의 조정(실사 차이)은 받는다", async () => {
+  it("불량창고 안의 조정은 받는다", async () => {
     await ok(
       save({
         moveType: "ADJ",
-        reason: "COUNT",
+        reason: "LOSS",
         lines: [{ item: "SF-0002", lot: "SF-261102-002", warehouse: "WH-04", qty: "-5" }],
       }),
     );
@@ -579,11 +580,11 @@ describe("수불이 있는 품목 — LOT 관리 · 단위를 바꾸지 못한�
   it("단위 · LOT 관리를 바꾸면 거절 — 다른 칸은 고친다", async () => {
     expect(await updateItem(db, "RM-0003", edit({ unit: "MM" }))).toMatchObject({
       ok: false,
-      errors: { unit: expect.stringContaining("수불이 있는 품목") },
+      errors: { unit: expect.stringContaining("수불이 있거나") },
     });
     expect(await updateItem(db, "RM-0003", edit({ lotManaged: "off" }))).toMatchObject({
       ok: false,
-      errors: { lotManaged: expect.stringContaining("수불이 있는 품목") },
+      errors: { lotManaged: expect.stringContaining("수불이 있거나") },
     });
     expect(await updateItem(db, "RM-0003", edit({ spec: "지름 20µm" }))).toEqual({ ok: true, code: "RM-0003" });
   });
