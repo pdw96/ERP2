@@ -1,8 +1,8 @@
 # 감사 브리핑
 
-- 만든 시각: 2026-11-10 08:16:13 UTC
+- 만든 시각: 2026-11-10 08:23:58 UTC
 - 기준: `26e3a9a` = `26e3a9a` (2026-11-10 Merge pull request #35 from pdw96/claude/compassionate-keller-lu068h), 머지 베이스 `26e3a9a7b0f8d903171130f837aecdf3c495c587`
-- 대상: `f0fb318` (브랜치 `claude/compassionate-keller-lu068h`, 닫는 PR pdw96/ERP2#36 의 머리)
+- 대상: `a6a9db4` (브랜치 `claude/compassionate-keller-lu068h`, 닫는 PR pdw96/ERP2#36 의 머리)
 - 커밋 안 된 변경: 없음
 - 추적 안 된 파일: 없음
 - 자름: 없음
@@ -14,7 +14,7 @@
 ```
  docs/adr/0015-stock-calculation-rules.md                                   |   5 +++++
  docs/adr/0021-stock-count-rules.md                                         |   5 +++++
- docs/adr/0022-stock-slice-closing-corrections.md                           |  53 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ docs/adr/0022-stock-slice-closing-corrections.md                           |  55 +++++++++++++++++++++++++++++++++++++++++++++++++++++++
  docs/architecture.md                                                       |   4 ++--
  docs/schema.md                                                             |  19 ++++++++++++-------
  "docs/slices/3-\354\236\254\352\263\240\354\210\230\353\266\210/design.md" |  18 ++++++++++++++++++
@@ -28,12 +28,14 @@
  src/lib/__tests__/count-input.test.ts                                      |   5 +++--
  src/lib/areas.ts                                                           |   2 +-
  src/lib/count-input.ts                                                     |   8 +++-----
- 16 files changed, 268 insertions(+), 49 deletions(-)
+ 16 files changed, 270 insertions(+), 49 deletions(-)
 ```
 
 ## 커밋
 
 ```
+a6a9db4 재감사 회차 26(audit-data) — NC-18 · NC-19 닫힘, 새 부적합 없음. ADR 0022 결과의 거절 범위를 코드대로
+aef135f 감사 브리핑 — 닫는 PR 의 재감사 용(기준 26e3a9a, 대상 f0fb318)
 f0fb318 닫는 PR 의 고침 — 실사 저장의 장부 줄을 서버가 정함(NC-20, 시험), ADR 0022, 문서 · 표기(NC-18 · 19 · 21 ~ 25)
 b5ba9d1 감사 회차 25(audit-internal) — NC-21 ~ 25 · U-21 · U-22 등록, U-21 · U-22 근거(메인 세션)
 509f6d2 감사 브리핑 — 회차 25 용(대상 c362eca, 코드 diff 는 같음)
@@ -74,10 +76,10 @@ index e025014..11e8f7d 100644
 +  취소 전표는 사유가 같고 원래 전표를 가리킨다.
 diff --git a/docs/adr/0022-stock-slice-closing-corrections.md b/docs/adr/0022-stock-slice-closing-corrections.md
 new file mode 100644
-index 0000000..1f65471
+index 0000000..da32f64
 --- /dev/null
 +++ b/docs/adr/0022-stock-slice-closing-corrections.md
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,55 @@
 +# ADR 0022 — 조각 「재고 수불」을 닫으며 바로잡은 결정 셋: 기본 출고 창고 · 실사 차이의 취소 전표 · 실사의 장부 줄
 +
 +- 날짜: 2026-11-10
@@ -128,7 +130,9 @@ index 0000000..1f65471
 +- 대장 NC-20 · NC-22 · NC-24 의 「고침」이다. 재감사(담당 `audit-secrets` · `audit-internal`)가 닫는다.
 +- 꾸민 요청 세 가지(장부 줄 빼기 · 더한 줄 표시 지우기 · 「사용 안 함」 품목)와 「연 뒤 장부가 바뀜」을 거절하는 시험이 `src/db/__tests__/stock-counts.test.ts`
 +  「장부 줄인지는 화면이 아니라 서버가 정한다(대장 NC-20)」에 있다. 고침을 되돌리면 그 시험이 떨어진다(설계 ⑤ R1 · R2).
-+- 연 뒤 처음 저장하기 전에 그 창고에 수불이 있으면 처음 저장이 거절돼 화면을 새로 열어야 한다 — 넣던 실물 수량은 다시 넣는다. 데모는 한 창고를 여럿이
++- 연 뒤 처음 저장하기 전에 그 창고에 **새 장부 줄**(품목 · LOT · 상태)이 생기면 처음 저장이 거절돼 화면을 새로 열어야 한다 — 넣던 실물 수량은 다시
++  넣는다. 수량만 바뀐 것은 거절하지 않는다(확정 화면의 「연 뒤의 수불」 경고가 보인다). 장부 줄의 잔액이 그 사이 0 이 되면 그 줄은 더한 줄로 저장된다 —
++  장부가 0 이라 잃는 것은 없다(회차 26 OB-14). 데모는 한 창고를 여럿이
 +  동시에 세지 않으니 드물다. 잦아지면 연 때의 장부를 서버가 들고 있는 길(실사를 열 때 번호를 먼저 받기)을 다시 본다.
 +- 재고 · 생산 계산을 바꾸는 PR 은 시험 없이 머지하지 않는다(`CLAUDE.md`).
 diff --git a/docs/architecture.md b/docs/architecture.md
