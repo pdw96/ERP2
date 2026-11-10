@@ -779,7 +779,7 @@ export type WarehouseStockRow = {
 };
 
 /**
- * 한 창고의 현재고 — 잔액이 0 보다 큰 품목 · LOT · 상태마다 한 줄, 품목코드 · LOT 차례(ADR 0020 의 「PR F 검토 중 정한 것」).
+ * 한 창고의 현재고 — 잔액이 0 보다 큰 품목 · LOT · 상태마다 한 줄, 품목코드 · LOT 차례(설계 「2026-11-09 — PR F 검토 중 정한 것」, ADR 0020).
  * 기타출고 · 재고이동 · 재고조정 등록이 그 창고의 재고를 보며 골라 줄로 넣는다. 읽기만 한다 — 상태별 · 창고별로 보는 메뉴는 조각 「재고 현황」이다.
  */
 export async function warehouseStock(db: Db, warehouseCode: string): Promise<WarehouseStockRow[]> {

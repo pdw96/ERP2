@@ -211,7 +211,7 @@ export const items = pgTable(
     cls3: text("cls3"),
     note: text("note").notNull().default(""),
     // 재고 수불(PR B, ADR 0015 · 0016) — LOT 관리 여부, LOT 번호 규칙(반제품 · 완제품만, 비우면 유형의 기본 규칙),
-    // 기본 입고 · 출고 창고(비우면 없음, 수불 등록이 창고 칸을 미리 채운다).
+    // 기본 입고 · 출고 창고(비우면 없음 — 기본 입고 창고는 기타입고가 창고 칸을 미리 채우고, 기본 출고 창고는 뒤 조각이 쓴다, ADR 0022 의 1).
     lotManaged: boolean("lot_managed").notNull().default(true),
     lotRuleCode: text("lot_rule_code"),
     defaultInWarehouseId: integer("default_in_warehouse_id"),
