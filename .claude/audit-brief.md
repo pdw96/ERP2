@@ -1,11 +1,11 @@
 # 감사 브리핑
 
-- 만든 시각: 2026-11-10 04:59:17 UTC
+- 만든 시각: 2026-11-10 06:01:46 UTC
 - 기준: `3e7977a` = `3e7977a` (2026-11-05 Merge pull request #23 from pdw96/claude/great-gauss-pciga8), 머지 베이스 `3e7977a5002269b4216d776a9d7d38b98204d156`
-- 대상: `26e3a9a` (브랜치 `claude/compassionate-keller-lu068h`, origin/main 과 같음)
+- 대상: `6469405` (브랜치 `claude/compassionate-keller-lu068h`). origin/main `26e3a9a` 위에 감사 브리핑 · 회차 기록 · 대장 커밋만 더한 것이라 코드는 `26e3a9a` 와 같다
 - 커밋 안 된 변경: 없음
 - 추적 안 된 파일: 없음
-- 자름: 있음 — diff 전체 31189줄 중 3745줄. 담은 것은 **고친(M) 파일 가운데 시험 · `drizzle/meta/` 를 뺀 41개**의 diff 를 통째로. 새로 생긴(A) 파일 88개와 고친 시험 · drizzle meta 는 본문을 담지 않았다 — 대상이 지금 HEAD 라 감사자가 작업트리에서 그대로 읽으면 된다(새 파일은 diff 가 곧 지금 내용이다). 목록은 「이 브리핑이 담지 않은 것」
+- 자름: 있음 — diff 전체 31189줄 중 3745줄. 담은 것은 **고친(M) 파일 가운데 시험 · `drizzle/meta/` 를 뺀 41개**의 diff 를 통째로. 새로 생긴(A) 파일과 고친 시험 · drizzle meta 는 본문을 담지 않았다 — 대상이 지금 HEAD 라 감사자가 작업트리에서 그대로 읽으면 된다(새 파일은 diff 가 곧 지금 내용이다). 목록은 「이 브리핑이 담지 않은 것」
 - 대장: `docs/audit/nc-ledger.md` · `docs/audit/nc-ledger-history.md` 는 diff 에서 뺐다(지난 기록으로 따로 읽는다)
 - 검사: PASS (verify-brief.py, --exclude docs/audit/nc-ledger.md --exclude docs/audit/nc-ledger-history.md)
 
@@ -173,6 +173,8 @@
 ## 커밋
 
 ```
+6469405 감사 회차 23(audit-data) — 조각 「재고 수불」 닫기 전, NC-18 · NC-19 등록(저자 판정 대기)
+1294727 감사 브리핑 — 조각 「재고 수불」 닫기 전 감사 회차(3e7977a…26e3a9a)
 26e3a9a Merge pull request #35 from pdw96/claude/compassionate-keller-lu068h
 16c00d4 리뷰 1회차 — 창고를 바꾸면 확정 화면을 새로, 작성 중 실사의 수량을 기준정보의 고침이 지킨다, 확정의 LOT 저절로가 실사의 다른 줄 LOT 를 건너뜀, 더한 줄의 장부
 1204661 조각 「재고 수불」 PR E — 재고 실사(열기 · 작성 중 저장 · 취소 · 확정 · 실사 차이 전표)
