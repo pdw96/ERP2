@@ -239,6 +239,14 @@ export type ItemStockQuery = {
 
 const isItemType = (code: string): code is ItemType => ITEM_TYPES.some((t) => t.code === code);
 
+/** 품목 유형 거르기 — 없는 유형이면 거르지 않고 알린다. */
+function parseItemType(params: Params, notices: Notice[]): ItemType | undefined {
+  const type = text(params, "type");
+  if (isItemType(type)) return type;
+  if (type) notices.push({ field: "type", message: "없는 품목 유형이라 거르지 않았습니다" });
+  return undefined;
+}
+
 export function parseItemStockQuery(params: Params): { query: ItemStockQuery; notices: Notice[] } {
   const notices: Notice[] = [];
   let q: string | undefined = text(params, "q");
@@ -246,10 +254,7 @@ export function parseItemStockQuery(params: Params): { query: ItemStockQuery; no
     notices.push({ field: "q", message: `찾기는 ${SEARCH_MAX}자까지라 찾지 않았습니다` });
     q = undefined;
   } else if (q === "") q = undefined;
-  const type = text(params, "type");
-  let itemType: ItemType | undefined;
-  if (isItemType(type)) itemType = type;
-  else if (type) notices.push({ field: "type", message: "없는 품목 유형이라 거르지 않았습니다" });
+  const itemType = parseItemType(params, notices);
   const short = text(params, "short");
   if (short !== "" && short !== "1")
     notices.push({ field: "short", message: "「미달만」 값이 틀려 거르지 않았습니다" });
@@ -264,3 +269,87 @@ export function parseItemStockQuery(params: Params): { query: ItemStockQuery; no
     notices,
   };
 }
+
+// ── 재고 현황 · 창고별 · LOT별 재고(조각 「재고 현황」 PR B) ─────────────────────
+
+/** 창고별 재고에서 칸 머리를 눌러 세울 수 있는 칸 — 표의 칸 순서 그대로(설계 「2026-11-11 — PR B 를 열기 전에 정한 것」). */
+export const WAREHOUSE_STOCK_SORTS = [
+  "warehouse",
+  "item",
+  "itemName",
+  "spec",
+  "type",
+  "unit",
+  "onHand",
+  "qc",
+  "defect",
+  "available",
+] as const;
+export type WarehouseStockSort = (typeof WAREHOUSE_STOCK_SORTS)[number];
+
+export type WarehouseStockQuery = {
+  warehouse?: string;
+  item?: string;
+  itemType?: ItemType;
+  sort: WarehouseStockSort;
+  dir: SortDir;
+  page: number;
+};
+
+export function parseWarehouseStockQuery(params: Params): { query: WarehouseStockQuery; notices: Notice[] } {
+  const notices: Notice[] = [];
+  const warehouse = parseCode(params, "wh", WAREHOUSE_CODE, "창고 코드", notices);
+  const item = parseCode(params, "item", ITEM_CODE, "품목 코드", notices);
+  const itemType = parseItemType(params, notices);
+  return {
+    query: {
+      warehouse,
+      item,
+      itemType,
+      ...parseSort(params, WAREHOUSE_STOCK_SORTS, "warehouse"),
+      page: parsePage(params),
+    },
+    notices,
+  };
+}
+
+/** LOT별 재고에서 칸 머리를 눌러 세울 수 있는 칸 — 표의 칸 순서 그대로. */
+export const LOT_STOCK_SORTS = [
+  "item",
+  "lot",
+  "warehouse",
+  "itemName",
+  "unit",
+  "onHand",
+  "qc",
+  "defect",
+  "available",
+] as const;
+export type LotStockSort = (typeof LOT_STOCK_SORTS)[number];
+
+export type LotStockQuery = {
+  item?: string;
+  warehouse?: string;
+  lot?: string;
+  sort: LotStockSort;
+  dir: SortDir;
+  page: number;
+};
+
+export function parseLotStockQuery(params: Params): { query: LotStockQuery; notices: Notice[] } {
+  const notices: Notice[] = [];
+  const item = parseCode(params, "item", ITEM_CODE, "품목 코드", notices);
+  const warehouse = parseCode(params, "wh", WAREHOUSE_CODE, "창고 코드", notices);
+  const lot = parseCode(params, "lot", LOT, "LOT", notices);
+  return {
+    query: { item, warehouse, lot, ...parseSort(params, LOT_STOCK_SORTS, "item"), page: parsePage(params) },
+    notices,
+  };
+}
+
+/**
+ * 품목별 재고의 품목에서 가는 주소 — LOT 관리 품목은 그 품목으로 거른 LOT별 재고, 아니면 그 품목으로 거른 창고별 재고(ADR 0023 의 6,
+ * ADR 0025). LOT별 재고에는 LOT 관리 품목만 있다.
+ */
+export const itemPlacesHref = (itemCode: string, lotManaged: boolean) =>
+  `${lotManaged ? "/inventory/status/lots" : "/inventory/status/warehouses"}${queryString({ item: itemCode })}`;

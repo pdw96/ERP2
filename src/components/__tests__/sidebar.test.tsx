@@ -121,13 +121,15 @@ describe("Sidebar", () => {
     expect(menu.getByRole("link", { name: "기타입고 등록" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("재고관리 — 품목별 재고는 링크, 창고별 · LOT별 재고 · 예상재고 · 할당 현황은 준비 중(조각 「재고 현황」 PR A, ADR 0023 의 1)", () => {
-    nav.pathname = "/inventory/status/items";
+  it("재고관리 — 품목별 · 창고별 · LOT별 재고는 링크, 예상재고 · 할당 현황은 준비 중(조각 「재고 현황」, ADR 0023 의 1)", () => {
+    nav.pathname = "/inventory/status/lots";
     render(<Sidebar />);
     const menu = within(screen.getByRole("list", { name: "재고 메뉴" }));
-    expect(menu.getByRole("link", { name: "품목별 재고" })).toHaveAttribute("aria-current", "page");
     expect(menu.getByRole("link", { name: "품목별 재고" })).toHaveAttribute("href", "/inventory/status/items");
-    for (const soon of ["창고별 재고", "LOT별 재고", "예상재고", "할당 현황"]) {
+    expect(menu.getByRole("link", { name: "창고별 재고" })).toHaveAttribute("href", "/inventory/status/warehouses");
+    expect(menu.getByRole("link", { name: "LOT별 재고" })).toHaveAttribute("href", "/inventory/status/lots");
+    expect(menu.getByRole("link", { name: "LOT별 재고" })).toHaveAttribute("aria-current", "page");
+    for (const soon of ["예상재고", "할당 현황"]) {
       expect(menu.queryByRole("link", { name: soon })).toBeNull();
       expect(menu.getByText(soon).parentElement).toHaveTextContent(`${soon}준비 중`);
     }
