@@ -1,4 +1,4 @@
-import { isMoveType, type MoveType } from "@/lib/master-codes";
+import { isMoveType, ITEM_TYPES, type ItemType, type MoveType } from "@/lib/master-codes";
 import { LOT, WAREHOUSE_CODE } from "@/lib/move-input";
 
 // 수불 이력 · 수불부의 주소 값(거르기 · 정렬 · 쪽)을 읽는다(조각 「재고 수불」 설계 「2026-11-09 — PR D 를 열기 전에 정한 것」).
@@ -203,4 +203,64 @@ export function basisOf(warehouse: string | undefined, warehouses: readonly { co
   if (!warehouse) return "모든 창고 합계 · 이동 제외";
   const name = warehouses.find((w) => w.code === warehouse)?.name;
   return `${warehouse}${name ? ` ${name}` : ""} 기준 · 이동 포함`;
+}
+
+// ── 재고 현황 · 품목별 재고(조각 「재고 현황」 PR A) ─────────────────────────
+
+/** 품목별 재고에서 칸 머리를 눌러 세울 수 있는 칸 — 표의 칸 순서 그대로(설계 「2026-11-11 — PR A 를 열기 전에 정한 것」). */
+export const ITEM_STOCK_SORTS = [
+  "item",
+  "itemName",
+  "spec",
+  "type",
+  "unit",
+  "onHand",
+  "qc",
+  "defect",
+  "available",
+  "safety",
+  "short",
+] as const;
+export type ItemStockSort = (typeof ITEM_STOCK_SORTS)[number];
+
+/** 찾기 글자의 길이 상한. */
+export const SEARCH_MAX = 50;
+
+export type ItemStockQuery = {
+  /** 찾기 — 품목코드 · 품목명의 일부. */
+  q?: string;
+  itemType?: ItemType;
+  /** 「미달만」(ADR 0023 의 4). */
+  shortOnly: boolean;
+  sort: ItemStockSort;
+  dir: SortDir;
+  page: number;
+};
+
+const isItemType = (code: string): code is ItemType => ITEM_TYPES.some((t) => t.code === code);
+
+export function parseItemStockQuery(params: Params): { query: ItemStockQuery; notices: Notice[] } {
+  const notices: Notice[] = [];
+  let q: string | undefined = text(params, "q");
+  if (q.length > SEARCH_MAX) {
+    notices.push({ field: "q", message: `찾기는 ${SEARCH_MAX}자까지라 찾지 않았습니다` });
+    q = undefined;
+  } else if (q === "") q = undefined;
+  const type = text(params, "type");
+  let itemType: ItemType | undefined;
+  if (isItemType(type)) itemType = type;
+  else if (type) notices.push({ field: "type", message: "없는 품목 유형이라 거르지 않았습니다" });
+  const short = text(params, "short");
+  if (short !== "" && short !== "1")
+    notices.push({ field: "short", message: "「미달만」 값이 틀려 거르지 않았습니다" });
+  return {
+    query: {
+      q,
+      itemType,
+      shortOnly: short === "1",
+      ...parseSort(params, ITEM_STOCK_SORTS, "item"),
+      page: parsePage(params),
+    },
+    notices,
+  };
 }

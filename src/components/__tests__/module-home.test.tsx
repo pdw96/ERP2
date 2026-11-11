@@ -14,7 +14,7 @@ describe("ModuleHome", () => {
     expect(screen.queryByText("준비 중입니다.")).toBeNull();
   });
 
-  it("재고 — 창고 · 등록 넷 · 재고 실사 · 수불 이력 · 수불부는 링크, 재고관리는 짓는 조각과 함께 준비 중", () => {
+  it("재고 — 창고 · 등록 넷 · 재고 실사 · 수불 이력 · 수불부 · 품목별 재고는 링크, 재고관리의 나머지는 짓는 조각과 함께 준비 중", () => {
     render(<ModuleHome href="/inventory" />);
     expect(screen.queryByText("준비 중입니다.")).toBeNull();
     const group = within(screen.getByRole("region", { name: "재고 기준정보" }));
@@ -27,7 +27,14 @@ describe("ModuleHome", () => {
     expect(inout.getByRole("link", { name: /수불 이력/ })).toHaveAttribute("href", "/inventory/history");
     expect(inout.getByRole("link", { name: /수불부/ })).toHaveAttribute("href", "/inventory/ledger");
     expect(inout.getByRole("link", { name: /재고 실사/ })).toHaveAttribute("href", "/inventory/counts");
-    expect(screen.queryAllByRole("link")).toHaveLength(8);
+    const stock = within(screen.getByRole("region", { name: "재고관리" }));
+    expect(stock.getByRole("link", { name: /품목별 재고/ })).toHaveAttribute("href", "/inventory/status/items");
+    expect(stock.getByText("창고별 재고").parentElement).toHaveTextContent("준비 중 · 조각 「재고 현황」");
+    expect(stock.getByText("LOT별 재고").parentElement).toHaveTextContent("준비 중 · 조각 「재고 현황」");
+    // 예상재고는 조각 「작업지시」가 할당 현황과 함께 짓는다(ADR 0023 의 1).
+    expect(stock.getByText("예상재고").parentElement).toHaveTextContent("준비 중 · 조각 「작업지시」");
+    expect(stock.getByText("할당 현황").parentElement).toHaveTextContent("준비 중 · 조각 「작업지시」");
+    expect(screen.queryAllByRole("link")).toHaveLength(9);
   });
 
   it("시스템 관리 — 공통코드 · 번호 규칙은 링크, 회사 정보 · 사용자 · 메뉴 관리 · 권한은 조각 「인사」가 짓는다", () => {

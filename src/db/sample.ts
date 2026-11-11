@@ -460,7 +460,8 @@ export const SAMPLE_MOVES: SampleMove[] = [
       { item: "FG-0002", warehouse: "WH-03", qty: "1500" },
       { item: "SM-0001", warehouse: "WH-01", qty: "3000" },
       { item: "SM-0002", warehouse: "WH-01", qty: "800" },
-      { item: "CS-0001", warehouse: "WH-01", qty: "20" },
+      // 다이싱 블레이드는 지금 재고(8)가 안전재고(10)보다 적어 품목별 재고의 「미달만」에 보인다(조각 「재고 현황」 설계 「2026-11-11 — PR A 를 열기 전에 정한 것」).
+      { item: "CS-0001", warehouse: "WH-01", qty: "10" },
       { item: "CS-0002", warehouse: "WH-01", qty: "40" },
     ],
   },
