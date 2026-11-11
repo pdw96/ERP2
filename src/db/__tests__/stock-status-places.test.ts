@@ -10,7 +10,7 @@ import type { MoveValues } from "@/lib/move-input";
 import {
   LOT_STOCK_SORTS,
   WAREHOUSE_STOCK_SORTS,
-  lotStockHref,
+  itemPlacesHref,
   parseItemStockQuery,
   parseLedgerQuery,
   parseLotStockQuery,
@@ -55,13 +55,21 @@ const byLot = async (params: Record<string, string> = {}) =>
   (await listLotStock(db, parseLotStockQuery(params).query)).rows;
 const byItem = async () => (await listItemStock(db, parseItemStockQuery({}).query)).rows;
 
-type Raw = { item: string; wh: string; lot: string; is_defect: boolean; status: string; qty: number };
+type Raw = {
+  item: string;
+  wh: string;
+  lot: string;
+  lot_managed: boolean;
+  is_defect: boolean;
+  status: string;
+  qty: number;
+};
 
 /** S1 — 잔액 표 전체(불량창고 → 불량, 그 밖 검사대기 → 검사대기, 나머지 → 가용). */
 async function raw(): Promise<Raw[]> {
   return rows<Omit<Raw, "qty"> & { qty: string }>(
     await db.execute(sql`
-      select i.code as item, w.code as wh, b.lot, w.is_defect, b.status, b.qty::text as qty
+      select i.code as item, w.code as wh, b.lot, i.lot_managed, w.is_defect, b.status, b.qty::text as qty
       from stock_balances b join items i on i.id = b.item_id join warehouses w on w.id = b.warehouse_id`),
   ).map((r) => ({ ...r, qty: Number(r.qty) }));
 }
@@ -102,12 +110,16 @@ async function expectPlacesMatch() {
   expectRowsAddUp(wh);
   expectRowsAddUp(lot);
   const expWh = expectedBy(data, whKey);
-  const expLot = expectedBy(data, lotKey);
+  // LOT별 재고에는 LOT 관리 품목만(ADR 0025)
+  const expLot = expectedBy(
+    data.filter((r) => r.lot_managed),
+    lotKey,
+  );
   expect(new Map(wh.map((r) => [whKey(r), fourNum(r)]))).toEqual(expWh);
   expect(new Map(lot.map((r) => [lotKey(r), fourNum(r)]))).toEqual(expLot);
 }
 
-/** S2 — 세 화면 사이: 품목별 재고의 넷 = 창고별 줄의 합 = LOT별 줄의 합(성공 기준 8). */
+/** S2 — 세 화면 사이: 품목별 재고의 넷 = 창고별 줄의 합 = LOT별 줄의 합(LOT 관리 품목, 성공 기준 8 · ADR 0025). LOT 관리를 끈 품목은 LOT별 재고에 없다. */
 async function expectScreensAgree() {
   const items = await byItem();
   const wh = await byWarehouse();
@@ -117,7 +129,7 @@ async function expectScreensAgree() {
     const sumLot = lot.filter((r) => r.itemCode === it.itemCode).reduce((a, r) => add(a, fourNum(r)), zero());
     for (const k of ["onHand", "qc", "defect", "available"] as const) {
       expect(sumWh[k], `${it.itemCode} ${k}`).toBeCloseTo(fourNum(it)[k], 6);
-      expect(sumLot[k], `${it.itemCode} ${k}`).toBeCloseTo(fourNum(it)[k], 6);
+      expect(sumLot[k], `${it.itemCode} ${k}`).toBeCloseTo(it.lotManaged ? fourNum(it)[k] : 0, 6);
     }
   }
 }
@@ -132,8 +144,18 @@ async function expectLedgerAgrees() {
   }
 }
 
-/** S2 — 불량창고 밖의 LOT별 재고의 가용재고 = 등록이 그 LOT 를 고를 때 보이는 가용 수량(성공 기준 8). */
+/**
+ * S2 — 불량창고 밖의 LOT별 재고의 가용재고 = 등록이 그 LOT 를 고를 때 보이는 가용 수량(성공 기준 8). LOT 관리를 끈 품목은 창고별 재고의
+ * 가용재고 = 등록이 그 창고에서 보이는 가용 수량.
+ */
 async function expectEntryAgrees() {
+  const items = await byItem();
+  for (const r of await byWarehouse()) {
+    if (items.find((i) => i.itemCode === r.itemCode)?.lotManaged) continue;
+    const picks = await onHand(db, r.itemCode, r.warehouseCode);
+    const q = picks.find((o) => o.lot === "");
+    expect(r.isDefect ? 0 : num(q?.qty ?? "0"), whKey(r)).toBeCloseTo(num(r.available), 6);
+  }
   const lot = await byLot();
   const pairs = new Set(lot.map((r) => `${r.itemCode}|${r.warehouseCode}`));
   for (const p of pairs) {
@@ -251,12 +273,17 @@ describe("LOT별 재고(성공 기준 6 · 7)", () => {
     expect(keys).toEqual([...keys].sort());
   });
 
-  it("LOT 관리를 끈 품목은 LOT 칸이 빈 채 창고마다 한 줄", async () => {
-    const got = await byLot({ item: "SM-0001" });
-    expect(got.map((r) => [r.lot, r.warehouseCode])).toEqual([
-      ["", "WH-01"],
-      ["", "WH-02"],
-    ]);
+  it("LOT 관리를 끈 품목은 LOT별 재고에 없고, 창고별 재고에 있다(ADR 0025)", async () => {
+    expect(await byLot({ item: "SM-0001" })).toEqual([]);
+    expect((await byWarehouse({ item: "SM-0001" })).map((r) => r.warehouseCode)).toEqual(["WH-01", "WH-02"]);
+    const lotItems = new Set((await byLot()).map((r) => r.itemCode));
+    for (const code of ["SM-0001", "SM-0002", "CS-0001", "CS-0002"]) expect(lotItems.has(code), code).toBe(false);
+  });
+
+  it("LOT별 재고의 줄은 모두 LOT번호가 있다", async () => {
+    const got = await byLot();
+    expect(got.length).toBeGreaterThan(0);
+    expect(got.every((r) => r.lot !== "")).toBe(true);
   });
 
   it("같은 LOT 가 두 창고에 있으면 창고마다 한 줄", async () => {
@@ -291,14 +318,26 @@ describe("LOT별 재고(성공 기준 6 · 7)", () => {
     expect((await byLot({ item: "RM-0003", wh: "WH-02" })).map((r) => r.lot)).toEqual(["NW-25-0701"]);
   });
 
-  it("품목별 재고의 품목에서 가는 주소는 그 품목으로 거른 LOT별 재고(ADR 0023 의 6)", async () => {
-    const href = lotStockHref("SF-0002");
+  it("품목별 재고의 품목에서 — LOT 관리 품목은 그 품목의 LOT별 재고로(ADR 0023 의 6)", async () => {
+    const sf = (await byItem()).find((r) => r.itemCode === "SF-0002")!;
+    expect(sf.lotManaged).toBe(true);
+    const href = itemPlacesHref(sf.itemCode, sf.lotManaged);
     expect(href).toBe("/inventory/status/lots?item=SF-0002");
-    const params = Object.fromEntries(new URL(href, "http://x").searchParams);
-    const got = await byLot(params);
-    expect(got.length).toBeGreaterThan(0);
+    const got = await byLot(Object.fromEntries(new URL(href, "http://x").searchParams));
     expect(got.every((r) => r.itemCode === "SF-0002")).toBe(true);
     expect(got.map((r) => r.warehouseCode).sort()).toEqual(["WH-02", "WH-04"]);
+  });
+
+  it("품목별 재고의 품목에서 — LOT 관리를 끈 품목은 그 품목의 창고별 재고로(ADR 0025)", async () => {
+    const sm = (await byItem()).find((r) => r.itemCode === "SM-0001")!;
+    expect(sm.lotManaged).toBe(false);
+    const href = itemPlacesHref(sm.itemCode, sm.lotManaged);
+    expect(href).toBe("/inventory/status/warehouses?item=SM-0001");
+    const got = await byWarehouse(Object.fromEntries(new URL(href, "http://x").searchParams));
+    expect(got.map((r) => [r.itemCode, r.warehouseCode])).toEqual([
+      ["SM-0001", "WH-01"],
+      ["SM-0001", "WH-02"],
+    ]);
   });
 
   it.each(LOT_STOCK_SORTS)("칸 「%s」로 세우면 같은 줄이 그 차례로 — 거꾸로도", async (sort) => {
@@ -308,12 +347,9 @@ describe("LOT별 재고(성공 기준 6 · 7)", () => {
     expect(asc.length).toBe((await byLot()).length);
   });
 
-  it("LOT 칸으로 세우면 빈 LOT 는 어느 방향이든 맨 뒤", async () => {
-    for (const dir of ["asc", "desc"]) {
-      const got = await byLot({ sort: "lot", dir });
-      const first = got.findIndex((r) => r.lot === "");
-      expect(got.slice(first).every((r) => r.lot === "")).toBe(true);
-    }
+  it("LOT 칸으로 세우면 LOT번호의 차례", async () => {
+    const lots = (await byLot({ sort: "lot" })).map((r) => r.lot);
+    expect(lots).toEqual([...lots].sort());
   });
 
   it.each<[string, Record<string, string>, string]>([

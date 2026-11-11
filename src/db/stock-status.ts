@@ -51,6 +51,8 @@ export type ItemStockRow = StockQty & {
   itemTypeName: string;
   unit: string;
   active: boolean;
+  /** LOT 관리 품목인가 — 품목을 누르면 LOT 관리 품목은 LOT별 재고, 아니면 창고별 재고(ADR 0025). */
+  lotManaged: boolean;
   /** 안전재고 — 품목의 칸(처음 값 0). */
   safety: string;
   /** 모자란 수량(안전재고 − 가용재고) — 미달일 때만, 아니면 null(ADR 0023 의 4). */
@@ -63,7 +65,7 @@ export type ItemStockRow = StockQty & {
  */
 const ITEM_STOCK = sql`
   select i.code as item_code, i.name as item_name, i.spec, i.item_type, ct.sort_order as type_order,
-    coalesce(ct.name, i.item_type) as item_type_name, i.unit, i.active, i.safety_stock,
+    coalesce(ct.name, i.item_type) as item_type_name, i.unit, i.active, i.lot_managed, i.safety_stock,
     coalesce(s.on_hand, 0) as on_hand, coalesce(s.qc, 0) as qc, coalesce(s.defect, 0) as defect,
     coalesce(s.available, 0) as available,
     case when i.safety_stock > 0 and coalesce(s.available, 0) < i.safety_stock
@@ -120,6 +122,7 @@ export async function listItemStock(db: Db, q: ItemStockQuery): Promise<Page<Ite
     item_type_name: string;
     unit: string;
     active: boolean;
+    lot_managed: boolean;
     safety_stock: string;
     on_hand: string;
     qc: string;
@@ -128,7 +131,7 @@ export async function listItemStock(db: Db, q: ItemStockQuery): Promise<Page<Ite
     short: string | null;
   }>(
     await db.execute(sql`
-      select x.item_code, x.item_name, x.spec, x.item_type_name, x.unit, x.active,
+      select x.item_code, x.item_name, x.spec, x.item_type_name, x.unit, x.active, x.lot_managed,
         x.safety_stock::text as safety_stock, x.on_hand::text as on_hand, x.qc::text as qc, x.defect::text as defect,
         x.available::text as available, x.short::text as short
       from (${ITEM_STOCK}) x
@@ -147,6 +150,7 @@ export async function listItemStock(db: Db, q: ItemStockQuery): Promise<Page<Ite
       itemTypeName: r.item_type_name,
       unit: r.unit,
       active: r.active === true || String(r.active) === "true",
+      lotManaged: r.lot_managed === true || String(r.lot_managed) === "true",
       onHand: fmt(r.on_hand)!,
       qc: fmt(r.qc)!,
       defect: fmt(r.defect)!,
@@ -267,7 +271,6 @@ export async function listWarehouseStock(db: Db, q: WarehouseStockQuery): Promis
 export type LotStockRow = StockQty & {
   itemCode: string;
   itemName: string;
-  /** LOT번호 — LOT 관리를 끈 품목은 빈 글자. */
   lot: string;
   warehouseCode: string;
   warehouseName: string;
@@ -275,12 +278,15 @@ export type LotStockRow = StockQty & {
   unit: string;
 };
 
-/** 품목 × 창고 × LOT 가 한 줄 — 수량이 0 보다 큰 줄만. LOT 관리를 끈 품목은 LOT 가 빈 채 창고마다 한 줄(ADR 0023 의 5 · 6). */
+/**
+ * 품목 × 창고 × LOT 가 한 줄 — LOT 관리 품목만, 수량이 0 보다 큰 줄만(ADR 0023 의 5, ADR 0025). LOT 관리를 끈 품목은 창고별 재고가 보인다.
+ */
 const LOT_STOCK = sql`
   select i.code as item_code, i.name as item_name, b.lot, w.code as wh_code, w.name as wh_name, w.is_defect, i.unit, ${FOUR}
   from stock_balances b
   join warehouses w on w.id = b.warehouse_id
   join items i on i.id = b.item_id
+  where i.lot_managed
   group by i.id, w.id, b.lot
   having sum(b.qty) > 0`;
 

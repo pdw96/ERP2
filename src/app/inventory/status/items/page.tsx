@@ -9,7 +9,7 @@ import { withDb } from "@/db/request";
 import { listItemStock, type ItemStockRow } from "@/db/stock-status";
 import { ITEM_TYPES } from "@/lib/master-codes";
 import {
-  lotStockHref,
+  itemPlacesHref,
   parseItemStockQuery,
   SEARCH_MAX,
   type ItemStockQuery,
@@ -35,8 +35,8 @@ export default function ItemStockPage({ searchParams }: PageProps<"/inventory/st
       <h1 className="mt-1 text-3xl leading-tight font-semibold">품목별 재고</h1>
       <p className="mt-1 max-w-3xl text-muted">
         품목마다 모든 창고의 지금 재고를 봅니다. 실재고 = 검사대기 + 불량 + 가용재고이고, 가용재고가 안전재고보다 적으면
-        「미달」입니다. 품목코드를 누르면 그 품목이 어느 창고 · LOT 에 있는지 보입니다. 재고를 고치려면 「수불관리」의
-        등록 · 실사로 갑니다.
+        「미달」입니다. 품목코드를 누르면 그 품목이 어느 창고(LOT 관리 품목은 어느 LOT)에 있는지 보입니다. 재고를
+        고치려면 「수불관리」의 등록 · 실사로 갑니다.
       </p>
       <Suspense fallback={<p className="mt-8 text-muted">불러오는 중입니다.</p>}>
         <Results searchParams={searchParams} />
@@ -188,9 +188,9 @@ function ItemStockTable({ rows, query, filters }: { rows: ItemStockRow[]; query:
                 scope="row"
                 className={`${STICKY} left-0 w-[6.5rem] px-2 py-2 text-left font-mono font-normal whitespace-nowrap`}
               >
-                {/* 품목을 누르면 그 품목으로 거른 LOT별 재고(창고 · LOT 마다, ADR 0023 의 6). */}
+                {/* 품목을 누르면 LOT 관리 품목은 그 품목의 LOT별 재고, 아니면 창고별 재고(ADR 0025). */}
                 <Link
-                  href={lotStockHref(r.itemCode)}
+                  href={itemPlacesHref(r.itemCode, r.lotManaged)}
                   className="font-semibold text-ink underline underline-offset-4 hover:text-machine"
                 >
                   {r.itemCode}

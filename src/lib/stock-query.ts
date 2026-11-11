@@ -347,5 +347,9 @@ export function parseLotStockQuery(params: Params): { query: LotStockQuery; noti
   };
 }
 
-/** 품목별 재고의 품목에서 그 품목으로 거른 LOT별 재고로 가는 주소(ADR 0023 의 6). */
-export const lotStockHref = (itemCode: string) => `/inventory/status/lots${queryString({ item: itemCode })}`;
+/**
+ * 품목별 재고의 품목에서 가는 주소 — LOT 관리 품목은 그 품목으로 거른 LOT별 재고, 아니면 그 품목으로 거른 창고별 재고(ADR 0023 의 6,
+ * ADR 0025). LOT별 재고에는 LOT 관리 품목만 있다.
+ */
+export const itemPlacesHref = (itemCode: string, lotManaged: boolean) =>
+  `${lotManaged ? "/inventory/status/lots" : "/inventory/status/warehouses"}${queryString({ item: itemCode })}`;

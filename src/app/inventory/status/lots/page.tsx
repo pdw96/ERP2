@@ -14,8 +14,8 @@ export const metadata: Metadata = { title: "LOT별 재고 — ERP2" };
 
 const PATH = "/inventory/status/lots";
 
-// 재고 › 재고관리 › LOT별 재고(조각 「재고 현황」 성공 기준 6 · 7) — 품목 × 창고 × LOT 가 한 줄, 수량이 있는 줄만. LOT 관리를 끈 품목은 LOT 칸이
-// 빈 채 창고마다 한 줄이다. 품목별 재고에서 품목을 누르면 그 품목으로 걸러져 열린다(ADR 0023 의 6). 잔액을 읽기만 한다.
+// 재고 › 재고관리 › LOT별 재고(조각 「재고 현황」 성공 기준 6 · 7) — LOT 관리 품목의 품목 × 창고 × LOT 가 한 줄, 수량이 있는 줄만(ADR 0025).
+// 품목별 재고에서 LOT 관리 품목을 누르면 그 품목으로 걸러져 열린다(ADR 0023 의 6). 잔액을 읽기만 한다.
 // 칸 차례 · 처음 세우기 · 휴대폰 폭은 설계 「2026-11-11 — PR B 를 열기 전에 정한 것」.
 export default function LotStockPage({ searchParams }: PageProps<"/inventory/status/lots">) {
   return (
@@ -28,8 +28,8 @@ export default function LotStockPage({ searchParams }: PageProps<"/inventory/sta
       </p>
       <h1 className="mt-1 text-3xl leading-tight font-semibold">LOT별 재고</h1>
       <p className="mt-1 max-w-3xl text-muted">
-        LOT 마다 어느 창고에 몇 개 있는지 봅니다. LOT 관리를 하지 않는 품목은 LOT번호 칸이 빈 채 창고마다 한 줄입니다.
-        재고를 고치려면 「수불관리」의 등록 · 실사로 갑니다.
+        LOT 마다 어느 창고에 몇 개 있는지 봅니다. LOT 관리 품목만 보이고, LOT 관리를 하지 않는 품목은 「창고별
+        재고」에서 봅니다. 재고를 고치려면 「수불관리」의 등록 · 실사로 갑니다.
       </p>
       <Suspense fallback={<p className="mt-8 text-muted">불러오는 중입니다.</p>}>
         <Results searchParams={searchParams} />
@@ -161,7 +161,7 @@ function LotStockTable({ rows, query, filters }: { rows: LotStockRow[]; query: L
               <td
                 className={`${STICKY} left-[6.5rem] px-2 py-2 font-mono whitespace-nowrap shadow-[inset_-1px_0_0_var(--color-rule)]`}
               >
-                {r.lot || <span className="font-sans text-xs text-muted">LOT 관리 안 함</span>}
+                {r.lot}
               </td>
               <td className="px-2 py-2 whitespace-nowrap">
                 <span className="font-mono">{r.warehouseCode}</span> {r.warehouseName}
