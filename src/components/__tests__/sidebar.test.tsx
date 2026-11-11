@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { MenuHint } from "@/components/menu-hint";
 import { Sidebar, SidebarView } from "@/components/sidebar";
+import { AREAS } from "@/lib/areas";
 
 const nav = vi.hoisted(() => ({ pathname: "/" }));
 vi.mock("next/navigation", () => ({ usePathname: () => nav.pathname }));
@@ -118,6 +119,30 @@ describe("Sidebar", () => {
       "수불부",
     ]);
     expect(menu.getByRole("link", { name: "기타입고 등록" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("재고관리 — 품목별 재고는 링크, 창고별 · LOT별 재고 · 예상재고 · 할당 현황은 준비 중(조각 「재고 현황」 PR A, ADR 0023 의 1)", () => {
+    nav.pathname = "/inventory/status/items";
+    render(<Sidebar />);
+    const menu = within(screen.getByRole("list", { name: "재고 메뉴" }));
+    expect(menu.getByRole("link", { name: "품목별 재고" })).toHaveAttribute("aria-current", "page");
+    expect(menu.getByRole("link", { name: "품목별 재고" })).toHaveAttribute("href", "/inventory/status/items");
+    for (const soon of ["창고별 재고", "LOT별 재고", "예상재고", "할당 현황"]) {
+      expect(menu.queryByRole("link", { name: soon })).toBeNull();
+      expect(menu.getByText(soon).parentElement).toHaveTextContent(`${soon}준비 중`);
+    }
+  });
+
+  it("예상재고 · 할당 현황은 조각 「작업지시」가 짓는다(ADR 0023 의 1)", () => {
+    const inventory = AREAS.find((a) => a.href === "/inventory")!;
+    const menus = inventory.groups.find((g) => g.label === "재고관리")!.menus;
+    expect(menus.map((m) => [m.label, m.slice])).toEqual([
+      ["품목별 재고", "재고 현황"],
+      ["창고별 재고", "재고 현황"],
+      ["LOT별 재고", "재고 현황"],
+      ["예상재고", "작업지시"],
+      ["할당 현황", "작업지시"],
+    ]);
   });
 
   it("실사 보기(/inventory/counts/<실사 번호>)는 메뉴 「재고 실사」를 가리킨다", () => {

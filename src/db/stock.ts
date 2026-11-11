@@ -44,6 +44,20 @@ export const MOVE_LINE_LIMIT = 50000;
 
 export type StockStatus = "AVAILABLE" | "QC";
 
+/** 잔액 한 행이 드는 칸 — 불량 · 검사대기 · 가용(ADR 0015, ADR 0023 의 2). 셋은 겹치지 않고, 더하면 실재고다. */
+export type StockBucket = "DEFECT" | "QC" | "AVAILABLE";
+
+/**
+ * 상태 구분의 한 곳 — 잔액 행과 그 창고의 SQL 별칭을 받아 `DEFECT` · `QC` · `AVAILABLE` 가운데 하나를 낸다. 불량창고가 먼저(상태 칸과 상관없이
+ * 불량), 다음이 상태 검사대기, 나머지가 가용이다. 재고 현황(src/db/stock-status.ts)이 이것으로 묶어 더하고, 다른 곳에서 같은 `case` 를 다시 쓰지
+ * 않는다(조각 「재고 현황」 설계 「2026-11-11 — PR A 를 열기 전에 정한 것」). 별칭은 프로그램이 정한 글자만 넘긴다.
+ */
+export function stockBucket(balance: "b", warehouse: "w"): SQL {
+  const b = sql.raw(balance);
+  const w = sql.raw(warehouse);
+  return sql`(case when ${w}.is_defect then 'DEFECT' when ${b}.status = 'QC' then 'QC' else 'AVAILABLE' end)`;
+}
+
 /** 재고 계산이 남기는 줄 하나 — 품목 단위의 수량(천분의 일 단위, 늘 0 보다 큼). */
 export type StockLine = {
   itemId: number;

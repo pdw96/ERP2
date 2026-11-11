@@ -98,10 +98,11 @@ export const AREAS: readonly Area[] = [
       {
         label: "재고관리",
         menus: [
-          { label: "품목별 재고", slice: "재고 현황" },
+          { label: "품목별 재고", slice: "재고 현황", href: "/inventory/status/items" },
           { label: "창고별 재고", slice: "재고 현황" },
           { label: "LOT별 재고", slice: "재고 현황" },
-          { label: "예상재고", slice: "재고 현황" },
+          // 예상재고는 조각 「작업지시」가 할당 현황과 함께 짓는다(ADR 0023 의 1).
+          { label: "예상재고", slice: "작업지시" },
           { label: "할당 현황", slice: "작업지시" },
         ],
       },
