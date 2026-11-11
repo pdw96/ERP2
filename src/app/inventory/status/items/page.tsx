@@ -141,7 +141,8 @@ function ItemStockTable({ rows, query, filters }: { rows: ItemStockRow[]; query:
       path={PATH}
       filters={filters}
       numeric={c.numeric}
-      className={className}
+      // 칸 머리의 여백을 몸과 같게 줄여 넓은 화면(1280px)에서 「미달」까지 들어오게 한다.
+      className={`px-2! ${className}`}
     />
   );
   const num = "px-2 py-2 text-right whitespace-nowrap tabular-nums";
@@ -178,12 +179,12 @@ function ItemStockTable({ rows, query, filters }: { rows: ItemStockRow[]; query:
             <tr key={r.itemCode} className="border-b border-rule align-top">
               <th
                 scope="row"
-                className={`${STICKY} left-0 w-[6.5rem] px-3 py-2 text-left font-mono font-normal whitespace-nowrap`}
+                className={`${STICKY} left-0 w-[6.5rem] px-2 py-2 text-left font-mono font-normal whitespace-nowrap`}
               >
                 {r.itemCode}
               </th>
               <td
-                className={`${STICKY} left-[6.5rem] px-3 py-2 whitespace-nowrap shadow-[inset_-1px_0_0_var(--color-rule)]`}
+                className={`${STICKY} left-[6.5rem] px-2 py-2 whitespace-nowrap shadow-[inset_-1px_0_0_var(--color-rule)]`}
               >
                 {r.itemName}
                 {!r.active && <span className="ml-1 text-xs text-muted">(사용 안 함)</span>}
