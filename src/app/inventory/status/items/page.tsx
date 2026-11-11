@@ -144,7 +144,7 @@ function ItemStockTable({ rows, query, filters }: { rows: ItemStockRow[]; query:
       className={className}
     />
   );
-  const num = "px-3 py-2 text-right whitespace-nowrap tabular-nums";
+  const num = "px-2 py-2 text-right whitespace-nowrap tabular-nums";
   return (
     <div
       className="relative mt-2 overflow-x-auto border-x border-rule bg-white"
@@ -188,9 +188,10 @@ function ItemStockTable({ rows, query, filters }: { rows: ItemStockRow[]; query:
                 {r.itemName}
                 {!r.active && <span className="ml-1 text-xs text-muted">(사용 안 함)</span>}
               </td>
-              <td className="px-3 py-2 whitespace-nowrap">{r.spec}</td>
-              <td className="px-3 py-2 whitespace-nowrap">{r.itemTypeName}</td>
-              <td className="px-3 py-2 whitespace-nowrap">{r.unit}</td>
+              {/* 규격은 줄을 바꿔 넓은 화면(1280px)에서 「미달」까지 한눈에 들어오게 한다. */}
+              <td className="max-w-[9rem] min-w-[7rem] px-2 py-2">{r.spec}</td>
+              <td className="px-2 py-2 whitespace-nowrap">{r.itemTypeName}</td>
+              <td className="px-2 py-2 whitespace-nowrap">{r.unit}</td>
               <td className={`${num} font-semibold`}>{r.onHand}</td>
               <td className={num}>{r.qc}</td>
               <td className={num}>{r.defect}</td>
