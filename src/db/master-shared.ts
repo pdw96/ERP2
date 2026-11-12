@@ -16,6 +16,8 @@ export const REGISTER_LOCK = {
   numberRules: 2026110601,
   // 재고 수불(조각 「재고 수불」 PR C) — 수불 저장 · 취소, 그리고 재고에 기대는 고침(품목의 LOT 관리 · 단위, 창고의 불량창고 표시, 단위의 자릿수).
   stock: 2026110901,
+  // BOM(조각 「BOM」 PR A) — BOM 저장 · 지우기, 그리고 BOM 에 기대는 고침(품목의 단위). 순환 검사가 BOM 전체를 한 차례로 본다(ADR 0026).
+  bom: 2026111201,
 } as const;
 
 export type Params = Record<string, string | string[] | undefined>;

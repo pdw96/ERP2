@@ -15,6 +15,8 @@ import {
 } from "@/db/sample";
 import * as schema from "@/db/schema";
 import {
+  bomLines,
+  boms,
   codes,
   items,
   numberRuleSeqs,
@@ -62,6 +64,8 @@ async function snapshot() {
     stockBalances: strip(await db.select().from(stockBalances).orderBy(asc(stockBalances.id))),
     stockCounts: strip(await db.select().from(stockCounts).orderBy(asc(stockCounts.id))),
     stockCountLines: strip(await db.select().from(stockCountLines).orderBy(asc(stockCountLines.id))),
+    boms: strip(await db.select().from(boms).orderBy(asc(boms.id))),
+    bomLines: strip(await db.select().from(bomLines).orderBy(asc(bomLines.id))),
   };
 }
 
@@ -98,10 +102,19 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
       koreaToday(),
     );
     expect(more.ok).toBe(true);
+    // BOM PR A — BOM 하나를 지우고 하나를 고친다.
+    await db.execute(sql`delete from bom_lines where parent_item_id = (select id from items where code = 'FG-0002')`);
+    await db.execute(sql`delete from boms where item_id = (select id from items where code = 'FG-0002')`);
+    await db
+      .update(boms)
+      .set({ baseQty: 1 })
+      .where(sql`${boms.itemId} = (select id from items where code = 'SF-0002')`);
 
     const counts = await resetToSample(db);
     expect(await snapshot()).toEqual(clean);
     expect(counts).toEqual({
+      bom_lines: clean.bomLines.length,
+      boms: clean.boms.length,
       stock_count_lines: clean.stockCountLines.length,
       stock_counts: clean.stockCounts.length,
       stock_balances: clean.stockBalances.length,
@@ -203,7 +216,9 @@ describe("코드 번호 — 같은 머리의 가장 큰 번호 + 1", () => {
     expect(await nextCode(db, "BP")).toBe("BP-0008");
     expect(await nextCode(db, "SM")).toBe("SM-0003");
     expect(await nextCode(db, "CS")).toBe("CS-0003");
-    await db.execute(sql.raw(`truncate table "stock_count_lines", "stock_balances", "stock_move_lines", "items"`));
+    await db.execute(
+      sql.raw(`truncate table "bom_lines", "boms", "stock_count_lines", "stock_balances", "stock_move_lines", "items"`),
+    );
     expect(await nextCode(db, "RM")).toBe("RM-0001");
   });
 

@@ -17,16 +17,7 @@ describe("설계도의 Mermaid 글", () => {
   });
 
   it("이 조각이 만든 테이블은 상세 그림에 칸과 함께 있다", () => {
-    for (const table of [
-      "unit_specs",
-      "number_rules",
-      "number_rule_seqs",
-      "stock_moves",
-      "stock_move_lines",
-      "stock_balances",
-      "stock_counts",
-      "stock_count_lines",
-    ]) {
+    for (const table of ["boms", "bom_lines"]) {
       expect(DATA_MODEL).toContain(` ${table}`);
     }
   });
@@ -51,15 +42,7 @@ describe("모듈별 전체 지도", () => {
     const built = MODULE_MAP.flatMap((m) => m.tables)
       .filter((t) => t.slice === CURRENT_SLICE && t.table)
       .map((t) => t.table!);
-    expect(built.sort()).toEqual([
-      "number_rule_seqs",
-      "number_rules",
-      "stock_balances",
-      "stock_counts",
-      "stock_move_lines",
-      "stock_moves",
-      "unit_specs",
-    ]);
+    expect(built.sort()).toEqual(["boms"]);
     for (const table of built) expect(DATA_MODEL).toContain(` ${table}`);
   });
 

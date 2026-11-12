@@ -92,6 +92,13 @@
       "when": 1794273069944,
       "tag": "0012_stock_counts",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794479709416,
+      "tag": "0013_boms",
+      "breakpoints": true
     }
   ]
 }

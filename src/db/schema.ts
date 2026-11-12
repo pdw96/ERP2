@@ -567,3 +567,64 @@ export const stockCountLines = pgTable(
     check("stock_count_lines_book_not_negative", sql`${t.bookQty} is null or ${t.bookQty} >= 0`),
   ],
 );
+
+// ── BOM(조각 「BOM」 PR A, ADR 0026) ─────────────────────────
+
+// BOM 의 수량 — 기준수량은 부모 품목의 단위, 소요량은 자품목의 단위로 소수 셋째 자리까지(단위의 자릿수는 서버가 본다, ADR 0017).
+const bomQty = (name: string) => numeric(name, { precision: 12, scale: 3, mode: "number" }).notNull();
+
+/**
+ * BOM 머리 — 부모 품목(반제품 · 완제품)마다 하나, 기준수량(부모 단위). 자품목 줄의 소요량은 「기준수량당 자품목의 양」이다(ADR 0026 의 1 · 5).
+ * `updated_at` 이 버전이다 — 화면을 연 뒤 남이 저장한 BOM 을 덮지 않는다. 부모의 유형 · 순환 · 적용 기간 겹침은 서버가 BOM 의 잠금 아래 본다.
+ */
+export const boms = pgTable(
+  "boms",
+  {
+    id: id(),
+    itemId: integer("item_id")
+      .notNull()
+      .unique()
+      .references(() => items.id),
+    baseQty: bomQty("base_qty"),
+    ...timestamps(),
+  },
+  (t) => [unique("boms_id_item_unique").on(t.id, t.itemId), check("boms_base_qty_positive", sql`${t.baseQty} > 0`)],
+);
+
+/**
+ * BOM 의 자품목 줄 — 자품목 · 소요량(기준수량당, 자품목 단위) · 로스율(%) · 적용 시작일 · 종료일(비우면 계속, 그날까지 씀) · 비고(ADR 0026 의 1 ~ 4 · 9).
+ * 부모 품목을 줄에도 두어 (BOM, 부모)가 머리의 (번호, 품목)을 가리키게 하고, 부모 = 자품목을 DB 가 막는다. 한 BOM 은 200줄까지다.
+ */
+export const bomLines = pgTable(
+  "bom_lines",
+  {
+    id: id(),
+    bomId: integer("bom_id").notNull(),
+    parentItemId: integer("parent_item_id").notNull(),
+    lineNo: smallint("line_no").notNull(),
+    childItemId: integer("child_item_id")
+      .notNull()
+      .references(() => items.id),
+    qty: bomQty("qty"),
+    lossRate: numeric("loss_rate", { precision: 5, scale: 2, mode: "number" }).notNull().default(0),
+    validFrom: date("valid_from", { mode: "string" }).notNull(),
+    validTo: date("valid_to", { mode: "string" }),
+    note: text("note").notNull().default(""),
+    ...timestamps(),
+  },
+  (t) => [
+    foreignKey({
+      name: "bom_lines_bom_fk",
+      columns: [t.bomId, t.parentItemId],
+      foreignColumns: [boms.id, boms.itemId],
+    }),
+    unique("bom_lines_line_unique").on(t.bomId, t.lineNo),
+    index("bom_lines_child_idx").on(t.childItemId),
+    check("bom_lines_line_no_range", sql`${t.lineNo} between 1 and 200`),
+    check("bom_lines_not_self", sql`${t.parentItemId} <> ${t.childItemId}`),
+    check("bom_lines_qty_positive", sql`${t.qty} > 0`),
+    check("bom_lines_loss_rate_range", sql`${t.lossRate} >= 0 and ${t.lossRate} < 100`),
+    check("bom_lines_valid_range", sql`${t.validTo} is null or ${t.validTo} >= ${t.validFrom}`),
+    check("bom_lines_note_length", sql`char_length(${t.note}) <= 200`),
+  ],
+);
