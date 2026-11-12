@@ -161,13 +161,13 @@ export function BomForm({
                   <th scope="col" className="w-10 px-2 py-2 text-right">
                     #
                   </th>
-                  <th scope="col" className="min-w-52 px-2 py-2">
+                  <th scope="col" className="min-w-48 px-2 py-2">
                     자품목
                   </th>
-                  <th scope="col" className="w-36 px-2 py-2">
+                  <th scope="col" className="w-44 px-2 py-2">
                     소요량
                   </th>
-                  <th scope="col" className="w-20 px-2 py-2">
+                  <th scope="col" className="w-16 px-2 py-2">
                     로스율(%)
                   </th>
                   <th scope="col" className="w-36 px-2 py-2">
@@ -176,7 +176,7 @@ export function BomForm({
                   <th scope="col" className="w-36 px-2 py-2">
                     적용 종료일
                   </th>
-                  <th scope="col" className="min-w-28 px-2 py-2">
+                  <th scope="col" className="min-w-24 px-2 py-2">
                     비고
                   </th>
                   <th scope="col" className="w-14 px-2 py-2">
