@@ -206,7 +206,8 @@ describe("단위 수정 — 소수 자릿수만 바뀐다", () => {
       db,
       "UNIT",
       "KG",
-      { name: "킬로그램", sortOrder: "30", active: "Y", decimals: "0" },
+      // 자릿수 1 — 샘플의 KG 수불 수량 · BOM 소요량(0.5 · 3 KG, 조각 「BOM」)이 다 맞아, 거절의 까닭이 버전 하나다.
+      { name: "킬로그램", sortOrder: "30", active: "Y", decimals: "1" },
       opened,
     );
     expect(r).toMatchObject({ ok: false, formError: expect.stringContaining("다른 사람이 먼저") });

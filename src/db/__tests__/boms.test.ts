@@ -10,6 +10,7 @@ import {
   saveBom,
   type BomSaveResult,
 } from "@/db/boms";
+import { getUnitSpec, updateCode } from "@/db/codes";
 import { createItem, loadItemsForSheet, saveItemRows, updateItem } from "@/db/items";
 import { REGISTER_LOCK, STALE } from "@/db/master-shared";
 import { resetToSample } from "@/db/reset";
@@ -565,6 +566,54 @@ describe("잠금 — BOM 을 고치는 쓰기는 맨 먼저 BOM 의 잠금을 �
     const rm = await newItem("RM", "솔더 볼");
     const log = await firstQueries((logged) => updateItem(logged, rm, { ...base, unit: "KG", lotManaged: "on" }));
     const lock = log.findIndex(isBomLock);
+    const count = log.findIndex((q) => q.query.includes('from "boms"') || q.query.includes('from "bom_lines"'));
+    expect(lock).toBeGreaterThanOrEqual(0);
+    expect(lock).toBeLessThan(count);
+  });
+});
+
+describe("단위의 자릿수를 줄이는 고침 — BOM 의 기준수량 · 소요량이 맞지 않으면 거절(설계 ② 「자릿수와 범위」, PR A 리뷰 1회차)", () => {
+  const kg = (decimals: string) => ({ name: "킬로그램", sortOrder: "30", active: "Y", decimals });
+  const kgDecimals = async () => (await getUnitSpec(db, "KG"))!.decimals;
+
+  it("자품목 소요량 0.505 KG 이 있으면 KG 을 소수 2자리로 줄이지 못하고, 0.5 면 1자리까지 줄인다", async () => {
+    const v = await valuesOf("SF-0002");
+    expect((await saveBom(db, { ...v, lines: [v.lines[0], v.lines[1], { ...v.lines[2], qty: "0.505" }] })).ok).toBe(
+      true,
+    );
+    const before = await state();
+    const r = await updateCode(db, "UNIT", "KG", kg("2"));
+    expect(r).toMatchObject({ ok: false, errors: { decimals: expect.stringContaining("BOM 의 기준수량 · 소요량") } });
+    expect(await kgDecimals()).toBe(3);
+    expect(await state()).toEqual(before);
+    const v2 = await valuesOf("SF-0002");
+    expect((await saveBom(db, { ...v2, lines: [v2.lines[0], v2.lines[1], { ...v2.lines[2], qty: "0.5" }] })).ok).toBe(
+      true,
+    );
+    expect((await updateCode(db, "UNIT", "KG", kg("1"))).ok).toBe(true);
+    expect(await kgDecimals()).toBe(1);
+  });
+
+  it("부모 단위의 기준수량도 본다 — KG 부모의 기준수량 0.25 면 KG 을 소수 1자리로 줄이지 못한다", async () => {
+    const fg = await newItem("FG", "벌크 완제품", { unit: "KG" });
+    expect((await saveBom(db, { parent: fg, baseQty: "0.25", lines: [line("SF-0002", "1")] })).ok).toBe(true);
+    expect(await updateCode(db, "UNIT", "KG", kg("1"))).toMatchObject({
+      ok: false,
+      errors: { decimals: expect.any(String) },
+    });
+    expect(await kgDecimals()).toBe(3);
+  });
+
+  it("자릿수를 줄이는 고침은 BOM 을 세기 전에 BOM 의 잠금을 쥔다", async () => {
+    const { drizzle } = await import("drizzle-orm/pglite");
+    const log: { query: string; params: unknown[] }[] = [];
+    const logged = drizzle(handle.client, {
+      logger: { logQuery: (query, params) => log.push({ query, params }) },
+    }) as unknown as Db;
+    await updateCode(logged, "UNIT", "KG", kg("2"));
+    const lock = log.findIndex(
+      (q) => q.query.includes("pg_advisory_xact_lock") && q.params.map(String).includes(String(REGISTER_LOCK.bom)),
+    );
     const count = log.findIndex((q) => q.query.includes('from "boms"') || q.query.includes('from "bom_lines"'));
     expect(lock).toBeGreaterThanOrEqual(0);
     expect(lock).toBeLessThan(count);

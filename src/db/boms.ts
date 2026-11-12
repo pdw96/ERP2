@@ -90,6 +90,24 @@ export async function itemsInBoms(tx: Db, itemIds: readonly number[]): Promise<S
   return new Set([...asParent, ...asChild].map((r) => r.id));
 }
 
+/**
+ * 이 단위의 BOM 수량이 소수 decimals 자리에 다 맞는가 — 부모가 이 단위인 BOM 의 기준수량, 자품목이 이 단위인 줄의 소요량.
+ * 단위의 자릿수를 줄이는 고침(src/db/codes.ts)이 부른다 — 부르는 쪽이 lockBom 을 쥔 뒤 부른다.
+ */
+export async function bomQuantitiesFit(tx: Db, unit: string, decimals: number): Promise<boolean> {
+  const [{ heads }] = await tx
+    .select({ heads: count() })
+    .from(boms)
+    .innerJoin(items, eq(items.id, boms.itemId))
+    .where(and(eq(items.unit, unit), sql`${boms.baseQty} <> round(${boms.baseQty}, ${decimals}::int)`));
+  const [{ lines }] = await tx
+    .select({ lines: count() })
+    .from(bomLines)
+    .innerJoin(items, eq(items.id, bomLines.childItemId))
+    .where(and(eq(items.unit, unit), sql`${bomLines.qty} <> round(${bomLines.qty}, ${decimals}::int)`));
+  return heads === 0 && lines === 0;
+}
+
 // ── 목록 ─────────────────────────────────────────────
 
 export type BomListRow = {
