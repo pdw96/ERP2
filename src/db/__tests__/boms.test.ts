@@ -45,20 +45,32 @@ async function state() {
 /** 표 전체에서 다시 센다 — 어느 품목에서 아래로 따라가도 같은 품목이 다시 나오지 않고, 같은 BOM · 자품목의 줄끼리 적용 기간이 겹치지 않는다. */
 async function invariant() {
   const lines = await db.select().from(bomLines);
-  const next = new Map<number, number[]>();
-  for (const l of lines) next.set(l.parentItemId, [...(next.get(l.parentItemId) ?? []), l.childItemId]);
+  const next = new Map<number, Set<number>>();
+  for (const l of lines) next.set(l.parentItemId, (next.get(l.parentItemId) ?? new Set()).add(l.childItemId));
+  // 깊이 우선 — 지금 길에 있는 품목이 다시 나오면 돌고 돈다. 다 본 품목은 다시 보지 않는다(줄 2만이어도 품목 수만큼).
+  const done = new Set<number>();
   const visit = (at: number, path: number[]): void => {
     expect(path, `돌고 돈다: ${[...path, at].join(" → ")}`).not.toContain(at);
+    if (done.has(at)) return;
     for (const to of next.get(at) ?? []) visit(to, [...path, at]);
+    done.add(at);
   };
   for (const start of next.keys()) visit(start, []);
-  for (const a of lines)
-    for (const b of lines) {
-      if (a.id >= b.id || a.bomId !== b.bomId || a.childItemId !== b.childItemId) continue;
-      const overlap =
-        (a.validTo === null || a.validTo >= b.validFrom) && (b.validTo === null || b.validTo >= a.validFrom);
-      expect(overlap, `줄 ${a.lineNo} · ${b.lineNo} 의 적용 기간이 겹친다`).toBe(false);
+  // 같은 BOM · 자품목끼리만 시작일 차례로 세워 이웃을 견준다 — 앞 줄의 종료일이 비었거나 뒤 줄의 시작일 이상이면 겹친다.
+  const groups = new Map<string, typeof lines>();
+  for (const l of lines) {
+    const key = `${l.bomId}|${l.childItemId}`;
+    groups.set(key, [...(groups.get(key) ?? []), l]);
+  }
+  for (const group of groups.values()) {
+    group.sort((a, b) => (a.validFrom < b.validFrom ? -1 : a.validFrom > b.validFrom ? 1 : 0));
+    for (let i = 1; i < group.length; i++) {
+      const [a, b] = [group[i - 1], group[i]];
+      expect(a.validTo !== null && a.validTo < b.validFrom, `줄 ${a.lineNo} · ${b.lineNo} 의 적용 기간이 겹친다`).toBe(
+        true,
+      );
     }
+  }
 }
 
 async function expectRejected(run: () => Promise<BomSaveResult>) {
