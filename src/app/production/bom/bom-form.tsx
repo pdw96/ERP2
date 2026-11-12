@@ -154,32 +154,32 @@ export function BomForm({
             ))}
           </datalist>
           <div className="relative overflow-x-auto border border-rule bg-white">
-            <table className="w-full min-w-[60rem] border-collapse text-left text-sm">
+            <table className="w-full min-w-[58rem] border-collapse text-left text-sm">
               <caption className="sr-only">자품목 줄</caption>
               <thead className="border-b-2 border-machine">
                 <tr>
                   <th scope="col" className="w-10 px-2 py-2 text-right">
                     #
                   </th>
-                  <th scope="col" className="min-w-60 px-2 py-2">
+                  <th scope="col" className="min-w-52 px-2 py-2">
                     자품목
                   </th>
-                  <th scope="col" className="w-32 px-2 py-2">
+                  <th scope="col" className="w-36 px-2 py-2">
                     소요량
                   </th>
-                  <th scope="col" className="w-24 px-2 py-2">
+                  <th scope="col" className="w-20 px-2 py-2">
                     로스율(%)
                   </th>
-                  <th scope="col" className="w-40 px-2 py-2">
+                  <th scope="col" className="w-36 px-2 py-2">
                     적용 시작일
                   </th>
-                  <th scope="col" className="w-40 px-2 py-2">
+                  <th scope="col" className="w-36 px-2 py-2">
                     적용 종료일
                   </th>
-                  <th scope="col" className="min-w-40 px-2 py-2">
+                  <th scope="col" className="min-w-28 px-2 py-2">
                     비고
                   </th>
-                  <th scope="col" className="w-16 px-2 py-2">
+                  <th scope="col" className="w-14 px-2 py-2">
                     <span className="sr-only">줄 지우기</span>
                   </th>
                 </tr>
@@ -289,9 +289,9 @@ function LineRow({
               inputMode="decimal"
               autoComplete="off"
               aria-invalid={!!e.qty || undefined}
-              className={`${cell(!!e.qty)} text-right`}
+              className={`${cell(!!e.qty)} min-w-0 flex-1 text-right`}
             />
-            <span className="w-8 font-mono text-xs text-muted">{unit}</span>
+            <span className="w-8 shrink-0 font-mono text-xs text-muted">{unit}</span>
           </div>
           {message("qty")}
         </td>
