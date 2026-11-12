@@ -50,6 +50,7 @@ import {
 } from "./master-shared";
 import { nextCode } from "./numbering";
 import { codes, items, numberRules, warehouses } from "./schema";
+import { itemsInBoms, lockBom } from "./boms";
 import { itemsWithMoves, lockStock } from "./stock";
 import type { Db } from "./types";
 
@@ -400,6 +401,11 @@ export async function updateItem(
         await lockStock(tx);
         if ((await itemsWithMoves(tx, [current.id])).size) return { ok: false, errors: moved, values };
       }
+      // BOM 에 든 품목은 단위를 바꾸지 못한다(ADR 0026 의 11) — BOM 의 잠금을 쥐고 세어, 센 뒤 그 사이 BOM 에 들지 않는다.
+      if (parsed.value.unit !== current.unit) {
+        await lockBom(tx);
+        if ((await itemsInBoms(tx, [current.id])).size) return { ok: false, errors: { unit: BOM_UNIT }, values };
+      }
       const done = await tx
         .update(items)
         .set({ ...columnsOf(parsed.value, stock), updatedAt: touched() })
@@ -418,6 +424,8 @@ export async function updateItem(
 }
 
 const MOVED_UNIT = "수불이 있거나 작성 중인 실사에 든 품목이라 단위를 바꾸지 못합니다 — 이미 넣은 수량의 뜻이 바뀝니다";
+const BOM_UNIT =
+  "BOM 에 든 품목이라 단위를 바꾸지 못합니다 — 기준수량 · 소요량의 뜻이 바뀝니다. BOM 에서 뺀 뒤 바꾸세요";
 const MOVED_LOT =
   "수불이 있거나 작성 중인 실사에 든 품목이라 LOT 관리를 바꾸지 못합니다 — 이미 넣은 수량의 뜻이 바뀝니다";
 
@@ -525,6 +533,16 @@ export async function saveItemRows(db: Db, rows: readonly SheetRow[]): Promise<S
     const blocked = new Map(
       guarded.filter((r) => moved.has(r.current.id)).map((r) => [r, movedErrors(r.value.value, r.current)] as const),
     );
+    // BOM 에 든 품목의 단위를 바꾸는 줄도 남긴다(ADR 0026 의 11) — 한 건 수정과 같은 규칙 · 같은 잠금.
+    const unitChanges = edits.filter((r) => !blocked.has(r) && r.value.value.unit !== r.current.unit);
+    if (unitChanges.length) {
+      await lockBom(tx);
+      const inBoms = await itemsInBoms(
+        tx,
+        unitChanges.map((r) => r.current.id),
+      );
+      for (const r of unitChanges) if (inBoms.has(r.current.id)) blocked.set(r, { unit: BOM_UNIT });
+    }
     const allowed = edits.filter((r) => !blocked.has(r));
     const done = await updateRowsWithVersion(
       tx,

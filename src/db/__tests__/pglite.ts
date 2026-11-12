@@ -34,13 +34,13 @@ export async function rejection(promise: Promise<unknown>): Promise<{ code?: str
 }
 
 /**
- * 샘플로 되돌린 뒤 수불(전표 · 줄 · 잔액 · LOT 일련)과 실사를 비운다 — 수불이 없을 때의 기준정보 · 번호 규칙을 보는 시험이 쓴다.
+ * 샘플로 되돌린 뒤 수불(전표 · 줄 · 잔액 · LOT 일련) · 실사 · BOM 을 비운다 — 수불이 없을 때의 기준정보 · 번호 규칙을 보는 시험이 쓴다.
  * 샘플 수불이 생긴 뒤(조각 「재고 수불」 PR C) 샘플 품목은 LOT 관리 · 단위를, 불량창고는 표시를 바꾸지 못한다 — 그 막음은 stock.test.ts 가 본다.
  */
 export async function resetWithoutStock(db: Db) {
   const { resetToSample } = await import("@/db/reset");
   await resetToSample(db);
   await db.execute(
-    sql`truncate table stock_count_lines, stock_counts, stock_balances, stock_move_lines, stock_moves, number_rule_seqs restart identity`,
+    sql`truncate table bom_lines, boms, stock_count_lines, stock_counts, stock_balances, stock_move_lines, stock_moves, number_rule_seqs restart identity`,
   );
 }

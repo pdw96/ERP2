@@ -153,7 +153,7 @@ export type MapTable = { id: string; name: string; table?: string; slice: string
 export type MapModule = { module: string; tables: readonly MapTable[] };
 
 /** 지금 짓는 조각 — 지도에서 이 조각의 테이블을 따로 표시한다. */
-export const CURRENT_SLICE = "재고 수불";
+export const CURRENT_SLICE = "BOM";
 
 export const MODULE_MAP: readonly MapModule[] = [
   {
@@ -209,7 +209,12 @@ export const MODULE_MAP: readonly MapModule[] = [
   {
     module: "생산",
     tables: [
-      { id: "bom", name: "BOM", slice: "BOM" },
+      {
+        id: "bom",
+        name: "BOM — 머리(기준수량) · 자품목 줄(소요량 · 로스율 · 적용일자)",
+        table: "boms",
+        slice: "BOM",
+      },
       { id: "route", name: "공정 · 작업장 · 라우팅", slice: "라우팅" },
       { id: "cal", name: "근무 캘린더 · 작업장 능력", slice: "능력계획(CRP)" },
       { id: "mps", name: "MPS", slice: "MPS" },
@@ -285,103 +290,38 @@ export const MODULE_FLOWS: readonly (readonly string[])[] = [
   ["dept", "emp", "users"],
 ];
 
-// 데이터 모델 ② 이 조각의 테이블 — 조각 「재고 수불」이 지금까지 만든 테이블과 그 칸, 그리고 그것이 가리키는 테이블.
-// 이 조각의 PR 이 테이블을 더할 때마다 여기에 더한다(조각 「재고 수불」 설계 ⑥). 조각 「기준정보」의 다섯은 docs/schema.md 가 든다.
+// 데이터 모델 ② 이 조각의 테이블 — 조각 「BOM」이 만든 테이블과 그 칸, 그리고 그것이 가리키는 테이블(ADR 0026).
+// 이 조각의 PR 이 테이블을 더할 때마다 여기에 더한다(조각 「BOM」 설계 ①). 앞 조각의 테이블은 docs/schema.md 와 위의 지도가 든다.
 export const DATA_MODEL = `erDiagram
-  CODES["공통코드 값 codes (Minor) — 조각 「기준정보」"] {
-    text group_code FK "묶음 — 여기서는 UNIT"
-    text code "EA · M · KG · G · MM · L · ML · MG …"
-    text name "이름"
-  }
-  UNIT_SPECS["단위 사양 unit_specs"] {
-    text unit UK "공통코드 UNIT 의 값 — 단위마다 하나"
-    text base_unit FK "기준 단위 — 자신이 기준인 단위(KG → G)"
-    numeric factor "배수 — 기준 단위 몇 개(KG = 1000 G). 자신이면 1"
-    smallint decimals "소수 자릿수 0 ~ 3 — 수불 수량이 들어가는 자리"
-  }
-  NUMBER_RULES["번호 규칙 number_rules — LOT 번호"] {
-    text code UK "LOT_SF · LOT_FG · LOT_NUM …"
-    text prefix "머리 — 영문 대문자 · 숫자 0 ~ 6자"
-    text separator "구분자 — 없음 · - · _ · ."
-    text date_format "날짜 꼴 — 없음 · YYMMDD · YYYYMMDD · YYMM"
-    smallint seq_digits "일련 자릿수 2 ~ 6"
-    text default_for UK "기본으로 쓰는 유형 — SF · FG 마다 하나"
-  }
-  NUMBER_RULE_SEQS["번호 규칙의 일련 number_rule_seqs"] {
-    text rule_code FK "규칙"
-    text period "기간 — 날짜 꼴로 쓴 날짜(261105 · 2611), 없으면 빈 글자"
-    integer last_seq "마지막으로 낸 일련"
-  }
   ITEMS["품목 items — 조각 「기준정보」"] {
-    text code UK "RM · SF · FG · SM · CS — 부자재 · 소모품을 더함"
-    boolean lot_managed "LOT 관리"
-    text lot_rule_code FK "LOT 번호 규칙 — 반제품 · 완제품만, 비우면 유형의 기본"
-    integer default_in_warehouse_id FK "기본 입고 창고"
-    integer default_out_warehouse_id FK "기본 출고 창고"
+    text code UK "RM · SF · FG · SM · CS"
+    text item_type "부모는 반제품 · 완제품, 자품목은 원자재 · 반제품 · 부자재"
+    text unit FK "단위 — BOM 에 들면 바꾸지 못함"
+    boolean active "사용 — 「사용 안 함」은 새로 넣지 못함"
   }
-  WAREHOUSES["창고 warehouses — 조각 「기준정보」"] {
-    text code UK "WH-01 …"
-    boolean is_defect "불량창고 — 재고가 불량"
+  UNIT_SPECS["단위 사양 unit_specs — 조각 「재고 수불」"] {
+    text unit UK "단위"
+    smallint decimals "소수 자릿수 — 기준수량 · 소요량이 들어가는 자리"
   }
-  STOCK_MOVES["수불 전표 stock_moves"] {
-    text code UK "IV-YYYYMMDD-NNN — 수불 일자 · 그날의 일련"
-    date move_date "일자 — 오늘이나 지난 날"
-    text move_type FK "유형 — 공통코드 MOVE_TYPE(IN · OUT · XFER · ADJ)"
-    text reason FK "사유 — 조정만, ADJ_REASON"
+  BOMS["BOM 머리 boms"] {
+    integer item_id FK "부모 품목 — 품목마다 하나"
+    numeric base_qty "기준수량 — 부모 단위, 0 보다 큼"
+    timestamp updated_at "버전 — 남이 저장한 BOM 을 덮지 않음"
+  }
+  BOM_LINES["BOM 자품목 줄 bom_lines"] {
+    integer bom_id FK "BOM — 줄 1 ~ 200"
+    integer parent_item_id FK "부모 품목 — 자품목과 같을 수 없음"
+    integer child_item_id FK "자품목"
+    numeric qty "소요량 — 기준수량당, 자품목 단위"
+    numeric loss_rate "로스율(%) — 0 이상 100 미만"
+    date valid_from "적용 시작일"
+    date valid_to "적용 종료일 — 그날까지, 비우면 계속"
     text note "비고 — 200자까지"
-    integer cancels_move_id FK "취소한 전표 — 한 번만, 취소 전표는 취소되지 않음"
   }
-  STOCK_MOVE_LINES["수불 줄 stock_move_lines"] {
-    integer move_id FK "전표"
-    integer item_id FK "품목"
-    text lot "LOT — 끈 품목은 빈 글자"
-    text status "상태 — 가용 · 검사대기"
-    integer from_warehouse_id FK "출고창고 — 출고 · 이동 · 줄이는 조정"
-    integer to_warehouse_id FK "입고창고 — 입고 · 이동 · 늘리는 조정"
-    numeric qty "품목 단위의 수량 — 늘 0 보다 큼"
-    numeric entered_qty "넣은 수량"
-    text entered_unit FK "넣은 단위 — 같은 기준이면 바꿔 쌓음"
-  }
-  STOCK_BALANCES["잔액 stock_balances"] {
-    integer item_id FK "품목"
-    integer warehouse_id FK "창고 — 불량창고면 불량"
-    text lot "LOT"
-    text status "상태"
-    numeric qty "지금 수량 — 0 밑으로 못 감, 줄의 합"
-  }
-  STOCK_COUNTS["재고 실사 stock_counts"] {
-    text code UK "PI-YYYYMMDD-NNN — 처음 저장한 날 · 그날의 일련"
-    integer warehouse_id FK "창고 — 작성 중은 창고마다 하나"
-    text status "작성 중 · 확정 · 취소"
-    integer baseline_line_id "장부를 불러온 때의 마지막 수불 줄 — 연 뒤의 수불 경고"
-    date confirmed_date "확정한 날"
-    integer adjust_move_id FK "실사 차이의 조정 전표 — 차이가 없으면 없음"
-  }
-  STOCK_COUNT_LINES["실사 줄 stock_count_lines"] {
-    integer count_id FK "실사 — 줄 1 ~ 100"
-    integer item_id FK "품목"
-    text lot "LOT"
-    text status "상태 — 더한 줄은 가용"
-    boolean added "장부에 없어 더한 줄"
-    numeric counted_qty "실물 수량 — 작성 중에만 비울 수 있음"
-    numeric book_qty "확정하는 순간의 장부"
-  }
-  CODES ||--|| UNIT_SPECS : "단위의 사양"
-  UNIT_SPECS ||--o{ UNIT_SPECS : "기준 단위"
-  NUMBER_RULES ||--o{ NUMBER_RULE_SEQS : "기간마다 일련"
-  NUMBER_RULES |o--o{ ITEMS : "LOT 번호 규칙"
-  WAREHOUSES |o--o{ ITEMS : "기본 입고 · 출고 창고"
-  STOCK_MOVES ||--|{ STOCK_MOVE_LINES : "줄 1 ~ 100"
-  STOCK_MOVES |o--o| STOCK_MOVES : "취소"
-  ITEMS ||--o{ STOCK_MOVE_LINES : "품목"
-  WAREHOUSES |o--o{ STOCK_MOVE_LINES : "출고창고 · 입고창고"
-  ITEMS ||--o{ STOCK_BALANCES : "품목"
-  WAREHOUSES ||--o{ STOCK_BALANCES : "창고"
-  CODES ||--o{ STOCK_MOVES : "수불 유형 · 조정 사유"
-  WAREHOUSES ||--o{ STOCK_COUNTS : "창고"
-  STOCK_COUNTS ||--|{ STOCK_COUNT_LINES : "줄 1 ~ 100"
-  ITEMS ||--o{ STOCK_COUNT_LINES : "품목"
-  STOCK_COUNTS |o--o| STOCK_MOVES : "확정 → 실사 차이 조정 전표"`;
+  ITEMS ||--o| BOMS : "부모 품목"
+  BOMS ||--|{ BOM_LINES : "자품목 줄"
+  ITEMS ||--o{ BOM_LINES : "자품목"
+  UNIT_SPECS ||--o{ ITEMS : "단위의 자릿수"`;
 
 // 시스템 구성 — 화면 · 서버 · DB · 자동 검사 · 알림.
 export const SYSTEM = `flowchart LR

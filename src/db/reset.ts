@@ -2,6 +2,7 @@ import { asc, count, eq, sql } from "drizzle-orm";
 import type { ItemType } from "@/lib/master-codes";
 import { koreaToday } from "@/lib/today";
 import {
+  SAMPLE_BOMS,
   SAMPLE_CODE_GROUPS,
   SAMPLE_CODES,
   SAMPLE_COUNTS,
@@ -14,6 +15,8 @@ import {
   SAMPLE_WAREHOUSES,
 } from "./sample";
 import {
+  bomLines,
+  boms,
   codeGroups,
   codes,
   items,
@@ -28,12 +31,15 @@ import {
   unitSpecs,
   warehouses,
 } from "./schema";
+import { lockBom, saveBom } from "./boms";
 import { cancelMove, lockStock, saveMove } from "./stock";
 import { confirmCount, openCountSheet, saveCount } from "./stock-counts";
 import type { Db } from "./types";
 
 /** 되돌림이 비우고 다시 채우는 테이블 — 테이블을 더하는 조각은 여기에도 더한다(시험이 스키마와 견준다). */
 export const RESET_TABLES = [
+  "bom_lines",
+  "boms",
   "stock_count_lines",
   "stock_counts",
   "stock_balances",
@@ -60,6 +66,7 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
     // 재고의 잠금을 먼저 쥔다 — 수불 저장과 같은 차례(잠금 → 표). 비운 뒤 잠금을 기다리면 잠금을 쥔 채 표를 읽으려는 저장과
     // 서로 기다려 한쪽이 교착(40P01)으로 되돌아간다(PR C 리뷰 1회차).
     await lockStock(tx);
+    await lockBom(tx);
     await tx.execute(sql.raw(`truncate table ${RESET_TABLES.map((t) => `"${t}"`).join(", ")} restart identity`));
     await tx.insert(codeGroups).values(SAMPLE_CODE_GROUPS);
     await tx.insert(codes).values(SAMPLE_CODES);
@@ -79,6 +86,7 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
     );
     await insertSampleMoves(tx, today);
     await insertSampleCounts(tx, today);
+    await insertSampleBoms(tx, today);
     const n = async (
       t:
         | typeof stockMoves
@@ -86,9 +94,13 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
         | typeof stockBalances
         | typeof numberRuleSeqs
         | typeof stockCounts
-        | typeof stockCountLines,
+        | typeof stockCountLines
+        | typeof boms
+        | typeof bomLines,
     ) => (await tx.select({ n: count() }).from(t))[0].n;
     return {
+      bom_lines: await n(bomLines),
+      boms: await n(boms),
       stock_count_lines: await n(stockCountLines),
       stock_counts: await n(stockCounts),
       stock_balances: await n(stockBalances),
@@ -173,5 +185,25 @@ async function insertSampleCounts(tx: Db, today: string) {
       const done = await confirmCount(tx, saved.code, saved.version, date);
       if (!done.ok) throw new Error(`샘플 실사 확정 실패: ${saved.code}`);
     }
+  }
+}
+
+/** 샘플 BOM 을 넣는다 — BOM 저장(src/db/boms.ts)을 불러 화면과 같은 검사를 지난다. 틀리면 던져 되돌림 전체를 되돌린다. */
+async function insertSampleBoms(tx: Db, today: string) {
+  for (const b of SAMPLE_BOMS) {
+    const saved = await saveBom(tx, {
+      parent: b.parent,
+      baseQty: b.baseQty,
+      lines: b.lines.map((l) => ({
+        child: l.child,
+        qty: l.qty,
+        lossRate: l.lossRate,
+        validFrom: daysBefore(today, l.from),
+        validTo: l.to === undefined ? "" : daysBefore(today, l.to),
+        note: l.note ?? "",
+      })),
+    });
+    if (!saved.ok)
+      throw new Error(`샘플 BOM 저장 실패(${b.parent}): ${JSON.stringify([saved.errors, saved.formError])}`);
   }
 }

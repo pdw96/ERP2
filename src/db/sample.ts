@@ -535,3 +535,61 @@ export const SAMPLE_COUNTS: SampleCount[] = [
   // 제품창고 — 작성 중. 전원 관리 IC 는 넣었고 센서 IC 는 비워 두어, 확정하려면 마저 넣어야 한다.
   { daysAgo: 1, warehouse: "WH-03", counted: { "FG-0001": "2500" }, rest: "blank" },
 ];
+
+/**
+ * 샘플 BOM(조각 「BOM」 PR A — 저자 판정 2026-11-12, 설계 ④ 「샘플 BOM」). 이미 있는 샘플 품목만 쓴다. 날짜는 되돌린 날 D 에서 센다 —
+ * from 은 적용 시작일이 D 의 며칠 앞(양수)인지 · 뒤(음수)인지, to 는 적용 종료일(없으면 계속). 되돌림이 BOM 저장(src/db/boms.ts)을 불러 넣는다.
+ * 설계변경 하나 — 다이 본딩 완료품의 다이 접착제가 D + 14 부터 20 G → 18 G(앞으로의 변경). 오늘 정전개는 20 G, 기준일을 14일 뒤로 바꾸면 18 G.
+ */
+export type SampleBom = {
+  parent: string;
+  baseQty: string;
+  lines: { child: string; qty: string; lossRate: string; from: number; to?: number; note?: string }[];
+};
+
+const SINCE = 180;
+
+export const SAMPLE_BOMS: SampleBom[] = [
+  {
+    parent: "SF-0001",
+    baseQty: "10000",
+    lines: [
+      { child: "RM-0001", qty: "5", lossRate: "2", from: SINCE },
+      { child: "RM-0002", qty: "10000", lossRate: "1", from: SINCE },
+      { child: "RM-0005", qty: "20", lossRate: "5", from: SINCE, to: -13, note: "설계변경 전" },
+      { child: "RM-0005", qty: "18", lossRate: "5", from: -14, note: "설계변경 — 도포량 줄임" },
+    ],
+  },
+  {
+    parent: "SF-0002",
+    baseQty: "1000",
+    lines: [
+      { child: "SF-0001", qty: "1000", lossRate: "0", from: SINCE },
+      { child: "RM-0003", qty: "12", lossRate: "3", from: SINCE },
+      { child: "RM-0004", qty: "0.5", lossRate: "5", from: SINCE },
+    ],
+  },
+  {
+    // 기준수량은 릴 하나(2,500 EA) — 방습백이 릴마다 하나라 정수로 적힌다.
+    parent: "FG-0001",
+    baseQty: "2500",
+    lines: [
+      { child: "SF-0002", qty: "2500", lossRate: "1", from: SINCE },
+      { child: "SM-0001", qty: "10", lossRate: "2", from: SINCE },
+      { child: "SM-0002", qty: "1", lossRate: "0", from: SINCE },
+    ],
+  },
+  {
+    // QFN 반제품 품목이 없어 한 단계다.
+    parent: "FG-0002",
+    baseQty: "10000",
+    lines: [
+      { child: "RM-0001", qty: "8", lossRate: "2", from: SINCE },
+      { child: "RM-0006", qty: "10000", lossRate: "1", from: SINCE },
+      { child: "RM-0005", qty: "30", lossRate: "5", from: SINCE },
+      { child: "RM-0003", qty: "320", lossRate: "3", from: SINCE },
+      { child: "RM-0004", qty: "3", lossRate: "5", from: SINCE },
+      { child: "SM-0002", qty: "4", lossRate: "0", from: SINCE },
+    ],
+  },
+];

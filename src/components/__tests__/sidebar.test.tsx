@@ -48,7 +48,7 @@ describe("Sidebar", () => {
   it("지은 화면이 없는 모듈은 「준비 중」이다", () => {
     render(<Sidebar />);
     const soon = modules().filter((l) => l.textContent?.includes("준비 중"));
-    expect(soon.map((l) => l.firstChild?.textContent)).toEqual(["영업", "구매", "생산", "품질", "회계", "인사"]);
+    expect(soon.map((l) => l.firstChild?.textContent)).toEqual(["영업", "구매", "품질", "회계", "인사"]);
   });
 
   it("지금 모듈의 메뉴를 펼친다 — 품목 · 거래처는 등록 · 조회로 나뉘고(ADR 0013), 지금 화면을 표시한다", () => {
