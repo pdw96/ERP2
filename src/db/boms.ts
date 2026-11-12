@@ -4,12 +4,15 @@ import {
   ITEM_CODE,
   parseBom,
   type BomErrors,
+  type BomInquiryNotice,
+  type BomInquiryQuery,
+  type BomMode,
   type BomLineErrors,
   type BomValues,
   type ParsedBomLine,
 } from "@/lib/bom-input";
 import { eun, iga } from "@/lib/josa";
-import { formatMilli, THOUSAND, type Milli } from "@/lib/move-input";
+import { formatMilli, THOUSAND, ZERO, type Milli } from "@/lib/move-input";
 import { limitMessage, REGISTER_LOCK, STALE, touched, VERSION, versionIs, versionOf } from "./master-shared";
 import { bomLines, boms, items, unitSpecs } from "./schema";
 import { milliOf } from "./stock";
@@ -465,4 +468,302 @@ export async function deleteBom(
     await tx.delete(boms).where(eq(boms.id, header.id));
     return { ok: true, code } as const;
   });
+}
+
+// ── 펼치기(조각 「BOM」 PR B, 설계 ② 「정전개의 필요량」 · 「역전개」 · 「읽기만」) ─────────────────────
+// 정전개는 고른 부모에서 아래로, 역전개는 고른 품목에서 위로 — 기준일에 적용되는 줄(시작일 ≤ 기준일, 종료일이 비었거나 ≥ 기준일)만 재귀 쿼리 하나로 따라간다.
+// 쿼리는 넓이 우선으로 줄을 내므로(단계 차례) 줄 상한에서 멈추면 앞 단계부터 남는다. 줄의 차례(트리 차례)와 필요량은 여기서 센다 — 필요량은 끝수를 버리지 않은
+// 분수(분자 · 분모)로 이어 세고, 보일 때만 자품목 단위의 자릿수로 올린다(ADR 0026 의 13). 이 절은 DB 에 쓰지 않는다.
+
+/** 펼치는 단계의 상한(설계 ② 「깊은 BOM」). */
+export const EXPLODE_DEPTH = 20;
+/** 한 번에 보이는 줄의 상한 — 같은 자재가 여러 길로 드는 BOM 은 길마다 줄이라, 엉뚱한 BOM 이 화면 · DB 를 붙잡지 않게 막는다. */
+export const EXPLODE_ROWS = 2000;
+
+/** 끝수를 버리지 않은 수 — 분자 / 분모(둘 다 양). */
+export type Ratio = { n: bigint; d: bigint };
+
+const gcd = (a: bigint, b: bigint): bigint => {
+  while (b !== ZERO) [a, b] = [b, a % b];
+  return a < ZERO ? -a : a;
+};
+const reduced = (n: bigint, d: bigint): Ratio => {
+  const g = gcd(n, d);
+  return { n: n / g, d: d / g };
+};
+const TEN_THOUSAND = BigInt(10000);
+
+/** 윗 단계의 필요량 × 소요량 ÷ 기준수량 × (1 + 로스율 ÷ 100) — 소요량 · 기준수량은 천분의 일 단위, 로스율은 백분의 일 퍼센트 단위. */
+export function requiredOf(upper: Ratio, qty: Milli, baseQty: Milli, lossHundredths: number): Ratio {
+  return reduced(upper.n * qty * (TEN_THOUSAND + BigInt(lossHundredths)), upper.d * baseQty * TEN_THOUSAND);
+}
+
+/** 끝수를 버리지 않은 수를 소수 decimals 자리로 올려 보이는 글자로 — 0.0042 → 「0.005」(decimals 3), 2.1 → 「3」(decimals 0). */
+export function ceilToDecimals(r: Ratio, decimals: number): string {
+  const scale = BigInt(10) ** BigInt(decimals);
+  const up = (r.n * scale + r.d - BigInt(1)) / r.d;
+  return formatMilli(up * BigInt(10) ** BigInt(3 - decimals));
+}
+
+/** 펼친 줄 하나 — 정전개는 자품목, 역전개는 부모가 그 줄의 품목이다. */
+export type ExplodedLine = {
+  /** 경로(지나온 BOM 줄의 번호, 「/」로 이음) — 화면의 열쇠이고 위 줄을 찾는 길이다. */
+  key: string;
+  level: number;
+  item: BomItemOption;
+  /** 소요량과 그 단위(자품목의 단위). */
+  qty: string;
+  qtyUnit: string;
+  /** 기준수량과 그 단위(부모의 단위). */
+  baseQty: string;
+  baseUnit: string;
+  lossRate: string;
+  validFrom: string;
+  validTo: string;
+  /** 정전개만 — 끝수를 버리지 않은 필요량과, 자품목 단위의 자릿수로 올려 보이는 글자. */
+  requiredExact?: Ratio;
+  required?: string;
+  /** 정전개만 — 반제품인데 기준일에 적용되는 줄이 없다(BOM 이 없거나 그날 줄이 없음). 그 단계에서 멈춘다. */
+  noBom?: boolean;
+};
+
+export type Explosion = {
+  lines: ExplodedLine[];
+  /** 줄 상한(EXPLODE_ROWS)에서 멈췄다 — 앞 단계부터 상한만큼 보인다. */
+  truncated: boolean;
+  /** 단계 상한(EXPLODE_DEPTH) 아래에 줄이 더 있었다. */
+  depthStopped: boolean;
+};
+
+type TreeRow = {
+  path: string;
+  level: number;
+  parent_id: number;
+  child_id: number;
+  line_no: number;
+  qty: string;
+  loss_rate: string;
+  valid_from: string;
+  valid_to: string | null;
+  base_qty: string;
+};
+
+// postgres 드라이버는 행의 배열을, PGlite 는 { rows } 를 돌려준다.
+function rowsOf<T>(result: unknown): T[] {
+  return (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
+}
+
+/**
+ * 재귀 쿼리 하나 — down 은 부모 → 자품목, up 은 자품목 → 부모로 기준일에 적용되는 줄을 따라간다. 단계도 줄도 상한 하나 위까지 읽는다(넘친 것을
+ * 알리려고). 지나온 품목이 다시 나오는 줄은 따라가지 않는다 — 저장이 돌고 도는 BOM 을 막지만(설계 ②) 펼치기가
+ * 그것에 기대 끝없이 돌지 않게.
+ */
+async function walk(db: Db, mode: BomMode, itemId: number, date: string): Promise<TreeRow[]> {
+  // 고정된 칸 이름만 고른다 — 넣은 값이 아니다.
+  const from = sql.raw(mode === "down" ? "parent_item_id" : "child_item_id");
+  const to = sql.raw(mode === "down" ? "child_item_id" : "parent_item_id");
+  const nextOf = sql.raw(mode === "down" ? "t.child_id" : "t.parent_id");
+  const applies = sql`l.valid_from <= ${date}::date and (l.valid_to is null or l.valid_to >= ${date}::date)`;
+  return rowsOf<TreeRow>(
+    await db.execute(sql`
+      with recursive tree (path, level, parent_id, child_id, line_no, qty, loss_rate, valid_from, valid_to, base_qty, seen) as (
+        select l.id::text, 1, l.parent_item_id, l.child_item_id, l.line_no, l.qty, l.loss_rate, l.valid_from, l.valid_to,
+               b.base_qty, array[l.${from}, l.${to}]
+        from bom_lines l join boms b on b.id = l.bom_id
+        where l.${from} = ${itemId} and ${applies}
+        union all
+        select t.path || '/' || l.id, t.level + 1, l.parent_item_id, l.child_item_id, l.line_no, l.qty, l.loss_rate,
+               l.valid_from, l.valid_to, b.base_qty, t.seen || l.${to}
+        from tree t join bom_lines l on l.${from} = ${nextOf} join boms b on b.id = l.bom_id
+        where t.level <= ${EXPLODE_DEPTH} and ${applies} and l.${to} <> all(t.seen)
+      )
+      select path, level, parent_id, child_id, line_no, qty::text as qty, loss_rate::text as loss_rate,
+             valid_from::text as valid_from, valid_to::text as valid_to, base_qty::text as base_qty
+      from tree
+      limit ${EXPLODE_ROWS + 1}
+    `),
+  ).map((r) => ({
+    ...r,
+    level: Number(r.level),
+    parent_id: Number(r.parent_id),
+    child_id: Number(r.child_id),
+    line_no: Number(r.line_no),
+  }));
+}
+
+async function itemsById(db: Db, ids: readonly number[]): Promise<Map<number, BomItem>> {
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select(itemColumns)
+    .from(items)
+    .leftJoin(unitSpecs, eq(unitSpecs.unit, items.unit))
+    .where(inArray(items.id, [...new Set(ids)]));
+  return new Map(rows.map((r) => [r.id, { ...r, decimals: Number(r.decimals) }] as const));
+}
+
+const optionOf = (i: BomItem): BomItemOption => ({
+  code: i.code,
+  name: i.name,
+  spec: i.spec,
+  itemType: i.itemType,
+  unit: i.unit,
+  decimals: i.decimals,
+  active: i.active,
+});
+
+/**
+ * 펼친다 — 정전개(down)는 부모 itemId 에서 아래로 수량 qty(천분의 일 단위, 없으면 기준수량)로, 역전개(up)는 itemId 를 쓰는 부모를 위로.
+ * 줄은 트리 차례 — 정전개는 BOM 의 줄 번호 차례, 역전개는 부모 품목코드 차례로 형제를 세운다.
+ */
+export async function explode(db: Db, mode: BomMode, itemId: number, date: string, qty?: Milli): Promise<Explosion> {
+  // 정전개의 수량을 주지 않으면 그 BOM 의 기준수량이다(BOM 이 없으면 펼칠 줄도 없다).
+  const start = mode === "down" ? (qty ?? milliOf((await headerOf(db, itemId))?.baseQty ?? 0)) : ZERO;
+  const all = await walk(db, mode, itemId, date);
+  const depthStopped = all.some((r) => r.level > EXPLODE_DEPTH);
+  const within = all.filter((r) => r.level <= EXPLODE_DEPTH);
+  const truncated = within.length > EXPLODE_ROWS;
+  const rows = within.slice(0, EXPLODE_ROWS);
+
+  const known = await itemsById(db, [itemId, ...rows.flatMap((r) => [r.parent_id, r.child_id])]);
+  // 정전개 — 반제품 자품목 가운데 기준일에 적용되는 줄이 있는 것(없으면 「BOM 없음」).
+  const withLines = new Set<number>();
+  if (mode === "down") {
+    const sf = [...new Set(rows.map((r) => r.child_id))].filter((id) => isParentType(known.get(id)!.itemType));
+    if (sf.length)
+      for (const r of await db
+        .selectDistinct({ id: bomLines.parentItemId })
+        .from(bomLines)
+        .where(
+          and(
+            inArray(bomLines.parentItemId, sf),
+            sql`${bomLines.validFrom} <= ${date}::date and (${bomLines.validTo} is null or ${bomLines.validTo} >= ${date}::date)`,
+          ),
+        ))
+        withLines.add(r.id);
+  }
+
+  const children = new Map<string, TreeRow[]>();
+  for (const r of rows) {
+    const cut = r.path.lastIndexOf("/");
+    const up = cut < 0 ? "" : r.path.slice(0, cut);
+    children.set(up, [...(children.get(up) ?? []), r]);
+  }
+  const rowItem = (r: TreeRow) => known.get(mode === "down" ? r.child_id : r.parent_id)!;
+  const order =
+    mode === "down"
+      ? (a: TreeRow, b: TreeRow) => a.line_no - b.line_no
+      : (a: TreeRow, b: TreeRow) =>
+          rowItem(a).code < rowItem(b).code ? -1 : rowItem(a).code > rowItem(b).code ? 1 : 0;
+
+  const lines: ExplodedLine[] = [];
+  const visit = (path: string, upper: Ratio | undefined) => {
+    for (const r of (children.get(path) ?? []).sort(order)) {
+      const item = rowItem(r);
+      const child = known.get(r.child_id)!;
+      const parent = known.get(r.parent_id)!;
+      const q = milliOf(r.qty);
+      const base = milliOf(r.base_qty);
+      const loss = lossOf(r.loss_rate);
+      const line: ExplodedLine = {
+        key: r.path,
+        level: r.level,
+        item: optionOf(item),
+        qty: formatMilli(q),
+        qtyUnit: child.unit,
+        baseQty: formatMilli(base),
+        baseUnit: parent.unit,
+        lossRate: formatLossRate(loss),
+        validFrom: r.valid_from,
+        validTo: r.valid_to ?? "",
+      };
+      let exact: Ratio | undefined;
+      if (upper) {
+        exact = requiredOf(upper, q, base, loss);
+        line.requiredExact = exact;
+        line.required = ceilToDecimals(exact, child.decimals);
+        line.noBom = isParentType(child.itemType) && !withLines.has(child.id);
+      }
+      lines.push(line);
+      visit(r.path, exact);
+    }
+  };
+  visit("", mode === "down" ? reduced(start, THOUSAND) : undefined);
+  return { lines, truncated, depthStopped };
+}
+
+// ── BOM 조회 화면 ────────────────────────────────────
+
+export type BomInquiryView = {
+  mode: BomMode;
+  date: string;
+  /** 고를 품목 — 정전개는 BOM 이 있는 품목, 역전개는 자품목이 될 수 있는 품목(원자재 · 반제품 · 부자재). */
+  options: BomItemOption[];
+  /** 펼친 품목 — 고르지 않았거나 버렸으면 없다. */
+  item?: BomItemOption;
+  /** 정전개만 — 그 BOM 의 기준수량과 펼친 수량(부모 단위). */
+  baseQty?: string;
+  qty?: string;
+  explosion?: Explosion;
+};
+
+/**
+ * BOM 조회 — 주소에서 읽은 값(src/lib/bom-input.ts 의 parseBomInquiry)을 DB 에 대어 보고 펼친다. 품목이 없거나 정전개에 BOM 이 없으면 버리고,
+ * 정전개의 수량이 부모 단위의 자릿수를 넘으면 기준수량으로 펼친다 — 버릴 때마다 notices 에 알림을 더한다.
+ */
+export async function bomInquiry(db: Db, query: BomInquiryQuery, notices: BomInquiryNotice[]): Promise<BomInquiryView> {
+  const { mode, date } = query;
+  const options =
+    mode === "down"
+      ? (
+          await db
+            .select(itemColumns)
+            .from(boms)
+            .innerJoin(items, eq(items.id, boms.itemId))
+            .leftJoin(unitSpecs, eq(unitSpecs.unit, items.unit))
+            .orderBy(asc(items.code))
+        ).map((r) => optionOf({ ...r, decimals: Number(r.decimals) }))
+      : (
+          await db
+            .select(itemColumns)
+            .from(items)
+            .leftJoin(unitSpecs, eq(unitSpecs.unit, items.unit))
+            .where(inArray(items.itemType, [...CHILD_TYPES]))
+            .orderBy(asc(items.code))
+        ).map((r) => optionOf({ ...r, decimals: Number(r.decimals) }));
+  const view: BomInquiryView = { mode, date, options };
+  if (!query.item) return view;
+
+  const item = await itemByCode(db, query.item);
+  if (!item) {
+    notices.push({ field: "item", message: "없는 품목이라 펼치지 않았습니다 — 품목을 고르세요" });
+    return view;
+  }
+  if (mode === "up") return { ...view, item: optionOf(item), explosion: await explode(db, "up", item.id, date) };
+
+  const header = await headerOf(db, item.id);
+  if (!header) {
+    notices.push({
+      field: "item",
+      message: "BOM 이 없는 품목이라 펼치지 않았습니다 — BOM 이 있는 반제품 · 완제품을 고르세요",
+    });
+    return view;
+  }
+  const base = milliOf(header.baseQty);
+  let qty = base;
+  if (query.qty && query.qty.decimals > item.decimals)
+    notices.push({
+      field: "qty",
+      message:
+        item.decimals === 0
+          ? `단위 ${eun(item.unit)} 정수라 기준수량으로 펼쳤습니다`
+          : `단위 ${eun(item.unit)} 소수 ${item.decimals}자리까지라 기준수량으로 펼쳤습니다`,
+    });
+  else if (query.qty) qty = query.qty.qty;
+  return {
+    ...view,
+    item: optionOf(item),
+    baseQty: formatMilli(base),
+    qty: formatMilli(qty),
+    explosion: await explode(db, "down", item.id, date, qty),
+  };
 }

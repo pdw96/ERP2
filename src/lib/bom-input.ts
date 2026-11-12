@@ -1,4 +1,4 @@
-import { parseQty, ZERO, type Milli } from "./move-input";
+import { parseQty, THOUSAND, ZERO, type Milli } from "./move-input";
 
 // BOM 등록의 칸과 꼴 검사(조각 「BOM」 설계 ③ 「BOM 등록의 저장」, ADR 0026). 화면(브라우저)과 서버가 함께 쓴다.
 // 여기서는 DB 를 보지 않고 꼴만 본다. 품목의 유형 · 「사용」 여부 · 단위의 자릿수 · 적용 기간 겹침 · 돌고 도는 BOM 은
@@ -176,4 +176,68 @@ export function bomValues(form: FormData): BomValues {
     values.lines[index][field] = v;
   }
   return values;
+}
+
+// ── BOM 조회의 주소(조각 「BOM」 PR B, 설계 ③ 「BOM 조회의 주소」) ─────────────────────
+// 거르기 값(품목 · 기준일 · 수량)이 틀리면 버리고 알림을 낸다 — 화면은 멈추지 않는다. 품목이 버려지면 펼치지 않고 고르라는 안내가 보인다.
+// 여기서는 꼴만 본다. 품목이 있는지 · BOM 이 있는지 · 수량이 부모 단위의 자릿수 안인지는 src/db/boms.ts 가 이어서 본다.
+
+/** 정전개(제품에서 자재로) · 역전개(자재에서 그것을 쓰는 제품으로). */
+export type BomMode = "down" | "up";
+/** 정전개 수량의 상한(설계 ③) — 천분의 일 단위. */
+export const EXPLODE_QTY_MAX: Milli = BigInt(1_000_000_000) * BigInt(1000);
+
+export type BomInquiryNotice = { field: "item" | "date" | "qty"; message: string };
+export type BomInquiryQuery = {
+  mode: BomMode;
+  /** 꼴이 맞는 품목코드 — 비었거나 꼴이 틀리면 없다. */
+  item?: string;
+  /** 기준일(YYYY-MM-DD) — 비거나 틀리면 오늘. */
+  date: string;
+  /** 정전개의 수량과 넣은 소수 자릿수 — 비거나 틀리면 없다(그 BOM 의 기준수량). 역전개는 읽지 않는다. */
+  qty?: { qty: Milli; decimals: number };
+};
+
+type Params = Record<string, string | string[] | undefined>;
+const param = (params: Params, key: string) => {
+  const v = params[key];
+  return ((Array.isArray(v) ? v[0] : v) ?? "").trim();
+};
+
+/** BOM 조회 화면의 주소를 읽는다 — 아래 밖의 이름(mode · item · date · qty 밖)은 읽지 않는다. today 는 한국 시각의 오늘. */
+export function parseBomInquiry(
+  params: Params,
+  today: string,
+): { query: BomInquiryQuery; notices: BomInquiryNotice[] } {
+  const notices: BomInquiryNotice[] = [];
+  const mode: BomMode = param(params, "mode") === "up" ? "up" : "down";
+
+  const itemText = param(params, "item");
+  let item: string | undefined;
+  if (ITEM_CODE.test(itemText)) item = itemText;
+  else if (itemText)
+    notices.push({ field: "item", message: "품목코드의 꼴이 아니라 펼치지 않았습니다 — 품목을 고르세요" });
+
+  const dateText = param(params, "date");
+  let date = today;
+  if (isCalendarDate(dateText)) date = dateText;
+  else if (dateText) notices.push({ field: "date", message: "달력에 없는 날짜라 기준일을 오늘로 두었습니다" });
+
+  let qty: BomInquiryQuery["qty"];
+  const qtyText = param(params, "qty");
+  if (mode === "down" && qtyText) {
+    // 저장하는 수량(정수 아홉 자리)과 달리 상한 1,000,000,000 은 열 자리다 — 여기서 따로 읽는다.
+    const m = /^([0-9]{1,10})(?:\.([0-9]{1,3}))?$/.exec(qtyText.replaceAll(",", ""));
+    const q = m && {
+      qty: BigInt(m[1]) * THOUSAND + BigInt((m[2] ?? "").padEnd(3, "0")),
+      decimals: (m[2] ?? "").length,
+    };
+    if (q && q.qty > ZERO && q.qty <= EXPLODE_QTY_MAX) qty = q;
+    else
+      notices.push({
+        field: "qty",
+        message: "수량은 0 보다 크고 1,000,000,000 까지(소수 셋째 자리까지)라 기준수량으로 펼쳤습니다",
+      });
+  }
+  return { query: { mode, item, date, qty }, notices };
 }

@@ -116,9 +116,9 @@ export const AREAS: readonly Area[] = [
       {
         label: "생산 기준정보",
         menus: [
-          // 등록 · 조회로 나눈다(ADR 0026 의 6). 조회(정전개 · 역전개)는 「BOM」 PR B 가 짓는다.
+          // 등록 · 조회로 나눈다(ADR 0026 의 6). 조회는 정전개 · 역전개를 바꿔 본다.
           { label: "BOM 등록", slice: "BOM", href: "/production/bom" },
-          { label: "BOM 조회", slice: "BOM" },
+          { label: "BOM 조회", slice: "BOM", href: "/production/bom/inquiry" },
           { label: "공정", slice: "라우팅" },
           { label: "작업장", slice: "라우팅" },
           { label: "라우팅", slice: "라우팅" },

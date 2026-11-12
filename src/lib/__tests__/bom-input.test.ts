@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bomValues, formatLossRate, parseBom, parseLossRate } from "@/lib/bom-input";
+import { bomValues, EXPLODE_QTY_MAX, formatLossRate, parseBom, parseBomInquiry, parseLossRate } from "@/lib/bom-input";
 
 // BOM 등록의 꼴 검사(조각 「BOM」 설계 ③) — DB 를 보지 않는 몫. DB 를 보는 몫은 src/db/__tests__/boms.test.ts.
 
@@ -89,5 +89,69 @@ describe("BOM 의 꼴", () => {
       version: "123",
       lines: [{ child: "RM-0004", qty: "0.5" }],
     });
+  });
+});
+
+// BOM 조회의 주소(조각 「BOM」 PR B, 설계 ③ 「BOM 조회의 주소」) — 꼴만 본다. 품목이 있는지 · 수량이 부모 단위의 자릿수 안인지는 bom-inquiry.test.ts.
+describe("BOM 조회의 주소 — parseBomInquiry", () => {
+  const TODAY = "2026-11-12";
+  const parse = (params: Record<string, string | string[] | undefined>) => parseBomInquiry(params, TODAY);
+
+  it("비우면 정전개 · 오늘 · 품목 없음 · 수량 없음, 알림 없음", () => {
+    expect(parse({})).toEqual({ query: { mode: "down", item: undefined, date: TODAY, qty: undefined }, notices: [] });
+  });
+
+  it("mode — up 이면 역전개, 틀리면 알림 없이 정전개", () => {
+    expect(parse({ mode: "up" }).query.mode).toBe("up");
+    for (const mode of ["UP", "down", "x", ""])
+      expect(parse({ mode })).toMatchObject({ query: { mode: "down" }, notices: [] });
+  });
+
+  it("item — 품목코드의 꼴이면 받고(앞뒤 빈칸은 떼고), 틀리면 버리고 알린다", () => {
+    expect(parse({ item: " FG-0001 " }).query.item).toBe("FG-0001");
+    expect(parse({ item: "RM-12345" }).query.item).toBe("RM-12345");
+    for (const item of ["FG-001", "fg-0001", "XX-0001", "FG-0001 x", "'; drop table"]) {
+      const r = parse({ item });
+      expect(r.query.item, item).toBeUndefined();
+      expect(r.notices.map((n) => n.field)).toEqual(["item"]);
+    }
+  });
+
+  it("date — 달력에 있는 날이면 받고, 틀리면 오늘로 두고 알린다", () => {
+    expect(parse({ date: "2026-11-26" }).query.date).toBe("2026-11-26");
+    expect(parse({ date: "2028-02-29" }).query.date).toBe("2028-02-29");
+    for (const date of ["2026-02-30", "2026-13-01", "20261126", "2026-1-1"]) {
+      const r = parse({ date });
+      expect(r.query.date, date).toBe(TODAY);
+      expect(r.notices).toEqual([{ field: "date", message: "달력에 없는 날짜라 기준일을 오늘로 두었습니다" }]);
+    }
+  });
+
+  it("qty — 0 보다 크고 1,000,000,000 까지, 소수 셋째 자리까지, 쉼표는 받는다", () => {
+    expect(parse({ qty: "10,000" }).query.qty).toEqual({ qty: BigInt(10000000), decimals: 0 });
+    expect(parse({ qty: "0.005" }).query.qty).toEqual({ qty: BigInt(5), decimals: 3 });
+    expect(parse({ qty: "1000000000" }).query.qty).toEqual({ qty: EXPLODE_QTY_MAX, decimals: 0 });
+    for (const qty of ["0", "-1", "+1", "1000000000.001", "1.0005", "abc", "1e3"]) {
+      const r = parse({ qty });
+      expect(r.query.qty, qty).toBeUndefined();
+      expect(r.notices.map((n) => n.field)).toEqual(["qty"]);
+    }
+  });
+
+  it("qty — 역전개는 읽지 않는다(알림도 없다)", () => {
+    expect(parse({ mode: "up", qty: "abc" })).toMatchObject({ query: { mode: "up", qty: undefined }, notices: [] });
+  });
+
+  it("값이 여럿이면 첫 값만, 아래 밖의 이름은 읽지 않는다", () => {
+    expect(parse({ item: ["SF-0001", "FG-0001"], mode: ["up", "down"] }).query).toMatchObject({
+      mode: "up",
+      item: "SF-0001",
+    });
+    expect(Object.keys(parse({ item: "SF-0001", sort: "x", page: "2", parent: "FG-0001" }).query).sort()).toEqual([
+      "date",
+      "item",
+      "mode",
+      "qty",
+    ]);
   });
 });
