@@ -52,6 +52,33 @@ describe("고친 이력 표", () => {
     ]);
   });
 
+  it("수량은 이력에 남은 그때의 단위로 — 품목의 지금 단위가 바뀌었어도(PR C 리뷰 1회차)", () => {
+    render(
+      <BomHistory
+        unit="KG"
+        history={{
+          total: 2,
+          entries: [
+            entry({
+              id: 2,
+              kind: "LINE_DEL",
+              child: { code: "RM-0003", name: "금 와이어", unit: "KG" },
+              lineNo: 2,
+              before: { qty: "12", lossRate: "3", validFrom: "2026-05-17", validTo: "", note: "", unit: "M" },
+            }),
+            entry({ id: 1, kind: "BOM_DEL", saveKey: "a", before: { baseQty: "1,000", unit: "EA" } }),
+          ],
+        }}
+      />,
+    );
+    const rows = within(screen.getByRole("region", { name: "고친 이력 표" }))
+      .getAllByRole("row")
+      .slice(1);
+    expect(rows[0].textContent).toContain("소요량 12 M");
+    expect(rows[1].textContent).toContain("기준수량 1,000 EA");
+    expect(rows[1].textContent).not.toContain("unit");
+  });
+
   it("같은 분의 두 저장은 일시가 두 번 보인다", () => {
     render(
       <BomHistory

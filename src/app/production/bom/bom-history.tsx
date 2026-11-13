@@ -31,11 +31,17 @@ function shown(field: string, value: string | undefined, unit: string): string {
   return value;
 }
 
-/** 줄 더함 · 뺌은 그 줄의 칸을 한 줄로, 고침은 바뀐 칸마다 「전 → 후」. */
+/**
+ * 줄 더함 · 뺌은 그 줄의 칸을 한 줄로, 고침은 바뀐 칸마다 「전 → 후」. 수량의 단위는 이력에 남은 그때의 단위다(`unit` — PR C 리뷰 1회차). 그것이 없는 줄만
+ * 지금 품목의 단위로 보인다.
+ */
 function detail(e: BomChangeEntry, parentUnit: string): string {
-  const unit = e.child?.unit ?? parentUnit;
+  const now = e.child?.unit ?? parentUnit;
+  const unitBefore = e.before.unit ?? now;
+  const unitAfter = e.after.unit ?? now;
   if (e.kind === "LINE_ADD" || e.kind === "LINE_DEL") {
     const v = e.kind === "LINE_ADD" ? e.after : e.before;
+    const unit = e.kind === "LINE_ADD" ? unitAfter : unitBefore;
     const period = `${v.validFrom ?? ""} ~ ${v.validTo || ""}`.trim();
     return [
       `소요량 ${shown("qty", v.qty, unit)}`,
@@ -46,10 +52,10 @@ function detail(e: BomChangeEntry, parentUnit: string): string {
       .filter(Boolean)
       .join(" · ");
   }
-  const keys = [...new Set([...Object.keys(e.before), ...Object.keys(e.after)])];
+  const keys = [...new Set([...Object.keys(e.before), ...Object.keys(e.after)])].filter((k) => k !== "unit");
   return keys
     .map((k) => {
-      const [b, a] = [shown(k, e.before[k], unit), shown(k, e.after[k], unit)];
+      const [b, a] = [shown(k, e.before[k], unitBefore), shown(k, e.after[k], unitAfter)];
       return e.kind === "BOM_ADD" || e.kind === "BOM_DEL"
         ? `${FIELD[k] ?? k} ${b || a}`
         : `${FIELD[k] ?? k} ${b} → ${a}`;

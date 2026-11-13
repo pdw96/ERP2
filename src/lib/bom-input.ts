@@ -214,9 +214,13 @@ export function bomTreeValues(form: FormData): BomTreeValues {
   };
 }
 
-/** 펼쳤지만 아무것도 넣지 않은 새 반제품 BOM 인가 — 저장하지 않고 건너뛴다(BOM 이 없는 반제품을 펼쳐 보기만 했을 때). */
+/**
+ * 펼쳤지만 아무것도 넣지 않은 새 반제품 BOM 인가 — 저장하지 않고 건너뛴다(BOM 이 없는 반제품을 펼쳐 보기만 했을 때). 적용 시작일은 보지 않는다 — 화면이
+ * 새 줄에 오늘을 미리 채우므로, 그 날짜만 있는 줄은 넣은 것이 아니다(PR C 리뷰 1회차).
+ */
 export function isUntouchedNewBom(values: BomValues): boolean {
-  return t(values.version) === "" && t(values.baseQty) === "" && (values.lines ?? []).every(isBlankLine);
+  const untouched = (l: BomLineValues) => BOM_LINE_FIELDS.every((f) => f === "validFrom" || t(l[f]) === "");
+  return t(values.version) === "" && t(values.baseQty) === "" && (values.lines ?? []).every(untouched);
 }
 
 // ── BOM 조회의 주소(조각 「BOM」 PR B, 설계 ③ 「BOM 조회의 주소」) ─────────────────────

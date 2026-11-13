@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BomItemOption, BomSheet, SubBom } from "@/db/boms";
-import { bomTreeValues } from "@/lib/bom-input";
+import { bomTreeValues, isUntouchedNewBom } from "@/lib/bom-input";
 import { BomForm } from "../bom-form";
 
 // BOM 등록의 한 화면 다단계(조각 「BOM」 PR C, 성공 기준 15) — 반제품 줄을 펼치면 그 BOM 이 그 줄 아래에 열리고, 접어도 값은 함께 보내진다.
@@ -138,6 +138,21 @@ describe("반제품 줄 펼치기", () => {
     const sent = sentValues();
     expect(sent.subs).toEqual([]);
     expect(sent.root.lines.map((l) => l.lineNo)).toEqual(["2", undefined]);
+  });
+
+  it("BOM 이 없는 반제품을 펼쳐 보기만 하면, 보내는 칸은 서버가 건너뛰는 「넣지 않은 새 BOM」이다(PR C 리뷰 1회차)", async () => {
+    h.open.mockResolvedValue({
+      ok: true,
+      sub: { sheet: { ...sub.sheet, version: null, baseQty: "", lines: [] }, usedBy: [] },
+    });
+    render(<BomForm sheet={root} childOptions={options} today="2026-11-13" />);
+    fireEvent.click(screen.getByRole("button", { name: "SF-0002 BOM 펼치기" }));
+    await screen.findByText(/몰딩 완료품의 새 BOM/);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "저장" })));
+    const sent = sentValues();
+    // 화면은 새 줄에 오늘을 미리 채운다 — 그래도 넣지 않은 것으로 친다.
+    expect(sent.subs[0].lines[0].validFrom).toBe("2026-11-13");
+    expect(isUntouchedNewBom(sent.subs[0])).toBe(true);
   });
 
   it("거절되면 틀린 펼친 BOM 을 열어 그 줄에 까닭을 보이고, 위 알림에 그 BOM 을 적는다", async () => {

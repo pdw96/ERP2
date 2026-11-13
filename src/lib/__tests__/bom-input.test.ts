@@ -230,6 +230,13 @@ describe("다단계 저장의 칸 — bomTreeValues · 원래 줄 번호", () =>
 
   it("펼쳐 보기만 한 새 BOM 은 건너뛴다 — 버전이 있거나 칸에 무엇이 있으면 아니다", () => {
     expect(isUntouchedNewBom({ parent: "SF-0003", version: "", baseQty: "", lines: [{ validFrom: "" }] })).toBe(true);
+    // 화면이 미리 채운 적용 시작일(오늘)만 있는 줄도 넣지 않은 것이다(PR C 리뷰 1회차).
+    expect(
+      isUntouchedNewBom({ parent: "SF-0003", version: "", baseQty: "", lines: [{ validFrom: "2026-11-13" }] }),
+    ).toBe(true);
+    expect(isUntouchedNewBom({ parent: "SF-0003", lines: [{ validFrom: "2026-11-13", validTo: "2026-12-31" }] })).toBe(
+      false,
+    );
     expect(isUntouchedNewBom({ parent: "SF-0003", version: "1", lines: [] })).toBe(false);
     expect(isUntouchedNewBom({ parent: "SF-0003", baseQty: "1", lines: [] })).toBe(false);
     expect(isUntouchedNewBom({ parent: "SF-0003", lines: [{ child: "RM-0001" }] })).toBe(false);

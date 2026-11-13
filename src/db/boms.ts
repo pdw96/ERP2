@@ -423,11 +423,38 @@ const lineFields = (l: { qty: Milli; lossRate: number; validFrom: string; validT
   note: l.note,
 });
 
+/** 이력에 남길 때의 단위 — 부모 단위(기준수량)와 자품목마다의 단위(소요량). */
+type ChangeUnits = { parent: string; child: (childItemId: number) => string };
+
+/**
+ * 이력의 전 · 후에 그때의 단위(`unit`)를 함께 남긴다 — 품목이 BOM 에서 빠진 뒤 단위가 바뀌어도 옛 수량의 뜻이 그대로다(PR C 리뷰 1회차, 설계 「경계를 정했다
+ * (2026-11-13, PR C 1회차)」). 기준수량의 구분은 부모 단위, 줄의 구분은 자품목 단위다.
+ */
+function withUnits(rows: ChangeRow[], units: ChangeUnits): ChangeRow[] {
+  return rows.map((r) => {
+    const unit = r.childItemId === undefined ? units.parent : units.child(r.childItemId);
+    return {
+      ...r,
+      before: r.before && { ...r.before, unit },
+      after: r.after && { ...r.after, unit },
+    };
+  });
+}
+
 /**
  * 고친 이력 — 옛 머리 · 줄(없으면 새 BOM)과 새 머리 · 줄을 견준다. 새 줄의 원래 번호(origLineNo)가 옛 줄을 가리키고 자품목이 같으면 「줄 고침」(바뀐 칸만),
- * 아니면 「줄 더함」이고, 가리켜지지 않은 옛 줄은 「줄 뺌」이다. 바뀐 것이 없으면 빈 목록이다.
+ * 아니면 「줄 더함」이고, 가리켜지지 않은 옛 줄은 「줄 뺌」이다. 바뀐 것이 없으면 빈 목록이다. 전 · 후마다 그때의 단위가 붙는다.
  */
 export function changesOf(
+  parentItemId: number,
+  old: { baseQty: Milli; lines: readonly StoredLine[] } | undefined,
+  next: { baseQty: Milli; lines: readonly (ParsedBomLine & { childItemId: number })[] },
+  units: ChangeUnits,
+): ChangeRow[] {
+  return withUnits(diffOf(parentItemId, old, next), units);
+}
+
+function diffOf(
   parentItemId: number,
   old: { baseQty: Milli; lines: readonly StoredLine[] } | undefined,
   next: { baseQty: Milli; lines: readonly (ParsedBomLine & { childItemId: number })[] },
@@ -692,8 +719,21 @@ export async function saveBoms(db: Db, tree: BomTreeValues): Promise<BomTreeSave
       .where(writtenIds.length ? sql`${bomLines.bomId} not in (${sql.join(writtenIds, sql`, `)})` : sql`true`);
     if (n + writes.reduce((s, w) => s + w.lines.length, 0) > BOM_LINE_LIMIT)
       return fail(plans[0].errors, limitMessage("BOM 줄", BOM_LINE_LIMIT));
+    // 자품목의 단위 — 새 줄은 이미 읽은 품목, 뺀 줄의 자품목은 따로 읽는다.
+    const unitById = new Map([...known.values()].map((i) => [i.id, i.unit] as const));
+    const missing = [...new Set(writes.flatMap((w) => (w.old?.lines ?? []).map((l) => l.childItemId)))].filter(
+      (id) => !unitById.has(id),
+    );
+    if (missing.length)
+      for (const r of await tx.select({ id: items.id, unit: items.unit }).from(items).where(inArray(items.id, missing)))
+        unitById.set(r.id, r.unit);
     const changes = writes.flatMap((w) =>
-      changesOf(w.plan.parent!.id, w.old, { baseQty: w.plan.parsed.baseQty, lines: w.lines }),
+      changesOf(
+        w.plan.parent!.id,
+        w.old,
+        { baseQty: w.plan.parsed.baseQty, lines: w.lines },
+        { parent: w.plan.parent!.unit, child: (id) => unitById.get(id)! },
+      ),
     );
     if (!(await changeRoom(tx, changes.length)))
       return fail(plans[0].errors, limitMessage("BOM 고친 이력", BOM_CHANGE_LIMIT));
@@ -761,16 +801,27 @@ export async function deleteBom(
     if (!parent || !header) return { ok: false, notFound: true } as const;
     if (header.version !== version) return { ok: false, formError: STALE } as const;
     const lines = await storedLines(tx, header.id);
-    const changes: ChangeRow[] = [
-      { parentItemId: parent.id, kind: "BOM_DEL", before: { baseQty: formatMilli(milliOf(header.baseQty)) } },
-      ...lines.map((l): ChangeRow => ({
-        parentItemId: parent.id,
-        kind: "LINE_DEL",
-        childItemId: l.childItemId,
-        lineNo: l.lineNo,
-        before: lineFields(l),
-      })),
-    ];
+    const childIds = [...new Set(lines.map((l) => l.childItemId))];
+    const unitById = new Map(
+      childIds.length
+        ? (await tx.select({ id: items.id, unit: items.unit }).from(items).where(inArray(items.id, childIds))).map(
+            (r) => [r.id, r.unit] as const,
+          )
+        : [],
+    );
+    const changes: ChangeRow[] = withUnits(
+      [
+        { parentItemId: parent.id, kind: "BOM_DEL", before: { baseQty: formatMilli(milliOf(header.baseQty)) } },
+        ...lines.map((l): ChangeRow => ({
+          parentItemId: parent.id,
+          kind: "LINE_DEL",
+          childItemId: l.childItemId,
+          lineNo: l.lineNo,
+          before: lineFields(l),
+        })),
+      ],
+      { parent: parent.unit, child: (id) => unitById.get(id)! },
+    );
     if (!(await changeRoom(tx, changes.length)))
       return { ok: false, formError: limitMessage("BOM 고친 이력", BOM_CHANGE_LIMIT) } as const;
     await tx.delete(bomLines).where(eq(bomLines.bomId, header.id));

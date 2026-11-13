@@ -146,13 +146,13 @@ describe("샘플 — 되돌림의 BOM 저장도 고친 이력을 남긴다", () 
     expect(all.filter((r) => r.kind === "BOM_ADD")).toHaveLength(4);
     expect(all.filter((r) => r.kind === "LINE_ADD")).toHaveLength(16);
     expect(all).toHaveLength(20);
-    expect((await changesFor("SF-0002"))[0]).toEqual(["BOM_ADD", null, null, null, { baseQty: "1,000" }]);
+    expect((await changesFor("SF-0002"))[0]).toEqual(["BOM_ADD", null, null, null, { baseQty: "1,000", unit: "EA" }]);
     expect((await changesFor("SF-0002"))[2]).toEqual([
       "LINE_ADD",
       "RM-0003",
       2,
       null,
-      { qty: "12", lossRate: "3", validFrom: "2026-05-17", validTo: "", note: "" },
+      { qty: "12", lossRate: "3", validFrom: "2026-05-17", validTo: "", note: "", unit: "M" },
     ]);
   });
 });
@@ -181,9 +181,17 @@ describe("한 화면 다단계 저장(성공 기준 15)", () => {
     await invariant();
     // 고친 이력 — 바꾼 BOM 마다, 바꾸지 않은 다이 본딩 완료품은 없다.
     expect((await changesFor("FG-0001")).slice(4)).toEqual([
-      ["LINE_ADD", fresh, 4, null, { qty: "2,500", lossRate: "0", validFrom: "2026-01-01", validTo: "", note: "" }],
+      [
+        "LINE_ADD",
+        fresh,
+        4,
+        null,
+        { qty: "2,500", lossRate: "0", validFrom: "2026-01-01", validTo: "", note: "", unit: "EA" },
+      ],
     ]);
-    expect((await changesFor("SF-0002")).slice(4)).toEqual([["LINE_EDIT", "RM-0003", 2, { qty: "12" }, { qty: "13" }]]);
+    expect((await changesFor("SF-0002")).slice(4)).toEqual([
+      ["LINE_EDIT", "RM-0003", 2, { qty: "12", unit: "M" }, { qty: "13", unit: "M" }],
+    ]);
     expect(await changesFor("SF-0001")).toHaveLength(5);
     expect((await changesFor(fresh)).map((c) => c[0])).toEqual(["BOM_ADD", "LINE_ADD", "LINE_ADD"]);
     // 한 저장의 이력은 같은 일시다.
@@ -207,7 +215,8 @@ describe("한 화면 다단계 저장(성공 기준 15)", () => {
     root.lines.push(line(fresh, "1"));
     const r = await saveBoms(db, {
       root,
-      subs: [{ parent: fresh, baseQty: "", version: "", lines: [line("", "", { validFrom: "" })] }],
+      // 화면은 새 BOM 의 빈 줄에 적용 시작일(오늘)을 미리 채운다 — 그 날짜만으로는 넣은 것이 아니다(PR C 리뷰 1회차).
+      subs: [{ parent: fresh, baseQty: "", version: "", lines: [line("", "", { validFrom: TODAY })] }],
     });
     expect(r).toMatchObject({ ok: true, changed: ["FG-0002"] });
     expect((await openBomSheet(db, fresh)).ok && (await openBomSheet(db, fresh))).toMatchObject({
@@ -316,28 +325,40 @@ describe("고친 이력의 가름(성공 기준 16)", () => {
     v.baseQty = "5000";
     expect((await saveBom(db, v)).ok).toBe(true);
     expect((await changesFor("SF-0001")).slice(5)).toEqual([
-      ["BASE", null, null, { baseQty: "10,000" }, { baseQty: "5,000" }],
-      ["LINE_EDIT", "RM-0001", 1, { lossRate: "2", note: "" }, { lossRate: "2.5", note: "수율 반영" }],
+      ["BASE", null, null, { baseQty: "10,000", unit: "EA" }, { baseQty: "5,000", unit: "EA" }],
+      [
+        "LINE_EDIT",
+        "RM-0001",
+        1,
+        { lossRate: "2", note: "", unit: "EA" },
+        { lossRate: "2.5", note: "수율 반영", unit: "EA" },
+      ],
       [
         "LINE_ADD",
         "RM-0006",
         2,
         null,
-        { qty: "10,000", lossRate: "1", validFrom: "2026-05-17", validTo: "", note: "" },
+        { qty: "10,000", lossRate: "1", validFrom: "2026-05-17", validTo: "", note: "", unit: "EA" },
       ],
-      ["LINE_ADD", "SM-0002", 4, null, { qty: "1", lossRate: "0", validFrom: "2026-01-01", validTo: "", note: "" }],
+      [
+        "LINE_ADD",
+        "SM-0002",
+        4,
+        null,
+        { qty: "1", lossRate: "0", validFrom: "2026-01-01", validTo: "", note: "", unit: "EA" },
+      ],
       [
         "LINE_DEL",
         "RM-0002",
         2,
-        { qty: "10,000", lossRate: "1", validFrom: "2026-05-17", validTo: "", note: "" },
+        { qty: "10,000", lossRate: "1", validFrom: "2026-05-17", validTo: "", note: "", unit: "EA" },
         null,
       ],
       [
         "LINE_DEL",
         "RM-0005",
         3,
-        { qty: "20", lossRate: "5", validFrom: "2026-05-17", validTo: "2026-11-26", note: "설계변경 전" },
+        { qty: "20", lossRate: "5", validFrom: "2026-05-17", validTo: "2026-11-26", note: "설계변경 전", unit: "G" },
         null,
       ],
     ]);
@@ -352,11 +373,35 @@ describe("고친 이력의 가름(성공 기준 16)", () => {
     ];
     expect((await saveBom(db, v)).ok).toBe(true);
     expect((await changesFor("SF-0002")).slice(4)).toEqual([
-      ["LINE_ADD", "SF-0001", 1, null, { qty: "1,000", lossRate: "0", validFrom: "2026-05-17", validTo: "", note: "" }],
-      ["LINE_EDIT", "RM-0003", 2, { validTo: "" }, { validTo: "2026-12-31" }],
-      ["LINE_ADD", "RM-0003", 3, null, { qty: "11", lossRate: "3", validFrom: "2027-01-01", validTo: "", note: "" }],
-      ["LINE_DEL", "SF-0001", 1, { qty: "1,000", lossRate: "0", validFrom: "2026-05-17", validTo: "", note: "" }, null],
-      ["LINE_DEL", "RM-0004", 3, { qty: "0.5", lossRate: "5", validFrom: "2026-05-17", validTo: "", note: "" }, null],
+      [
+        "LINE_ADD",
+        "SF-0001",
+        1,
+        null,
+        { qty: "1,000", lossRate: "0", validFrom: "2026-05-17", validTo: "", note: "", unit: "EA" },
+      ],
+      ["LINE_EDIT", "RM-0003", 2, { validTo: "", unit: "M" }, { validTo: "2026-12-31", unit: "M" }],
+      [
+        "LINE_ADD",
+        "RM-0003",
+        3,
+        null,
+        { qty: "11", lossRate: "3", validFrom: "2027-01-01", validTo: "", note: "", unit: "M" },
+      ],
+      [
+        "LINE_DEL",
+        "SF-0001",
+        1,
+        { qty: "1,000", lossRate: "0", validFrom: "2026-05-17", validTo: "", note: "", unit: "EA" },
+        null,
+      ],
+      [
+        "LINE_DEL",
+        "RM-0004",
+        3,
+        { qty: "0.5", lossRate: "5", validFrom: "2026-05-17", validTo: "", note: "", unit: "KG" },
+        null,
+      ],
     ]);
   });
 
@@ -384,6 +429,28 @@ describe("고친 이력의 가름(성공 기준 16)", () => {
     expect(h.entries[1].child).toMatchObject({ name: expect.any(String), unit: "EA" });
     expect(h.entries[0].savedAt).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
     expect(h.entries.at(-1)).toMatchObject({ kind: "LINE_ADD", child: { code: "SM-0002" } });
+  });
+
+  it("이력에는 그때의 단위가 남는다 — BOM 에서 뺀 품목의 단위를 바꿔도 옛 수량은 옛 단위다(PR C 리뷰 1회차)", async () => {
+    // 금 와이어(M)를 몰딩 완료품 · 센서 IC 에서 뺀다 — BOM 에 들지 않으니 단위를 바꿀 수 있다.
+    for (const code of ["SF-0002", "FG-0002"]) {
+      const v = await valuesOf(code);
+      v.lines = v.lines.filter((l) => l.child !== "RM-0003");
+      expect((await saveBom(db, v)).ok).toBe(true);
+    }
+    await db.update(items).set({ unit: "KG" }).where(eq(items.code, "RM-0003"));
+    const h = await bomHistory(db, "SF-0002");
+    const removed = h.entries.find((e) => e.kind === "LINE_DEL" && e.child?.code === "RM-0003")!;
+    expect(removed.child!.unit).toBe("KG");
+    expect(removed.before).toMatchObject({ qty: "12", unit: "M" });
+    const added = h.entries.find((e) => e.kind === "LINE_ADD" && e.child?.code === "RM-0003")!;
+    expect(added.after).toMatchObject({ qty: "12", unit: "M" });
+    // 기준수량의 단위도 그때의 부모 단위 — 지운 BOM 의 「BOM 지움」에 남는다.
+    expect((await deleteBom(db, "SF-0002", await versionOf("SF-0002"))).ok).toBe(true);
+    expect((await bomHistory(db, "SF-0002")).entries[0]).toMatchObject({
+      kind: "BOM_DEL",
+      before: { baseQty: "1,000", unit: "EA" },
+    });
   });
 
   it(`고친 이력은 전체 ${BOM_CHANGE_LIMIT.toLocaleString("ko-KR")}줄까지 — 넘는 저장 · 지우기는 거절, 딱 맞으면 선다`, async () => {
