@@ -89,7 +89,8 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
     // 재고 수불 PR B — 번호 규칙을 더하고 고치고, 일련이 생기고, 품목의 기본 창고 · 규칙을 바꾸고, 불량창고 표시를 바꾼다.
     await db.insert(numberRules).values({ code: "LOT_X", name: "장난 규칙", seqDigits: 4 });
     await db.update(numberRules).set({ prefix: "ZZ" }).where(eq(numberRules.code, "LOT_FG"));
-    await db.insert(numberRuleSeqs).values({ ruleCode: "LOT_FG", period: "261106", lastSeq: 7 });
+    // 일련의 기간은 샘플이 만들 수 없는 날(2000-01-01)이다 — 샘플 수불은 되돌린 날에서 센 며칠 앞이라, 실제 날짜를 쓰면 그날 되돌린 샘플의 기간과 겹친다.
+    await db.insert(numberRuleSeqs).values({ ruleCode: "LOT_FG", period: "000101", lastSeq: 7 });
     await db
       .update(items)
       .set({ defaultInWarehouseId: null, lotRuleCode: "LOT_X", lotManaged: false })
