@@ -290,7 +290,7 @@ export const MODULE_FLOWS: readonly (readonly string[])[] = [
   ["dept", "emp", "users"],
 ];
 
-// 데이터 모델 ② 이 조각의 테이블 — 조각 「BOM」이 만든 테이블과 그 칸, 그리고 그것이 가리키는 테이블(ADR 0026).
+// 데이터 모델 ② 이 조각의 테이블 — 조각 「BOM」이 만든 테이블과 그 칸, 그리고 그것이 가리키는 테이블(ADR 0026 · 0028).
 // 이 조각의 PR 이 테이블을 더할 때마다 여기에 더한다(조각 「BOM」 설계 ①). 앞 조각의 테이블은 docs/schema.md 와 위의 지도가 든다.
 export const DATA_MODEL = `erDiagram
   ITEMS["품목 items — 조각 「기준정보」"] {
@@ -318,9 +318,19 @@ export const DATA_MODEL = `erDiagram
     date valid_to "적용 종료일 — 그날까지, 비우면 계속"
     text note "비고 — 200자까지"
   }
+  BOM_CHANGES["BOM 고친 이력 bom_changes — PR C"] {
+    integer parent_item_id FK "부모 품목 — BOM 을 지워도 이력은 남음"
+    timestamp saved_at "일시 — 한 저장은 같음"
+    text kind "BOM 등록 · 지움 · 기준수량 고침 · 줄 더함 · 뺌 · 고침"
+    integer child_item_id FK "자품목 — 줄의 구분만"
+    smallint line_no "줄 번호 — 줄의 구분만"
+    jsonb before "전 — 바뀐 칸만"
+    jsonb after "후 — 바뀐 칸만"
+  }
   ITEMS ||--o| BOMS : "부모 품목"
   BOMS ||--|{ BOM_LINES : "자품목 줄"
   ITEMS ||--o{ BOM_LINES : "자품목"
+  ITEMS ||--o{ BOM_CHANGES : "고친 이력"
   UNIT_SPECS ||--o{ ITEMS : "단위의 자릿수"`;
 
 // 시스템 구성 — 화면 · 서버 · DB · 자동 검사 · 알림.

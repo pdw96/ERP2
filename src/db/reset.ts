@@ -15,6 +15,7 @@ import {
   SAMPLE_WAREHOUSES,
 } from "./sample";
 import {
+  bomChanges,
   bomLines,
   boms,
   codeGroups,
@@ -38,6 +39,7 @@ import type { Db } from "./types";
 
 /** 되돌림이 비우고 다시 채우는 테이블 — 테이블을 더하는 조각은 여기에도 더한다(시험이 스키마와 견준다). */
 export const RESET_TABLES = [
+  "bom_changes",
   "bom_lines",
   "boms",
   "stock_count_lines",
@@ -96,9 +98,11 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
         | typeof stockCounts
         | typeof stockCountLines
         | typeof boms
-        | typeof bomLines,
+        | typeof bomLines
+        | typeof bomChanges,
     ) => (await tx.select({ n: count() }).from(t))[0].n;
     return {
+      bom_changes: await n(bomChanges),
       bom_lines: await n(bomLines),
       boms: await n(boms),
       stock_count_lines: await n(stockCountLines),

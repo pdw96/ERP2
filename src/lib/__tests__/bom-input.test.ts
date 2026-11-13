@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { bomValues, EXPLODE_QTY_MAX, formatLossRate, parseBom, parseBomInquiry, parseLossRate } from "@/lib/bom-input";
+import {
+  bomTreeValues,
+  bomValues,
+  EXPLODE_QTY_MAX,
+  formatLossRate,
+  isUntouchedNewBom,
+  parseBom,
+  parseBomInquiry,
+  parseLossRate,
+} from "@/lib/bom-input";
 
 // BOM 등록의 꼴 검사(조각 「BOM」 설계 ③) — DB 를 보지 않는 몫. DB 를 보는 몫은 src/db/__tests__/boms.test.ts.
 
@@ -51,6 +60,7 @@ describe("BOM 의 꼴", () => {
             validFrom: "2026-01-01",
             validTo: null,
             note: "",
+            origLineNo: null,
           },
         ],
       },
@@ -153,5 +163,82 @@ describe("BOM 조회의 주소 — parseBomInquiry", () => {
       "mode",
       "qty",
     ]);
+  });
+});
+
+// 한 화면 다단계의 칸(조각 「BOM」 PR C) — 펼친 반제품 BOM 은 `boms.<차례>.` 아래, 줄의 원래 번호는 `lineNo`.
+describe("다단계 저장의 칸 — bomTreeValues · 원래 줄 번호", () => {
+  const form = (entries: [string, string][]) => {
+    const f = new FormData();
+    for (const [k, v] of entries) f.append(k, v);
+    return f;
+  };
+
+  it("맨 위 BOM 과 펼친 BOM 들을 차례대로 모은다 — 아래 밖의 이름은 읽지 않는다", () => {
+    const v = bomTreeValues(
+      form([
+        ["parent", "FG-0001"],
+        ["version", "1"],
+        ["lines.0.child", "SF-0002"],
+        ["lines.0.lineNo", "1"],
+        ["boms.3.parent", "SF-0001"],
+        ["boms.3.lines.0.qty", "5"],
+        ["boms.0.parent", "SF-0002"],
+        ["boms.0.baseQty", "1000"],
+        ["boms.0.lines.1.note", "비고"],
+        ["boms.0.lines.0.evil", "x"],
+        ["boms.100.parent", "SF-9999"],
+        ["other.parent", "SF-9999"],
+      ]),
+    );
+    expect(v.root).toEqual({ parent: "FG-0001", version: "1", lines: [{ child: "SF-0002", lineNo: "1" }] });
+    expect(v.subs).toEqual([
+      { parent: "SF-0002", baseQty: "1000", lines: [{}, { note: "비고" }] },
+      { parent: "SF-0001", lines: [{ qty: "5" }] },
+    ]);
+  });
+
+  it("원래 줄 번호는 1 ~ 200 의 정수만 — 아니면 새 줄(null)", () => {
+    const parsed = (lineNo: string) =>
+      parseBom({
+        parent: "FG-0001",
+        baseQty: "1",
+        lines: [{ child: "RM-0001", qty: "1", validFrom: "2026-01-01", lineNo }],
+      });
+    for (const [text, n] of [
+      ["1", 1],
+      ["200", 200],
+      ["0", null],
+      ["201", null],
+      ["1.5", null],
+      ["", null],
+      ["x", null],
+    ] as const) {
+      const r = parsed(text);
+      expect(r.ok && r.value.lines[0].origLineNo, text).toBe(n);
+    }
+  });
+
+  it("원래 번호만 있는 줄은 빈 줄로 친다 — 원래 번호는 칸이 아니다", () => {
+    const r = parseBom({
+      parent: "FG-0001",
+      baseQty: "1",
+      lines: [{ child: "RM-0001", qty: "1", validFrom: "2026-01-01" }, { lineNo: "2" }],
+    });
+    expect(r.ok && r.value.lines).toHaveLength(1);
+  });
+
+  it("펼쳐 보기만 한 새 BOM 은 건너뛴다 — 버전이 있거나 칸에 무엇이 있으면 아니다", () => {
+    expect(isUntouchedNewBom({ parent: "SF-0003", version: "", baseQty: "", lines: [{ validFrom: "" }] })).toBe(true);
+    // 화면이 미리 채운 적용 시작일(오늘)만 있는 줄도 넣지 않은 것이다(PR C 리뷰 1회차).
+    expect(
+      isUntouchedNewBom({ parent: "SF-0003", version: "", baseQty: "", lines: [{ validFrom: "2026-11-13" }] }),
+    ).toBe(true);
+    expect(isUntouchedNewBom({ parent: "SF-0003", lines: [{ validFrom: "2026-11-13", validTo: "2026-12-31" }] })).toBe(
+      false,
+    );
+    expect(isUntouchedNewBom({ parent: "SF-0003", version: "1", lines: [] })).toBe(false);
+    expect(isUntouchedNewBom({ parent: "SF-0003", baseQty: "1", lines: [] })).toBe(false);
+    expect(isUntouchedNewBom({ parent: "SF-0003", lines: [{ child: "RM-0001" }] })).toBe(false);
   });
 });

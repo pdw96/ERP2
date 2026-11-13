@@ -17,7 +17,7 @@ describe("설계도의 Mermaid 글", () => {
   });
 
   it("이 조각이 만든 테이블은 상세 그림에 칸과 함께 있다", () => {
-    for (const table of ["boms", "bom_lines"]) {
+    for (const table of ["boms", "bom_lines", "bom_changes"]) {
       expect(DATA_MODEL).toContain(` ${table}`);
     }
   });

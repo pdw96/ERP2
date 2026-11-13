@@ -6,6 +6,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   smallint,
@@ -626,5 +627,35 @@ export const bomLines = pgTable(
     check("bom_lines_loss_rate_range", sql`${t.lossRate} >= 0 and ${t.lossRate} < 100`),
     check("bom_lines_valid_range", sql`${t.validTo} is null or ${t.validTo} >= ${t.validFrom}`),
     check("bom_lines_note_length", sql`char_length(${t.note}) <= 200`),
+  ],
+);
+
+/**
+ * BOM 의 고친 이력(조각 「BOM」 PR C, ADR 0028 의 3) — BOM 을 저장 · 지울 때마다 그 BOM 에 생긴 일 하나가 한 줄이다. 한 저장의 줄은 같은 일시(트랜잭션의 시작)를 갖는다.
+ * 구분 — BOM 등록 · BOM 지움 · 기준수량 고침 · 줄 더함 · 줄 뺌 · 줄 고침. 전 · 후는 바뀐 칸만 든다(줄 더함은 후만, 줄 뺌은 전만). 부모 품목을 가리키고 BOM 머리는
+ * 가리키지 않는다 — 지운 BOM 의 이력이 남게. 이력은 화면에서 고치거나 지우지 못하고, 매일 밤 되돌림이 비운다. 누가는 조각 「인사」 뒤(ADR 0028 의 4).
+ */
+export const bomChanges = pgTable(
+  "bom_changes",
+  {
+    id: id(),
+    parentItemId: integer("parent_item_id")
+      .notNull()
+      .references(() => items.id),
+    savedAt: timestamp("saved_at", { withTimezone: true }).notNull().defaultNow(),
+    kind: text("kind").notNull(),
+    childItemId: integer("child_item_id").references(() => items.id),
+    lineNo: smallint("line_no"),
+    before: jsonb("before").$type<Record<string, string>>(),
+    after: jsonb("after").$type<Record<string, string>>(),
+  },
+  (t) => [
+    index("bom_changes_parent_idx").on(t.parentItemId, t.savedAt),
+    check("bom_changes_kind", sql`${t.kind} in ('BOM_ADD', 'BOM_DEL', 'BASE', 'LINE_ADD', 'LINE_DEL', 'LINE_EDIT')`),
+    check(
+      "bom_changes_line_kinds",
+      sql`(${t.kind} in ('LINE_ADD', 'LINE_DEL', 'LINE_EDIT')) = (${t.childItemId} is not null and ${t.lineNo} is not null)`,
+    ),
+    check("bom_changes_line_no_range", sql`${t.lineNo} is null or ${t.lineNo} between 1 and 200`),
   ],
 );

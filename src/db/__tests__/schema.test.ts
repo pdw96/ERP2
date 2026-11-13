@@ -28,9 +28,10 @@ const item = (over: Partial<typeof items.$inferInsert> = {}) => ({
 });
 
 describe("테이블", () => {
-  it("스키마의 테이블은 열다섯이다 — 기준정보 다섯과 단위 사양 · 번호 규칙 · 번호 규칙의 일련 · 수불 전표 · 수불 줄 · 잔액 · 실사 · 실사 줄 · BOM 머리 · BOM 줄", () => {
+  it("스키마의 테이블은 열여섯이다 — 기준정보 다섯과 단위 사양 · 번호 규칙 · 번호 규칙의 일련 · 수불 전표 · 수불 줄 · 잔액 · 실사 · 실사 줄 · BOM 머리 · BOM 줄 · BOM 고친 이력", () => {
     const names = Object.values(schema).filter(isTable).map(getTableName).sort();
     expect(names).toEqual([
+      "bom_changes",
       "bom_lines",
       "boms",
       "code_groups",

@@ -41,6 +41,6 @@ export async function resetWithoutStock(db: Db) {
   const { resetToSample } = await import("@/db/reset");
   await resetToSample(db);
   await db.execute(
-    sql`truncate table bom_lines, boms, stock_count_lines, stock_counts, stock_balances, stock_move_lines, stock_moves, number_rule_seqs restart identity`,
+    sql`truncate table bom_changes, bom_lines, boms, stock_count_lines, stock_counts, stock_balances, stock_move_lines, stock_moves, number_rule_seqs restart identity`,
   );
 }
