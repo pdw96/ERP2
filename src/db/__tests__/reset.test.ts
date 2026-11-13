@@ -15,6 +15,7 @@ import {
 } from "@/db/sample";
 import * as schema from "@/db/schema";
 import {
+  bomChanges,
   bomLines,
   boms,
   codes,
@@ -66,6 +67,12 @@ async function snapshot() {
     stockCountLines: strip(await db.select().from(stockCountLines).orderBy(asc(stockCountLines.id))),
     boms: strip(await db.select().from(boms).orderBy(asc(boms.id))),
     bomLines: strip(await db.select().from(bomLines).orderBy(asc(bomLines.id))),
+    // 고친 이력은 일시가 되돌린 때라 일시를 뺀 나머지를 견준다.
+    bomChanges: (await db.select().from(bomChanges).orderBy(asc(bomChanges.id))).map((row) => {
+      const rest: Partial<typeof row> = { ...row };
+      delete rest.savedAt;
+      return rest;
+    }),
   };
 }
 
@@ -103,6 +110,10 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
       koreaToday(),
     );
     expect(more.ok).toBe(true);
+    // BOM PR C — 고친 이력에 줄 하나를 더한다(되돌림이 비우고 샘플 BOM 의 저장이 다시 채운다).
+    await db.execute(
+      sql`insert into bom_changes (parent_item_id, kind, after) values ((select id from items where code = 'FG-0001'), 'BASE', '{"baseQty":"1"}')`,
+    );
     // BOM PR A — BOM 하나를 지우고 하나를 고친다.
     await db.execute(sql`delete from bom_lines where parent_item_id = (select id from items where code = 'FG-0002')`);
     await db.execute(sql`delete from boms where item_id = (select id from items where code = 'FG-0002')`);
@@ -114,6 +125,7 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
     const counts = await resetToSample(db);
     expect(await snapshot()).toEqual(clean);
     expect(counts).toEqual({
+      bom_changes: clean.bomChanges.length,
       bom_lines: clean.bomLines.length,
       boms: clean.boms.length,
       stock_count_lines: clean.stockCountLines.length,
@@ -218,7 +230,9 @@ describe("코드 번호 — 같은 머리의 가장 큰 번호 + 1", () => {
     expect(await nextCode(db, "SM")).toBe("SM-0003");
     expect(await nextCode(db, "CS")).toBe("CS-0003");
     await db.execute(
-      sql.raw(`truncate table "bom_lines", "boms", "stock_count_lines", "stock_balances", "stock_move_lines", "items"`),
+      sql.raw(
+        `truncate table "bom_changes", "bom_lines", "boms", "stock_count_lines", "stock_balances", "stock_move_lines", "items"`,
+      ),
     );
     expect(await nextCode(db, "RM")).toBe("RM-0001");
   });

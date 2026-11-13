@@ -6,7 +6,8 @@ import { parseQty, THOUSAND, ZERO, type Milli } from "./move-input";
 
 export const BOM_LINE_FIELDS = ["child", "qty", "lossRate", "validFrom", "validTo", "note"] as const;
 export type BomLineField = (typeof BOM_LINE_FIELDS)[number];
-export type BomLineValues = Partial<Record<BomLineField, string>>;
+/** 줄의 칸과 원래 줄 번호(`lineNo` — 화면을 연 때 그 BOM 에 있던 줄, PR C). 원래 번호는 고친 이력에서 「줄 고침」과 「뺌 · 더함」을 가를 뿐 칸이 아니다. */
+export type BomLineValues = Partial<Record<BomLineField | "lineNo", string>>;
 /** 화면이 보낸 그대로의 글자 — 부모 품목 · 기준수량 · 버전(새 BOM 은 빈 글자)과 줄. */
 export type BomValues = { parent?: string; baseQty?: string; version?: string; lines: BomLineValues[] };
 
@@ -35,6 +36,8 @@ export type ParsedBomLine = {
   /** 적용 종료일 — 비우면 null(계속). 그날까지 쓴다(ADR 0026 의 9). */
   validTo: string | null;
   note: string;
+  /** 화면을 연 때 그 BOM 에 있던 줄의 번호 — 새 줄 · 틀린 값이면 null(PR C). */
+  origLineNo: number | null;
 };
 
 export type ParsedBom = {
@@ -145,6 +148,7 @@ export function parseBom(values: BomValues): BomParseResult {
         validFrom,
         validTo: toText || null,
         note,
+        origLineNo: lineNoOf(t(line.lineNo)),
       });
   });
 
@@ -159,23 +163,60 @@ export function parseBom(values: BomValues): BomParseResult {
   };
 }
 
-/** 화면이 보낸 칸을 모은다 — 머리 칸과 `lines.<차례>.<칸>`. */
-export function bomValues(form: FormData): BomValues {
+/** 원래 줄 번호 — 1 ~ 200 의 정수만, 아니면 null(새 줄로 친다). */
+function lineNoOf(text: string): number | null {
+  if (!/^[0-9]{1,3}$/.test(text)) return null;
+  const n = Number(text);
+  return n >= 1 && n <= BOM_MAX_LINES ? n : null;
+}
+
+const LINE_KEYS: readonly string[] = [...BOM_LINE_FIELDS, "lineNo"];
+
+/** 화면이 보낸 칸을 모은다 — 머리 칸과 `lines.<차례>.<칸>`. prefix 는 펼친 반제품 BOM 의 `boms.<차례>.`(PR C). */
+export function bomValues(form: FormData, prefix = ""): BomValues {
   const values: BomValues = { lines: [] };
   for (const f of ["parent", "baseQty", "version"] as const) {
-    const v = form.get(f);
+    const v = form.get(prefix + f);
     if (typeof v === "string") values[f] = v;
   }
+  const escaped = prefix.replaceAll(".", "\\.");
+  const pattern = new RegExp(`^${escaped}lines\\.([0-9]{1,3})\\.([a-zA-Z]+)$`);
   for (const [key, v] of form.entries()) {
-    const m = /^lines\.([0-9]{1,3})\.([a-zA-Z]+)$/.exec(key);
+    const m = pattern.exec(key);
     if (!m || typeof v !== "string") continue;
     const index = Number(m[1]);
-    const field = m[2] as BomLineField;
-    if (index > BOM_MAX_LINES * 2 || !(BOM_LINE_FIELDS as readonly string[]).includes(field)) continue;
+    const field = m[2] as BomLineField | "lineNo";
+    if (index > BOM_MAX_LINES * 2 || !LINE_KEYS.includes(field)) continue;
     while (values.lines.length <= index) values.lines.push({});
     values.lines[index][field] = v;
   }
   return values;
+}
+
+// ── 한 화면 다단계 등록(조각 「BOM」 PR C, ADR 0028 의 1 · 2) ─────────────────────
+
+/** 한 번에 저장하는 펼친 반제품 BOM 의 상한(설계 「2026-11-13 — 범위에 더한 것」 ③). */
+export const BOM_SUBS_MAX = 50;
+
+/** 맨 위 BOM 과 펼친 반제품 BOM 들 — 화면이 보낸 그대로. */
+export type BomTreeValues = { root: BomValues; subs: BomValues[] };
+
+/** 화면이 보낸 칸을 모은다 — 맨 위 BOM 은 머리 칸 그대로, 펼친 반제품 BOM 은 `boms.<차례>.` 아래. 차례는 0 ~ 상한의 두 배까지만 읽는다. */
+export function bomTreeValues(form: FormData): BomTreeValues {
+  const indexes = new Set<number>();
+  for (const key of form.keys()) {
+    const m = /^boms\.([0-9]{1,3})\./.exec(key);
+    if (m && Number(m[1]) < BOM_SUBS_MAX * 2) indexes.add(Number(m[1]));
+  }
+  return {
+    root: bomValues(form),
+    subs: [...indexes].sort((a, b) => a - b).map((k) => bomValues(form, `boms.${k}.`)),
+  };
+}
+
+/** 펼쳤지만 아무것도 넣지 않은 새 반제품 BOM 인가 — 저장하지 않고 건너뛴다(BOM 이 없는 반제품을 펼쳐 보기만 했을 때). */
+export function isUntouchedNewBom(values: BomValues): boolean {
+  return t(values.version) === "" && t(values.baseQty) === "" && (values.lines ?? []).every(isBlankLine);
 }
 
 // ── BOM 조회의 주소(조각 「BOM」 PR B, 설계 ③ 「BOM 조회의 주소」) ─────────────────────
