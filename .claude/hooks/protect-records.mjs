@@ -116,16 +116,19 @@ let next;
 const tool = input.tool_input;
 if (typeof tool.content === "string") {
   next = tool.content;
-} else if (typeof tool.old_string === "string" && typeof tool.new_string === "string") {
+} else {
+  // Edit 는 고침 하나를, MultiEdit 는 고침 여럿(edits)을 차례로 넣는다.
+  const edits = Array.isArray(tool.edits) ? tool.edits : [tool];
   const abs = path.resolve(root, filePath);
   if (!existsSync(abs)) allow();
-  const now = readFileSync(abs, "utf8");
-  if (!now.includes(tool.old_string)) allow(); // 도구가 스스로 실패한다
-  next = tool.replace_all
-    ? now.split(tool.old_string).join(tool.new_string)
-    : now.replace(tool.old_string, () => tool.new_string);
-} else {
-  allow();
+  next = readFileSync(abs, "utf8");
+  for (const edit of edits) {
+    if (typeof edit?.old_string !== "string" || typeof edit?.new_string !== "string") allow();
+    if (!next.includes(edit.old_string)) allow(); // 도구가 스스로 실패한다
+    next = edit.replace_all
+      ? next.split(edit.old_string).join(edit.new_string)
+      : next.replace(edit.old_string, () => edit.new_string);
+  }
 }
 
 const baseLines = lines(base);
