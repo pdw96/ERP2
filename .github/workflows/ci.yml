@@ -36,15 +36,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # 문서 검사와 그 원천인 틀은 claude-kit 의 vibe-slice 스킬에 있다 — 커밋을 고정해 받는다.
-      - uses: actions/checkout@v4
-        with:
-          repository: pdw96/claude-kit
-          ref: 2e60e97b7d58a1f24410000dc620de2780979273
-          path: .claude-kit
-          sparse-checkout: vibe-slice/skills/slice-docs
+      # 문서 검사와 그 원천인 틀은 이 레포의 tools/doc-check/ 에 있다 — claude-kit 은퇴로
+      # vibe-slice/skills/slice-docs(커밋 2e60e97)에서 그대로 옮겨 왔다. 바꾸면 이 레포에서 바꾼다.
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: 문서 모양
-        run: python3 .claude-kit/vibe-slice/skills/slice-docs/scripts/verify-docs.py --repo .
+        run: python3 tools/doc-check/scripts/verify-docs.py --repo .
