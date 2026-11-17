@@ -26,6 +26,9 @@
 **입구 `CLAUDE.md` 는 절 제목을 묻지 않는다.** 의도의 경로와 마스터플랜을 백틱 토막으로 드는지만 본다 — 이미 있는
 `CLAUDE.md` 를 덮지 않으므로 절은 레포마다 다르다. `docs/slices/30-claude-md-template/design.md` ② C1 ~ C3 · ③(ADR 0041 의 6 · 10).
 
+**조각 폴더는 `slice.md` 한 장이거나 옛 꼴(요구사항 · 설계 둘)이다.** 이 레포가 조각을 가볍게 바꾸며 더했다(ERP2 ADR 0029) —
+`slice.md` 가 있으면 그 틀의 제목과 닫는 기록을 보고, 없으면 옛 두 문서를 본다.
+
 **프로필 `Profile.md` 도 절 제목을 묻지 않는다.** 고르는 문서라 없으면 묻지 않고, 있으면 저장소 안의 파일이고 `CLAUDE.md` 나
 `CLAUDE.local.md` 가 `@Profile.md` 로 가져오는지만 본다. `docs/slices/31-profile/design.md` ② P1 · ③(ADR 0042 의 6 · 7).
 
@@ -44,6 +47,7 @@ KINDS = [
     ("Profile.md 의 칸", "profile.md"),
     ("요구사항 문서의 칸", "requirements.md"),
     ("설계 문서의 칸", "design.md"),
+    ("조각 문서의 칸", "slice.md"),
 ]
 # 틀이 사는 곳 — `vibe-slice` 플러그인의 스킬 폴더(ADR 0013 의 6). 다른 레포는 그 스킬로 틀을 받는다.
 TEMPLATES = "vibe-slice/skills/slice-docs/templates"
@@ -473,6 +477,18 @@ def check_slices(r, root, schema, mp, rows):
         p, why = inside(root, folder)
         if why:
             r.fail(mp, "S8", f"{state} 조각 「{name}」의 폴더 `{folder}` 가 {why}")
+            continue
+        # 조각 문서 한 장(ADR 0029) — 있으면 이것으로 본다. 없으면 옛 꼴(요구사항 · 설계 둘)로 본다.
+        one = p / "slice.md"
+        if one.is_file():
+            hs = headings(lines(one))
+            if state == "진행":
+                if "조각 문서의 칸" in schema and (why := in_order(hs, schema["조각 문서의 칸"])):
+                    r.fail(one, "F3", why)
+                if any(h.startswith("닫으며 (") for h in hs):
+                    r.fail(one, "F4", f"진행 조각 「{name}」에 「닫으며」가 있다 — 닫았다면 상태를 `닫힘` 으로")
+            elif not any(CLOSING.match(h) for h in hs):
+                r.fail(one, "F5", f"닫힌 조각 「{name}」에 `## 닫으며 (<YYYY-MM-DD>)` 가 없다")
             continue
         req, des = p / "requirements.md", p / "design.md"
         if state == "진행":
