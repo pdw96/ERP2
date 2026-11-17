@@ -68,7 +68,9 @@ git diff origin/main...HEAD -- src/db/sample.ts
 ### 5. 기록을 고치지 않았나
 
 머지된 조각의 요구사항 · 설계, ADR, 감사 기록은 기본 가지에 있는 줄을 바꾸거나 지우지 않는다. 고치기 도구는 훅
-(`.claude/hooks/protect-records.mjs`)이 막지만 셸 명령으로 고친 것은 훅이 못 보므로 여기서 다시 본다.
+(`.claude/hooks/protect-records.mjs`)이 막고, 셸 명령으로 고친 것은 일을 마칠 때 도는 마무리 검사
+(`.claude/hooks/check-records-on-stop.mjs`)가 잡는다. 둘 다 Claude 의 세션 안에서만 돌므로 — 사람이 직접 고쳤거나 다른 도구가 고친 것까지 —
+여기서 가지 전체를 다시 본다.
 
 ```bash
 git diff --numstat origin/main...HEAD -- docs/adr docs/slices .claude/audits AGENTS.md

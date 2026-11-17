@@ -42,3 +42,6 @@ next-env.d.ts
 
 # 환경변수 이름만 든 예시는 올린다
 !.env.example
+
+# Claude 의 브라우저 도구(Playwright MCP, .mcp.json)가 쪽 스냅숏 · 캡처를 두는 곳
+/.playwright-mcp/
