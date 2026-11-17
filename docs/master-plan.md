@@ -10,7 +10,7 @@
 | 시스템 구조 | `docs/architecture.md` |
 | 데이터 모델 | `docs/schema.md` |
 | 작업 규칙과 앵커볼트 | `CLAUDE.md` |
-| 절차 | 없음 — 레포 밖 claude-kit 의 절차 지도(`vibe-slice` 플러그인)를 따른다 |
+| 절차 | 착공 `.claude/skills/slice-kickoff/SKILL.md` · PR 점검 `.claude/skills/pr-check/SKILL.md` · 감사 `.claude/agents/audit-internal.md`. 조각 닫기는 아직 레포 밖 claude-kit 의 절차 지도(vibe-slice 플러그인, 은퇴)에만 있다 |
 | 조각의 요구사항 · 설계 | `docs/slices/` |
 
 ## 조각 나눔
