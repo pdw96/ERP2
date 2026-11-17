@@ -41,7 +41,7 @@ if (!base) process.exit(0);
 
 let changed = [];
 try {
-  changed = git(["diff", "--name-only", "-z", base]).split("\0").filter(Boolean);
+  changed = git(["diff", "--no-renames", "--name-only", "-z", base]).split("\0").filter(Boolean);
 } catch {
   process.exit(0);
 }
