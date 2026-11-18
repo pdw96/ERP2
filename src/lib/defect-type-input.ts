@@ -8,6 +8,7 @@ import {
 } from "./defect-type-fields";
 import { activeFlag, firstErrors, formValues, text } from "./input-common";
 import { PROCESS_CODE } from "./process-input";
+import { WORK_CENTER_CODE } from "./work-center-input";
 
 // 불량 유형 등록 · 수정의 입력 검사 — 불량유형코드 · 불량유형명 1 ~ 50자 · 대분류 · 발생 공정(0개 이상) · 비고 0 ~ 500자 · 사용 여부. 서버가 한다.
 // 코드는 등록할 때만 받고, 등록한 뒤 바뀌지 않는다.
@@ -20,8 +21,14 @@ export {
   type DefectTypeValues,
 } from "./defect-type-fields";
 
-/** 불량유형코드의 꼴 — 영문 대문자로 시작, 대문자 · 숫자 · - 2 ~ 10자, - 는 끝에 오거나 둘 잇달 수 없다(DB 의 defect_types_code_format 과 같다). */
-export const DEFECT_TYPE_CODE = /^(?=.{2,10}$)[A-Z](-?[A-Z0-9])+$/;
+/**
+ * 불량유형코드의 꼴 — 영문 대문자로 시작, 대문자 · 숫자 · - 2 ~ 10자, - 는 끝에 오거나 둘 잇달 수 없다(DB 의 defect_types_code_format 과 같다).
+ * ADR 0033 「작업장코드와 같은 꼴」 — 작업장코드의 정규식을 그대로 쓴다.
+ */
+export const DEFECT_TYPE_CODE = WORK_CENTER_CODE;
+
+/** 한 불량 유형에 붙일 수 있는 발생 공정의 수 — 공정 등록의 상한(src/db/processes.ts 의 PROCESS_LIMIT = 50)과 같다. lib 은 db 를 부르지 않아 따로 둔다. */
+export const MAX_PROCESSES = 50;
 
 export type NewDefectTypeInput = { code: string; name: string; cls: string; processes: string[]; note: string };
 export type DefectTypeUpdateInput = { name: string; cls: string; processes: string[]; note: string; active: boolean };
@@ -59,6 +66,12 @@ const processList = z.array(z.string()).transform((list, ctx) => {
   const cleaned = [...new Set(list.map((p) => p.trim()).filter(Boolean))];
   if (cleaned.some((p) => !PROCESS_CODE.test(p)))
     ctx.issues.push({ code: "custom", input: list, message: "없는 공정입니다 — 목록에서 고르세요" });
+  else if (cleaned.length > MAX_PROCESSES)
+    ctx.issues.push({
+      code: "custom",
+      input: list,
+      message: `공정을 너무 많이 골랐습니다 — ${MAX_PROCESSES}개까지 고를 수 있습니다`,
+    });
   return cleaned;
 });
 

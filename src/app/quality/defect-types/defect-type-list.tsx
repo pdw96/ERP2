@@ -2,7 +2,7 @@ import Form from "next/form";
 import Link from "next/link";
 import { SavedNotice as Notice } from "@/components/saved-notice";
 import type { ClsOption, DefectTypeFilter, DefectTypeFilterNotice, DefectTypeRow } from "@/db/defect-types";
-import type { ProcessOption } from "@/db/work-centers";
+import type { ProcessOption } from "@/db/processes";
 
 // 불량 유형 목록 화면의 부품 — 찾기, 표, 저장 뒤의 알림.
 
@@ -169,7 +169,9 @@ export function DefectTypeList({
               <td className="px-3 py-2.5 font-semibold wrap-anywhere">{d.name}</td>
               <td className="px-3 py-2.5 text-sm wrap-anywhere">{d.clsName}</td>
               <td className="px-3 py-2.5 font-mono text-sm wrap-anywhere">
-                {d.processes.length ? d.processes.map((p) => p.code).join(" · ") : "공통"}
+                {d.processes.length
+                  ? d.processes.map((p) => (p.active ? p.code : `${p.code}(사용 안 함)`)).join(" · ")
+                  : "공통"}
               </td>
               <td className="px-3 py-2.5 text-sm whitespace-nowrap">{d.active ? "사용" : "사용 안 함"}</td>
             </tr>

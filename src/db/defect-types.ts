@@ -10,7 +10,6 @@ import {
   type DefectTypeValues,
 } from "@/lib/defect-type-input";
 import { PROCESS_CODE } from "@/lib/process-input";
-import { codeState } from "./items";
 import {
   REGISTER_LOCK,
   STALE,
@@ -25,9 +24,9 @@ import {
   versionOf,
   type Params,
 } from "./master-shared";
+import type { ProcessOption } from "./processes";
 import { codes, defectTypeProcesses, defectTypes, processes } from "./schema";
 import type { Db } from "./types";
-import type { ProcessOption } from "./work-centers";
 
 // 불량 유형(메뉴 「불량 유형」)의 목록 · 등록 · 수정. 화면(src/app/quality/defect-types/)은 이 함수만 부른다.
 // 입력 검사는 src/lib/defect-type-input.ts, 등록 상한 · 코드 겹침 · 대분류 · 공정 확인은 여기서 본다.
@@ -38,7 +37,7 @@ export const DEFECT_TYPE_LIMIT = 100;
 /** 불량 유형 한 줄 — 대분류 이름과 발생 공정(공정코드 순, 없으면 공통)을 함께 든다. */
 export type DefectTypeRow = typeof defectTypes.$inferSelect & {
   clsName: string;
-  processes: { code: string; name: string }[];
+  processes: { code: string; name: string; active: boolean }[];
 };
 /** 불량 유형과 그 버전(마지막으로 고친 때) — 수정 화면이 들고 있다가 저장할 때 돌려준다. */
 export type DefectTypeWithVersion = DefectTypeRow & { version: string };
@@ -104,7 +103,12 @@ async function withProcesses(
 ): Promise<DefectTypeRow[]> {
   if (rows.length === 0) return [];
   const links = await db
-    .select({ defectTypeId: defectTypeProcesses.defectTypeId, code: processes.code, name: processes.name })
+    .select({
+      defectTypeId: defectTypeProcesses.defectTypeId,
+      code: processes.code,
+      name: processes.name,
+      active: processes.active,
+    })
     .from(defectTypeProcesses)
     .innerJoin(processes, eq(defectTypeProcesses.processId, processes.id))
     .where(
@@ -114,8 +118,12 @@ async function withProcesses(
       ),
     )
     .orderBy(asc(processes.code));
-  const byType = new Map<number, { code: string; name: string }[]>();
-  for (const { defectTypeId, ...p } of links) byType.set(defectTypeId, [...(byType.get(defectTypeId) ?? []), p]);
+  const byType = new Map<number, DefectTypeRow["processes"]>();
+  for (const { defectTypeId, ...p } of links) {
+    const list = byType.get(defectTypeId);
+    if (list) list.push(p);
+    else byType.set(defectTypeId, [p]);
+  }
   return rows.map((r) => ({ ...r, processes: byType.get(r.id) ?? [] }));
 }
 
@@ -192,13 +200,20 @@ function asRejection(error: unknown, values: DefectTypeValues): DefectTypeSaveRe
   throw error;
 }
 
-/** 대분류 확인 — 공통코드에 있고 「사용 안 함」이 아닌지. 거절하는 까닭 하나, 괜찮으면 없다. */
+/**
+ * 대분류 확인 — 공통코드에 있고 「사용 안 함」이 아닌지. 거절하는 까닭 하나, 괜찮으면 없다.
+ * 읽은 행에 공유 잠금(FOR SHARE)을 건다 — 확인과 넣기 사이에 다른 사람이 「사용 안 함」으로 바꾸지 못한다.
+ */
 async function clsProblem(db: Db, cls: string): Promise<string | undefined> {
-  const state = await codeState(db, DEFECT_CLS_GROUP, cls);
-  return state === "missing" ? NO_CLS : state === "inactive" ? INACTIVE_CLS : undefined;
+  const [row] = await db
+    .select({ active: codes.active })
+    .from(codes)
+    .where(and(eq(codes.groupCode, DEFECT_CLS_GROUP), eq(codes.code, cls)))
+    .for("share");
+  return !row ? NO_CLS : row.active ? undefined : INACTIVE_CLS;
 }
 
-/** 공정 확인 — 모두 있고 「사용 안 함」이 아닌지. 없는 것이 하나라도 있으면 없다는 말을 먼저. 공정의 id 도 돌려준다. */
+/** 공정 확인 — 모두 있고 「사용 안 함」이 아닌지(읽은 행에 공유 잠금 — 확인과 넣기 사이에 바뀌지 않게). 없는 것이 하나라도 있으면 없다는 말을 먼저. 공정의 id 도 돌려준다. */
 async function resolveProcesses(
   db: Db,
   wanted: string[],
@@ -208,7 +223,8 @@ async function resolveProcesses(
   const found = await db
     .select({ id: processes.id, code: processes.code, active: processes.active })
     .from(processes)
-    .where(inArray(processes.code, wanted));
+    .where(inArray(processes.code, wanted))
+    .for("share");
   if (found.length !== wanted.length) return { error: NO_PROCESS };
   if (found.some((p) => !p.active && !skipInactive.has(p.code))) return { error: INACTIVE_PROCESS };
   return { ids: found.map((p) => p.id) };

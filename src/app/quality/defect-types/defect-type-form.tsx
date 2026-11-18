@@ -13,7 +13,7 @@ import {
   Section,
 } from "@/components/form-parts";
 import type { ClsOption } from "@/db/defect-types";
-import type { ProcessOption } from "@/db/work-centers";
+import type { ProcessOption } from "@/db/processes";
 import {
   DEFECT_TYPE_FIELDS,
   type DefectTypeErrors,
@@ -107,6 +107,15 @@ export function DefectTypeForm(props: Props) {
           </Field>
           <div className="sm:max-w-96">
             <Field field="cls" label="대분류" error={errors.cls}>
+              {classOptions.length === 0 && (
+                <p className="mb-2 rounded border border-dashed border-rule px-3 py-2">
+                  사용 중인 대분류가 없습니다 — 대분류는{" "}
+                  <Link href="/system/codes/DEFECT_CLS" className="underline underline-offset-4">
+                    「시스템 관리 › 공통코드」
+                  </Link>
+                  에서 등록하세요
+                </p>
+              )}
               <select
                 id="f-cls"
                 name="cls"

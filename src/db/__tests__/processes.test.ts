@@ -1,8 +1,10 @@
 // @vitest-environment node
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import {
   createProcess,
   getProcess,
+  listProcessOptions,
   listProcesses,
   parseProcessFilter,
   PROCESS_LIMIT,
@@ -158,5 +160,14 @@ describe("수정", () => {
     const values = { name: "x", note: "", active: "Y" };
     expect(await updateProcess(db, "ZZ", values)).toEqual({ ok: false, notFound: true });
     expect(await updateProcess(db, "x y", values)).toEqual({ ok: false, notFound: true });
+  });
+});
+
+describe("공정 고르기", () => {
+  it("모든 공정을 코드 순으로", async () => {
+    await db.update(processes).set({ active: false }).where(eq(processes.code, "MK"));
+    const options = await listProcessOptions(db);
+    expect(codesOf(options)).toEqual(["BG", "DA", "FT", "MD", "MK", "SAW", "WB"]);
+    expect(options.find((o) => o.code === "MK")).toEqual({ code: "MK", name: "마킹", active: false });
   });
 });

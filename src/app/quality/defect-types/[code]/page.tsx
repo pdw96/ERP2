@@ -6,7 +6,7 @@ import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
 import { getDefectType, listClsOptions } from "@/db/defect-types";
 import { withDb } from "@/db/request";
-import { listProcessOptions } from "@/db/work-centers";
+import { listProcessOptions } from "@/db/processes";
 import { DEFECT_TYPE_CODE } from "@/lib/defect-type-input";
 import { updateDefectTypeAction } from "../actions";
 import { DefectTypeForm } from "../defect-type-form";
@@ -49,11 +49,14 @@ async function EditDefectType({ params }: Pick<PageProps<"/quality/defect-types/
   if (!DEFECT_TYPE_CODE.test(decoded)) notFound();
   let loaded;
   try {
-    loaded = await withDb(async (db) => ({
-      defectType: await getDefectType(db, decoded),
-      classes: await listClsOptions(db),
-      processes: await listProcessOptions(db),
-    }));
+    loaded = await withDb(async (db) => {
+      const [defectType, classes, processes] = await Promise.all([
+        getDefectType(db, decoded),
+        listClsOptions(db),
+        listProcessOptions(db),
+      ]);
+      return { defectType, classes, processes };
+    });
   } catch (error) {
     return <LoadFailed what="불량 유형" error={error} />;
   }

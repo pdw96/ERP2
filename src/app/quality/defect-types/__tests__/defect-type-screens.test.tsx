@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ClsOption, DefectTypeRow } from "@/db/defect-types";
-import type { ProcessOption } from "@/db/work-centers";
+import type { ProcessOption } from "@/db/processes";
 import type { DefectTypeFormState } from "../actions";
 import { DefectTypeForm } from "../defect-type-form";
 import { DefectTypeList, DefectTypeSearch, SavedNotice } from "../defect-type-list";
@@ -9,7 +9,7 @@ import { DefectTypeList, DefectTypeSearch, SavedNotice } from "../defect-type-li
 vi.mock("../actions", () => ({}));
 vi.mock("next/form", () => ({ default: (props: Record<string, unknown>) => <form {...props} /> }));
 
-const P = (code: string) => ({ code, name: `${code} 공정` });
+const P = (code: string, active = true) => ({ code, name: `${code} 공정`, active });
 const dt = (over: Partial<DefectTypeRow>): DefectTypeRow => ({
   id: 1,
   code: "CHIP",
@@ -41,7 +41,7 @@ const SAMPLE: [string, string, string, string, string[]][] = [
   ["SHORT", "쇼트", "ELEC", "전기 특성", ["FT"]],
 ];
 const sampleRows = SAMPLE.map(([code, name, cls, clsName, ps], i) =>
-  dt({ id: i + 1, code, name, cls, clsName, processes: ps.map(P) }),
+  dt({ id: i + 1, code, name, cls, clsName, processes: ps.map((c) => P(c)) }),
 );
 
 const none = { q: "", cls: "", process: "", includeInactive: false };
@@ -86,6 +86,11 @@ describe("불량 유형 목록", () => {
     expect(swp.getByText("와이어 휨")).toBeInTheDocument();
     expect(swp.getByText("치수")).toBeInTheDocument();
     expect(swp.getByText("사용")).toBeInTheDocument();
+  });
+
+  it("발생 공정이 「사용 안 함」이면 코드 뒤에 표시가 붙는다", () => {
+    render(<DefectTypeList rows={[dt({ processes: [P("MD", false), P("WB")] })]} filter={none} />);
+    expect(screen.getByText("MD(사용 안 함) · WB")).toBeInTheDocument();
   });
 
   it("「사용 안 함」 불량 유형에는 표시가 붙는다", () => {
@@ -161,6 +166,23 @@ describe("불량 유형 등록 화면", () => {
     expect(screen.getByText("비우면 공통 불량 — 어느 공정에서나 고릅니다")).toBeInTheDocument();
     expect(screen.getByLabelText(/비고/).tagName).toBe("TEXTAREA");
     expect(screen.queryByRole("radio", { name: "사용 안 함" })).toBeNull();
+  });
+
+  it("고를 수 있는 대분류가 없으면 공통코드에서 등록하라고 알린다", () => {
+    render(
+      <DefectTypeForm
+        mode="create"
+        action={vi.fn()}
+        initial={{}}
+        classes={[{ code: "OLD", name: "옛 분류", active: false }]}
+        processes={processes}
+      />,
+    );
+    expect(screen.getByText(/사용 중인 대분류가 없습니다/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "「시스템 관리 › 공통코드」" })).toHaveAttribute(
+      "href",
+      "/system/codes/DEFECT_CLS",
+    );
   });
 
   it("체크한 공정을 모두 보낸다", async () => {

@@ -67,9 +67,18 @@ describe("목록", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ code: "WIRE-SWP", cls: "DIM", clsName: "치수" });
     expect(rows[0].processes.map((p) => p.code)).toEqual(["MD", "WB"]);
-    expect(rows[0].processes[0]).toEqual({ code: "MD", name: expect.any(String) });
+    expect(rows[0].processes[0]).toEqual({ code: "MD", name: expect.any(String), active: true });
     const common = await listDefectTypes(db, { ...all, q: "SCRATCH" });
     expect(common[0].processes).toEqual([]);
+  });
+
+  it("발생 공정에 「사용 안 함」 여부가 든다", async () => {
+    await deactivateProcess("MD");
+    const [row] = await listDefectTypes(db, { ...all, q: "WIRE-SWP" });
+    expect(row.processes.map((p) => [p.code, p.active])).toEqual([
+      ["MD", false],
+      ["WB", true],
+    ]);
   });
 
   it("코드나 불량유형명에 든 글자로 찾는다", async () => {
@@ -164,7 +173,7 @@ describe("불량 유형 하나", () => {
     expect(await getDefectType(db, "WIRE-BRK")).toMatchObject({
       code: "WIRE-BRK",
       clsName: "접합",
-      processes: [{ code: "WB", name: expect.any(String) }],
+      processes: [{ code: "WB", name: expect.any(String), active: true }],
       version: expect.stringMatching(/^[0-9]+$/),
     });
     expect(await getDefectType(db, "wire-brk")).toBeUndefined();

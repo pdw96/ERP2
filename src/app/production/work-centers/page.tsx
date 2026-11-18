@@ -3,14 +3,9 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
+import { listProcessOptions } from "@/db/processes";
 import { withDb } from "@/db/request";
-import {
-  dropUnknownProcess,
-  getWorkCenter,
-  listProcessOptions,
-  listWorkCenters,
-  parseWorkCenterFilter,
-} from "@/db/work-centers";
+import { dropUnknownProcess, getWorkCenter, listWorkCenters, parseWorkCenterFilter } from "@/db/work-centers";
 import { WORK_CENTER_CODE } from "@/lib/work-center-input";
 import { SavedNotice, WorkCenterList, WorkCenterSearch } from "./work-center-list";
 

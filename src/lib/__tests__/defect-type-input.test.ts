@@ -57,6 +57,15 @@ describe("불량 유형 등록의 입력", () => {
     expect(r).toEqual({ ok: true, value: { ...ok, processes: ["WB", "MD"] } });
   });
 
+  it("발생 공정은 50개까지 — 51개면 거절, 50개는 받는다", () => {
+    const many = (n: number) => Array.from({ length: n }, (_, i) => `P${String(i).padStart(2, "0")}`);
+    expect(parseNewDefectType({ ...ok, processes: many(50) })).toMatchObject({ ok: true });
+    expect(parseNewDefectType({ ...ok, processes: many(51) })).toEqual({
+      ok: false,
+      errors: { processes: "공정을 너무 많이 골랐습니다 — 50개까지 고를 수 있습니다" },
+    });
+  });
+
   it("발생 공정이 없어도 받는다(공통)", () => {
     expect(parseNewDefectType({ ...ok, processes: [] })).toEqual({ ok: true, value: { ...ok, processes: [] } });
     expect(parseNewDefectType({ code: ok.code, name: ok.name, cls: ok.cls })).toEqual({

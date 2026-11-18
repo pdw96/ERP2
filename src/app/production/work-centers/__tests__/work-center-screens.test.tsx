@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { ProcessOption, WorkCenterRow } from "@/db/work-centers";
+import type { ProcessOption } from "@/db/processes";
+import type { WorkCenterRow } from "@/db/work-centers";
 import type { WorkCenterFormState } from "../actions";
 import { WorkCenterForm } from "../work-center-form";
 import { WorkCenterList, WorkCenterSearch, SavedNotice } from "../work-center-list";

@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
 import { listClsOptions } from "@/db/defect-types";
 import { withDb } from "@/db/request";
-import { listProcessOptions } from "@/db/work-centers";
+import { listProcessOptions } from "@/db/processes";
 import { createDefectTypeAction } from "../actions";
 import { DefectTypeForm } from "../defect-type-form";
 
@@ -37,10 +37,10 @@ async function NewDefectType() {
   await connection();
   let options;
   try {
-    options = await withDb(async (db) => ({
-      classes: await listClsOptions(db),
-      processes: await listProcessOptions(db),
-    }));
+    options = await withDb(async (db) => {
+      const [classes, processes] = await Promise.all([listClsOptions(db), listProcessOptions(db)]);
+      return { classes, processes };
+    });
   } catch (error) {
     return <LoadFailed what="대분류 · 공정 목록" error={error} />;
   }

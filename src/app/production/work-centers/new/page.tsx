@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
 import { withDb } from "@/db/request";
-import { listProcessOptions } from "@/db/work-centers";
+import { listProcessOptions } from "@/db/processes";
 import { createWorkCenterAction } from "../actions";
 import { WorkCenterForm } from "../work-center-form";
 

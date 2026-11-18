@@ -11,7 +11,7 @@ import {
   parseDefectTypeFilter,
 } from "@/db/defect-types";
 import { withDb } from "@/db/request";
-import { listProcessOptions } from "@/db/work-centers";
+import { listProcessOptions } from "@/db/processes";
 import { DEFECT_TYPE_CODE } from "@/lib/defect-type-input";
 import { DefectTypeList, DefectTypeSearch, SavedNotice } from "./defect-type-list";
 
@@ -56,18 +56,16 @@ async function Results({ searchParams }: Pick<PageProps<"/quality/defect-types">
 
   let loaded;
   try {
-    const [rows0, classes, processes, saved] = await withDb((db) =>
-      Promise.all([
-        listDefectTypes(db, parsed.filter),
-        listClsOptions(db),
-        listProcessOptions(db),
+    // 한 번의 연결에서 — 대분류 · 공정 목록을 먼저 읽어 없는 값의 거르기를 풀고, 그 거르기로 목록을 한 번만 읽는다.
+    loaded = await withDb(async (db) => {
+      const [classes, processes] = await Promise.all([listClsOptions(db), listProcessOptions(db)]);
+      const { filter, notices } = dropUnknownFilters(parsed.filter, parsed.notices, { classes, processes });
+      const [rows, saved] = await Promise.all([
+        listDefectTypes(db, filter),
         savedCode ? getDefectType(db, savedCode) : undefined,
-      ]),
-    );
-    const { filter, notices } = dropUnknownFilters(parsed.filter, parsed.notices, { classes, processes });
-    // 없는 대분류 · 공정이었으면 거르지 않은 목록을 다시 읽는다(드문 경우).
-    const rows = filter === parsed.filter ? rows0 : await withDb((db) => listDefectTypes(db, filter));
-    loaded = { rows, classes, processes, saved, filter, notices };
+      ]);
+      return { rows, classes, processes, saved, filter, notices };
+    });
   } catch (error) {
     return <LoadFailed error={error} what="불량 유형 목록" />;
   }
