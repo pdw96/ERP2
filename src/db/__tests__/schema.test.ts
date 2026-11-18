@@ -3,7 +3,7 @@ import { eq, getTableName, isTable } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { resetToSample } from "@/db/reset";
 import * as schema from "@/db/schema";
-import { codes, items, partners, processes, warehouses } from "@/db/schema";
+import { codes, items, partners, processes, warehouses, workCenters } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { migratedDb, rejection } from "./pglite";
 
@@ -28,7 +28,7 @@ const item = (over: Partial<typeof items.$inferInsert> = {}) => ({
 });
 
 describe("테이블", () => {
-  it("스키마의 테이블은 열일곱이다 — 기준정보 다섯과 공정 · 단위 사양 · 번호 규칙 · 번호 규칙의 일련 · 수불 전표 · 수불 줄 · 잔액 · 실사 · 실사 줄 · BOM 머리 · BOM 줄 · BOM 고친 이력", () => {
+  it("스키마의 테이블은 열여덟이다 — 기준정보 다섯과 공정 · 작업장 · 단위 사양 · 번호 규칙 · 번호 규칙의 일련 · 수불 전표 · 수불 줄 · 잔액 · 실사 · 실사 줄 · BOM 머리 · BOM 줄 · BOM 고친 이력", () => {
     const names = Object.values(schema).filter(isTable).map(getTableName).sort();
     expect(names).toEqual([
       "bom_changes",
@@ -48,6 +48,7 @@ describe("테이블", () => {
       "stock_moves",
       "unit_specs",
       "warehouses",
+      "work_centers",
     ]);
   });
 });
@@ -169,6 +170,53 @@ describe("공정", () => {
     expect(await rejection(db.insert(processes).values({ code: "DA2", name: "또" }))).toMatchObject({
       constraint: "processes_code_unique",
     });
+  });
+});
+
+describe("작업장", () => {
+  const processId = async (code: string) => {
+    const [p] = await db.select().from(processes).where(eq(processes.code, code));
+    return p.id;
+  };
+
+  it("맞는 꼴은 저장되고 기본값이 붙는다", async () => {
+    const pid = await processId("DA");
+    const [row] = await db
+      .insert(workCenters)
+      .values({ code: "DA-3", name: "다이 본딩 3라인", processId: pid })
+      .returning();
+    expect(row).toMatchObject({ code: "DA-3", name: "다이 본딩 3라인", processId: pid, note: "", active: true });
+  });
+
+  it.each([
+    ["소문자", "da-1", "x", "", "work_centers_code_format"],
+    ["한 글자", "D", "x", "", "work_centers_code_format"],
+    ["11자", "ABCDEFGHIJK", "x", "", "work_centers_code_format"],
+    ["숫자로 시작", "1A", "x", "", "work_centers_code_format"],
+    ["끝 하이픈", "DA-", "x", "", "work_centers_code_format"],
+    ["하이픈 둘", "D--A", "x", "", "work_centers_code_format"],
+    ["빈 이름", "DA-1", "", "", "work_centers_name_length"],
+    ["51자 이름", "DA-1", "가".repeat(51), "", "work_centers_name_length"],
+    ["501자 비고", "DA-1", "x", "가".repeat(501), "work_centers_note_length"],
+  ])("%s → 거절", async (_name, code, name, note, constraint) => {
+    const pid = await processId("DA");
+    expect(await rejection(db.insert(workCenters).values({ code, name, note, processId: pid }))).toMatchObject({
+      constraint,
+    });
+  });
+
+  it("같은 코드 두 번 → 거절", async () => {
+    const pid = await processId("DA");
+    await db.insert(workCenters).values({ code: "DA-3", name: "하나", processId: pid });
+    expect(await rejection(db.insert(workCenters).values({ code: "DA-3", name: "또", processId: pid }))).toMatchObject({
+      constraint: "work_centers_code_unique",
+    });
+  });
+
+  it("없는 공정 → 거절", async () => {
+    expect(
+      await rejection(db.insert(workCenters).values({ code: "DA-3", name: "하나", processId: 999999 })),
+    ).toMatchObject({ constraint: "work_centers_process_id_processes_id_fk" });
   });
 });
 

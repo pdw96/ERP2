@@ -11,6 +11,7 @@ import {
   SAMPLE_NUMBER_RULES,
   SAMPLE_PARTNERS,
   SAMPLE_PROCESSES,
+  SAMPLE_WORK_CENTERS,
   SAMPLE_UNIT_SPECS,
   SAMPLE_WAREHOUSES,
 } from "@/db/sample";
@@ -25,6 +26,7 @@ import {
   numberRules,
   partners,
   processes,
+  workCenters,
   stockBalances,
   stockCountLines,
   stockCounts,
@@ -59,6 +61,7 @@ async function snapshot() {
     warehouses: strip(await db.select().from(warehouses).orderBy(asc(warehouses.id))),
     partners: strip(await db.select().from(partners).orderBy(asc(partners.id))),
     processes: strip(await db.select().from(processes).orderBy(asc(processes.id))),
+    workCenters: strip(await db.select().from(workCenters).orderBy(asc(workCenters.id))),
     codes: strip(await db.select().from(codes).orderBy(asc(codes.id))),
     unitSpecs: strip(await db.select().from(unitSpecs).orderBy(asc(unitSpecs.id))),
     numberRules: strip(await db.select().from(numberRules).orderBy(asc(numberRules.id))),
@@ -141,6 +144,7 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
       number_rules: SAMPLE_NUMBER_RULES.length,
       warehouses: SAMPLE_WAREHOUSES.length,
       partners: SAMPLE_PARTNERS.length,
+      work_centers: SAMPLE_WORK_CENTERS.length,
       processes: SAMPLE_PROCESSES.length,
       unit_specs: SAMPLE_UNIT_SPECS.length,
       codes: SAMPLE_CODES.length,
@@ -148,6 +152,9 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
     });
     expect(clean.items[0].id).toBe(1);
     expect(clean.processes.map((p) => p.code)).toEqual(["BG", "SAW", "DA", "WB", "MD", "MK", "FT"]);
+    // 작업장은 공정의 id 로 이어진다 — 되돌린 뒤에도 DA-2 는 공정 DA 에 걸린다.
+    const da2 = clean.workCenters.find((w) => w.code === "DA-2")!;
+    expect(clean.processes.find((p) => p.id === da2.processId)?.code).toBe("DA");
     // 번호 규칙의 일련은 샘플 수불이 반제품 · 완제품의 LOT 를 저절로 받으며 생긴다 — 규칙마다 하나(7일 전).
     expect(clean.numberRuleSeqs.map((s) => [s.ruleCode, s.lastSeq])).toEqual([
       ["LOT_SF", 2],

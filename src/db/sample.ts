@@ -1,7 +1,17 @@
 import { ITEM_TYPES, MOVE_TYPES, PROC_TYPES, type ItemType } from "@/lib/master-codes";
 import type { MoveLineValues } from "@/lib/move-input";
 import type { MoveType } from "@/lib/master-codes";
-import type { codeGroups, codes, items, numberRules, partners, processes, unitSpecs, warehouses } from "./schema";
+import type {
+  codeGroups,
+  codes,
+  items,
+  numberRules,
+  partners,
+  processes,
+  unitSpecs,
+  warehouses,
+  workCenters,
+} from "./schema";
 
 // 샘플 데이터 — 가상 반도체 후공정(패키징) 회사. 매일 밤 되돌림(ADR 0004)과 첫 배포가 이 값으로 테이블을 채운다.
 // 실제 회사명 · 실제 사람의 정보를 쓰지 않는다(CLAUDE.md). 거래처 이름은 「(가상)」으로 시작하고,
@@ -92,6 +102,21 @@ export const SAMPLE_PROCESSES: New<typeof processes>[] = [
   { code: "MD", name: "몰딩", note: "에폭시 몰딩 컴파운드로 감싼다" },
   { code: "MK", name: "마킹", note: "제품 윗면에 품명 · LOT 를 새긴다" },
   { code: "FT", name: "최종 검사", note: "전기 특성과 겉모양을 검사한다" },
+];
+
+// 작업장 아홉 — 공정마다 하나 이상(메뉴 「작업장 등록」). 공정은 코드로 가리키고, 되돌림 · 마이그레이션이 id 로 바꿔 넣는다.
+export const SAMPLE_WORK_CENTERS: (Pick<New<typeof workCenters>, "code" | "name" | "note"> & {
+  processCode: string;
+})[] = [
+  { code: "BG-1", name: "연삭 1호기", processCode: "BG", note: "" },
+  { code: "SAW-1", name: "쏘잉 1호기", processCode: "SAW", note: "" },
+  { code: "DA-1", name: "다이 본딩 1라인", processCode: "DA", note: "" },
+  { code: "DA-2", name: "다이 본딩 2라인", processCode: "DA", note: "" },
+  { code: "WB-1", name: "와이어 본딩 1라인", processCode: "WB", note: "" },
+  { code: "WB-2", name: "와이어 본딩 2라인", processCode: "WB", note: "" },
+  { code: "MD-1", name: "몰딩 1호기", processCode: "MD", note: "" },
+  { code: "MK-1", name: "레이저 마킹 1호기", processCode: "MK", note: "" },
+  { code: "FT-1", name: "최종 검사 1라인", processCode: "FT", note: "" },
 ];
 
 export const SAMPLE_WAREHOUSES: New<typeof warehouses>[] = [
