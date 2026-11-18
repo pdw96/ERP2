@@ -15,6 +15,10 @@
 - 설명하고 결정을 묻는 법은 @Profile.md 가 든다.
 - 한 일을 시작할 때 그 메뉴의 열린 업무 결정을 ADR · 닫힌 조각 문서 · 마스터플랜에서 묶음 이름(옛 조각 이름, 「○○의 착공에서 정한다」 꼴)과
   메뉴 이름으로 찾아 모은다. 열려 있으면 저자에게 묻고, 없으면 묻지 않고 짓는다.
+- superpowers 로 한다 — 열린 업무 결정은 `superpowers:brainstorming` 으로 묻고, 구현은 `superpowers:writing-plans` →
+  `superpowers:subagent-driven-development`(시험 먼저 — `superpowers:test-driven-development`)로 한다. 열린 업무 결정이 없으면 브레인스토밍의 설계
+  승인을 거치지 않고 계획으로 간다. 설계 · 계획 파일은 레포(`docs/superpowers/`)에 싣지 않고 세션의 임시 폴더에 두며, PR 본문에 요약한다(ADR 0030
+  덧붙임).
 - 한 일은 PR 한두 개다. 그 메뉴의 샘플 데이터도 같은 PR 이 넣는다. 조각 문서 · 요구사항 · 설계는 쓰지 않는다 — PR 본문에 「무엇을 · 왜」 ·
   「정한 것」(저자 판정 · Claude 의 기술 결정과 그 대안) · 「하지 않을 것」 · 리뷰 결과를 적는다. 메뉴의 마지막 PR 이 마스터플랜의 그 줄을
   「닫힘」으로 바꾸고, 머지 뒤 데모 화면을 저자에게 보인다.
@@ -47,7 +51,7 @@
 - 쓰는 공식 도구 — Claude Code 의 `/code-review` · `/security-review`, 레포에서만 켠 플러그인 Security Guidance(`.claude/settings.json`),
   Claude Code 의 권한 막기(`.claude/settings.json` 의 `permissions.deny` — 비밀값 파일), GitHub 에 붙은 Codex 리뷰,
   커넥터 GitHub · Vercel · Neon · Context7, 레포의 브라우저 도구(Playwright MCP, `.mcp.json`). 공식이 아닌 것 — 대화로 설계를 다듬는 데 쓰는
-  플러그인 superpowers(커뮤니티).
+  플러그인 superpowers(커뮤니티) — 「작업 방식」대로 쓴다.
 - 새 전용 도구(스킬 · 훅 · 검토자 · 검사기)를 짓기 전에 공식 도구를 먼저 찾는다. 규칙 · 도구가 하는 일을 공식 도구나 모델이 대신하게 되면
   지운다(ADR 0029).
 
