@@ -266,7 +266,7 @@ export type SaveResult =
 const INACTIVE_UNIT = "「사용 안 함」인 단위입니다 — 다른 단위를 고르세요";
 const NO_UNIT = "단위를 고르세요";
 
-async function codeState(db: Db, group: string, code: string): Promise<"active" | "inactive" | "missing"> {
+export async function codeState(db: Db, group: string, code: string): Promise<"active" | "inactive" | "missing"> {
   const [row] = await db
     .select({ active: codes.active })
     .from(codes)
