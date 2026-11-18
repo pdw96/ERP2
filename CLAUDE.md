@@ -33,7 +33,7 @@
 
 ## 도구
 
-- 쓰는 공식 도구 — Claude Code 의 `/code-review` · `/security-review`, claude.ai 계정의 플러그인 Security Guidance · typescript-lsp,
+- 쓰는 공식 도구 — Claude Code 의 `/code-review` · `/security-review`, 레포에서만 켠 플러그인 Security Guidance(`.claude/settings.json`),
   커넥터 GitHub · Vercel · Neon · Context7, 레포의 브라우저 도구(Playwright MCP, `.mcp.json`). 공식이 아닌 것 — 대화로 설계를 다듬는 데 쓰는
   플러그인 superpowers(커뮤니티).
 - 새 전용 도구(스킬 · 훅 · 검토자 · 검사기)를 짓기 전에 공식 도구를 먼저 찾는다. 규칙 · 도구가 하는 일을 공식 도구나 모델이 대신하게 되면
