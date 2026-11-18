@@ -150,6 +150,35 @@ export const processes = pgTable(
 );
 
 /**
+ * 작업장(메뉴 「작업장 등록」) — 공정을 하는 자리(설비 · 라인)의 목록: 코드 · 작업장명 · 공정 · 비고 · 사용 여부. 지우지 않고 「사용 안 함」으로 둔다.
+ * 코드는 영문 대문자로 시작하는 2 ~ 10자(`DA-1`, `WB-L2`)이고 사람이 넣으며, 코드와 공정은 등록 뒤 바꾸지 않는다.
+ * 작업장 하나에 공정 하나이고, 공정이 있는 동안 지우지 못한다(restrict). 꼴은 저자 판정 2026-11-18(ADR 0032).
+ */
+export const workCenters = pgTable(
+  "work_centers",
+  {
+    id: id(),
+    code: text("code").notNull().unique(),
+    name: text("name").notNull(),
+    processId: integer("process_id")
+      .notNull()
+      .references(() => processes.id, { onDelete: "restrict" }),
+    note: text("note").notNull().default(""),
+    active: boolean("active").notNull().default(true),
+    ...timestamps(),
+  },
+  (t) => [
+    check(
+      "work_centers_code_format",
+      sql`${t.code} ~ '^[A-Z](-?[A-Z0-9])+$' and char_length(${t.code}) between 2 and 10`,
+    ),
+    check("work_centers_name_length", sql`char_length(${t.name}) between 1 and 50`),
+    check("work_centers_note_length", sql`char_length(${t.note}) <= 500`),
+    index("work_centers_process_idx").on(t.processId),
+  ],
+);
+
+/**
  * LOT 번호 규칙(조각 「재고 수불」 PR B, ADR 0016) — 머리 · 구분자 · 날짜 꼴 · 일련 자릿수. 번호는 늘 머리 → 날짜 → 일련이고,
  * 있는 조각 사이에 구분자를 넣는다(src/lib/number-rule.ts). 만드는 품목(반제품 · 완제품)에만 쓴다.
  * 유형마다 기본 규칙이 하나다(`default_for`) — 기본 규칙은 「사용 안 함」이 아니다. 규칙은 지우지 않는다.

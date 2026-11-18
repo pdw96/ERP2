@@ -120,6 +120,20 @@
       "when": 1795000146544,
       "tag": "0016_process_values",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795020753130,
+      "tag": "0017_work_centers",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795020758557,
+      "tag": "0018_work_center_values",
+      "breakpoints": true
     }
   ]
 }
