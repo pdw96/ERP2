@@ -1,7 +1,8 @@
 # ADR 0030 — AI-Native 다듬기: 일마다 새 세션 · Codex 리뷰 · 리뷰를 멈추는 기준 · 머지 뒤 오류 확인 · 권한 막기
 
 - 날짜: 2026-11-18
-- 상태: 정함 — ADR 0029 에 더한다(바꾸지 않는다)
+- 상태: 정함 — ADR 0029 의 2(한 일의 흐름)를 넓힌다: 3(PR 을 여는 법)에 초안과 Codex 리뷰, 4(리뷰)에 멈추는 기준, 5(머지)의 조건에 Codex, 6(머지 뒤)에
+  운영 오류 확인을 더한다. 0029 의 나머지는 그대로다
 - 조각: 메뉴 「공정 등록」부터 모든 일
 
 ## 맥락
@@ -31,19 +32,24 @@ ADR 0029 를 머지한 뒤, 같은 날 같은 목표로 AI-Native 작업 방식�
 1. **일 하나는 세션 하나** — 새 세션은 `CLAUDE.md` 와 `docs/status.md` 를 읽고 「다음 할 일」부터 한다. 한 메뉴의 일(구현 · 리뷰 · 머지 · 머지 뒤 확인 ·
    그 배포에서 나온 버그 고침)은 한 세션으로 잇는다. 메뉴가 닫히면 `docs/status.md` 를 고치고 저자에게 새 세션을 권한다. 이미 정한 것을 다시
    묻거나 같은 실수가 되풀이될 때도 권한다. 새 세션은 저자가 연다.
-2. **Codex 리뷰** — Claude 는 PR 을 초안으로 열고, `/code-review` 를 고친 뒤 「Ready for review」로 바꿔 Codex 리뷰를 받는다. 머지 조건에 「head 커밋의
-   Codex 리뷰가 끝났고 남은 지적이 없다」를 더한다 — `chatgpt-codex-connector[bot]` 의 요약 댓글 속 `codex-review-state` 에서 `code_review` 의
-   `commit_sha` 가 head 커밋이고 `status` 가 `completed`, `has_unresolved_findings` 가 `false`. 고친 뒤 다시 받으려면 `@codex review` 를 남긴다.
+2. **Codex 리뷰** — Claude 는 PR 을 초안으로 열고, `/code-review` 를 고친 뒤 「Ready for review」로 바꿔 Codex 리뷰를 받는다. 머지 조건에 「Codex 리뷰가 끝났고
+   막는 지적이 남지 않았다」를 더한다 — 끝났는지는 `chatgpt-codex-connector[bot]` 의 요약 댓글 속 `codex-review-state` 의 `code_review` 가
+   `status: completed` 인지로 본다. 막는 지적을 고쳤으면 `@codex review` 로 다시 받는다. Codex 가 본 커밋 뒤의 커밋이 막지 않는 지적을 고친 것뿐이면
+   다시 받지 않고, 남긴 막지 않는 지적은 PR 본문에 까닭을 적는다 — 그래서 `has_unresolved_findings` 가 `true` 이거나 `commit_sha` 가 head 와 달라도
+   머지할 수 있다(3 과 맞춘다).
 3. **리뷰를 멈추는 기준** — 막는 지적은 효과로 가린다: 그대로 머지하면 업무가 틀리거나(재고 · 생산의 셈, 장부에 남는 것), 데이터가 망가지거나,
    보안이 뚫리는 지적이다. 불편 · 문구 · 모양은 막지 않는다. 직전 리뷰(`/code-review` · Codex)에 막는 지적이 0건이면 멈춘다. 있으면 고치고 다시
    받는다. 같은 메뉴에서 막는 지적이 세 번 연속 나오면 혼자 이어 가지 않고 저자에게 넘긴다. 막지 않는 지적은 맞으면 고치되 다시 받지 않고,
    고치지 않은 것은 PR 본문에 적는다.
 4. **머지 뒤 오류 확인** — 머지 뒤 Vercel 에서 운영 배포가 끝났는지와, 배포 시각 뒤에 처음 생긴 운영 오류(`get_runtime_errors`)를 본다. 데모의
-   `/health` 가 「연결됨」인지도 본다. Claude 가 머지한 PR 탓이면 되돌리는 PR 을 한 번만 열어 CI 만 보고 머지하고 저자에게 알린다. 되돌린 뒤에도
-   오류가 나거나, 원인이 분명하지 않거나, 저자가 머지한 PR 이면 저자에게 묻는다. Vercel 에서 앞 배포로 되돌리지 않는다(main 과 운영이 어긋난다).
+   `/health` 가 「연결됨」인지도 본다. 배포를 건너뛴 머지(`vercel.json` 의 `ignoreCommand` — 문서 · 설정만)는 보지 않는다. Claude 가 머지한 PR 탓이면
+   되돌리는 PR 을 한 번만 열어 CI 만 보고 머지하고 저자에게 알린다. 마이그레이션이 든 PR 은 되돌리지 않는다 — 운영 DB 에 이미 적용돼, 파일만 지우면
+   DB 와 마이그레이션 기록이 어긋난다. 그때와, 되돌린 뒤에도 오류가 나거나, 원인이 분명하지 않거나, 저자가 머지한 PR 이면 저자에게 묻는다. Vercel 에서 앞 배포로 되돌리지 않는다(main 과 운영이 어긋난다).
    오류는 이름 · 횟수 · 경로만 적는다.
 5. **권한 막기** — `.claude/settings.json` 의 `permissions.deny` 로 비밀값 파일(`.env` · `.env.local` · `.env.*.local` · `.env.production*` ·
-   `.env.development*`, `.env.example` 은 빼고)을 읽거나 고치지 못하게 한다. 올라간 마이그레이션은 막기에 넣지 않는다 — 권한 막기는 올라간 파일과 새
+   `.env.development*` · `.env.test*` · `.env.staging*`, 레포의 어느 폴더든 — `vercel pull` 이 쓰는 `.vercel/` 아래 것도. `.env.example` 은 빼고)을
+   읽거나 고치지 못하게 한다. 권한 막기는 읽기 · 고치기 도구만 막고 셸 명령은 다 막지 못하므로, `CLAUDE.md` 에 「비밀값 파일은 셸로도 읽거나 고치지
+   않는다」를 함께 적는다. 올라간 마이그레이션은 막기에 넣지 않는다 — 권한 막기는 올라간 파일과 새
    파일을 가르지 못하는데, 데이터 마이그레이션은 손으로 쓴다(`drizzle-kit generate --custom`, 0006 · 0008 등). 대신 `CLAUDE.md` 에 「main 에 있는
    마이그레이션은 고치지 않고 새 마이그레이션으로 잇는다」를 적는다(저자 판정 2026-11-18). 막기에서 빼는 고침은 Claude 의 자동 안전 검사가 막아
    저자가 직접 했다.
