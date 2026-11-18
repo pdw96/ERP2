@@ -71,4 +71,4 @@ ADR 0029 를 머지한 뒤, 같은 날 같은 목표로 AI-Native 작업 방식�
   다. 쓰지 않음.
 - 결정 — **가**(저자 판정 2026-11-18, 추천대로). 열린 업무 결정은 `superpowers:brainstorming` 으로 묻고, 구현은 `superpowers:writing-plans` →
   `superpowers:subagent-driven-development`(시험 먼저)로 한다. 열린 업무 결정이 없으면 설계 승인 없이 계획으로 간다(사람이 나오는 자리는 그대로).
-  설계 · 계획 파일은 레포에 싣지 않는다(ADR 0029 의 「Claude 가 정한 것」과 같다) — PR 본문에 요약한다.
+  설계 · 계획 파일은 레포에 싣지 않는다(PR #52 설명의 「정한 것」과 같다) — PR 본문에 요약한다.
