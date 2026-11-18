@@ -119,7 +119,7 @@ export const AREAS: readonly Area[] = [
           // 등록 · 조회로 나눈다(ADR 0026 의 6). 조회는 정전개 · 역전개를 바꿔 본다.
           { label: "BOM 등록", slice: "BOM", href: "/production/bom" },
           { label: "BOM 조회", slice: "BOM", href: "/production/bom/inquiry" },
-          { label: "공정", slice: "라우팅" },
+          { label: "공정 등록", slice: "라우팅", href: "/production/processes" },
           { label: "작업장", slice: "라우팅" },
           { label: "라우팅", slice: "라우팅" },
           { label: "근무 캘린더", slice: "능력계획(CRP)" },
