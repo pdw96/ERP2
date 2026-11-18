@@ -44,6 +44,8 @@ const columns = {
 
 // ── 목록 ─────────────────────────────────────────────
 
+const UNKNOWN_PROCESS_NOTICE = "받지 않는 공정 값이라 거르지 않았습니다";
+
 /** process 가 빈 글자면 모든 공정. */
 export type WorkCenterFilter = { q: string; process: string; includeInactive: boolean };
 export type WorkCenterFilterNotice = { field: "q" | "process"; message: string };
@@ -59,9 +61,22 @@ export function parseWorkCenterFilter(params: Params): {
   let process = "";
   if (rawProcess) {
     if (PROCESS_CODE.test(rawProcess)) process = rawProcess;
-    else notices.push({ field: "process", message: "받지 않는 공정 값이라 거르지 않았습니다" });
+    else notices.push({ field: "process", message: UNKNOWN_PROCESS_NOTICE });
   }
   return { filter: { q: search.q, process, includeInactive: first(params.inactive) === "1" }, notices };
+}
+
+/** 꼴은 맞지만 없는 공정이면 꼴이 틀린 때처럼 거르지 않고(모든 공정) 알린다 — 빈 목록이 「작업장이 없다」로 읽히지 않게. */
+export function dropUnknownProcess(
+  filter: WorkCenterFilter,
+  notices: WorkCenterFilterNotice[],
+  options: readonly ProcessOption[],
+): { filter: WorkCenterFilter; notices: WorkCenterFilterNotice[] } {
+  if (!filter.process || options.some((o) => o.code === filter.process)) return { filter, notices };
+  return {
+    filter: { ...filter, process: "" },
+    notices: [...notices, { field: "process", message: UNKNOWN_PROCESS_NOTICE }],
+  };
 }
 
 /** 코드 순으로. 찾기는 코드 · 작업장명에 글자가 들어 있는지만 본다(대소문자 무시). */

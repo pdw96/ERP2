@@ -12,9 +12,9 @@ import {
   SAMPLE_NUMBER_RULES,
   SAMPLE_PARTNERS,
   SAMPLE_PROCESSES,
-  SAMPLE_WORK_CENTERS,
   SAMPLE_UNIT_SPECS,
   SAMPLE_WAREHOUSES,
+  SAMPLE_WORK_CENTERS,
 } from "./sample";
 import {
   bomChanges,
@@ -27,7 +27,6 @@ import {
   numberRuleSeqs,
   partners,
   processes,
-  workCenters,
   stockBalances,
   stockCountLines,
   stockCounts,
@@ -35,6 +34,7 @@ import {
   stockMoves,
   unitSpecs,
   warehouses,
+  workCenters,
 } from "./schema";
 import { lockBom, saveBom } from "./boms";
 import { cancelMove, lockStock, saveMove } from "./stock";

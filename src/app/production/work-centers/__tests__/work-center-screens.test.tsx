@@ -141,6 +141,30 @@ describe("작업장 등록 화면", () => {
     expect(screen.getByRole("link", { name: /공정 등록/ })).toHaveAttribute("href", "/production/processes");
   });
 
+  it("사용 중 공정이 없을 때 공정 거절은 id e-process 로 보이고, 요약 링크 #f-process 가 닿는 곳이 있다", async () => {
+    const rejected: WorkCenterFormState = {
+      ok: false,
+      errors: { process: "공정을 고르세요" },
+      values: { code: "DA-1", name: "다이 1" },
+    };
+    const { container } = render(
+      <WorkCenterForm
+        mode="create"
+        action={vi.fn().mockResolvedValue(rejected)}
+        initial={{}}
+        processes={[{ code: "MK", name: "마킹", active: false }]}
+      />,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    });
+    await waitFor(() => expect(container.querySelector("#e-process")).toHaveTextContent("공정을 고르세요"));
+    const target = container.querySelector("#f-process");
+    expect(target).not.toBeNull();
+    expect(target).toHaveAttribute("tabindex", "-1");
+    expect(container.querySelector('a[href="#f-process"]')).not.toBeNull();
+  });
+
   it("저장하면 코드 · 공정 · 작업장명 · 비고를 보내고, 거절되면 요약 · 칸 옆 까닭 · 넣은 값을 남긴다", async () => {
     const rejected: WorkCenterFormState = {
       ok: false,

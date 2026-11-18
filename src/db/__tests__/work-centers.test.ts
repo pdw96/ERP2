@@ -5,6 +5,7 @@ import { processes, workCenters } from "@/db/schema";
 import type { Db } from "@/db/types";
 import {
   createWorkCenter,
+  dropUnknownProcess,
   getWorkCenter,
   listProcessOptions,
   listWorkCenters,
@@ -92,6 +93,28 @@ describe("목록의 거르기 값", () => {
     expect(r.filter.q).toBe("");
     expect(r.notices).toHaveLength(1);
     expect(r.notices[0].field).toBe("q");
+  });
+});
+
+describe("없는 공정으로 거르기", () => {
+  const options = [
+    { code: "DA", name: "다이 본딩", active: true },
+    { code: "MK", name: "마킹", active: false },
+  ];
+
+  it("꼴은 맞지만 없는 공정이면 거르지 않고 꼴이 틀린 때와 같은 알림을 더한다", () => {
+    const malformed = parseWorkCenterFilter({ process: "da!" }).notices;
+    const r = dropUnknownProcess({ ...all, process: "ZZ" }, [], options);
+    expect(r.filter.process).toBe("");
+    expect(r.notices).toEqual(malformed);
+  });
+
+  it("있는 공정(사용 안 함 포함)이나 빈 값은 그대로 둔다", () => {
+    expect(dropUnknownProcess({ ...all, process: "MK" }, [], options)).toEqual({
+      filter: { ...all, process: "MK" },
+      notices: [],
+    });
+    expect(dropUnknownProcess(all, [], options)).toEqual({ filter: all, notices: [] });
   });
 });
 

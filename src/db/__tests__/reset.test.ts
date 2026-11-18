@@ -11,9 +11,9 @@ import {
   SAMPLE_NUMBER_RULES,
   SAMPLE_PARTNERS,
   SAMPLE_PROCESSES,
-  SAMPLE_WORK_CENTERS,
   SAMPLE_UNIT_SPECS,
   SAMPLE_WAREHOUSES,
+  SAMPLE_WORK_CENTERS,
 } from "@/db/sample";
 import * as schema from "@/db/schema";
 import {
@@ -26,7 +26,6 @@ import {
   numberRules,
   partners,
   processes,
-  workCenters,
   stockBalances,
   stockCountLines,
   stockCounts,
@@ -34,6 +33,7 @@ import {
   stockMoves,
   unitSpecs,
   warehouses,
+  workCenters,
 } from "@/db/schema";
 import { saveMove } from "@/db/stock";
 import { koreaToday } from "@/lib/today";

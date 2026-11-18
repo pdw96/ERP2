@@ -44,7 +44,7 @@ const code = z
   });
 
 /** 공정 — 등록할 때만. 공정코드의 꼴만 본다(있는지 · 사용 중인지는 DB 를 보는 쪽이 본다). */
-const process = z
+const processCode = z
   .string({ error: "공정을 고르세요" })
   .trim()
   .check((ctx) => {
@@ -55,7 +55,7 @@ const process = z
 const name = text("작업장명", 1, 50);
 const note = text("비고", 0, 500);
 
-const createSchema = z.object({ code, name, process, note });
+const createSchema = z.object({ code, name, process: processCode, note });
 const updateSchema = z.object({ name, note, active: activeFlag });
 
 export function workCenterValues(form: FormData): WorkCenterValues {

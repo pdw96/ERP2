@@ -4,7 +4,13 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
 import { withDb } from "@/db/request";
-import { getWorkCenter, listProcessOptions, listWorkCenters, parseWorkCenterFilter } from "@/db/work-centers";
+import {
+  dropUnknownProcess,
+  getWorkCenter,
+  listProcessOptions,
+  listWorkCenters,
+  parseWorkCenterFilter,
+} from "@/db/work-centers";
 import { WORK_CENTER_CODE } from "@/lib/work-center-input";
 import { SavedNotice, WorkCenterList, WorkCenterSearch } from "./work-center-list";
 
@@ -44,25 +50,32 @@ export default function WorkCentersPage({ searchParams }: PageProps<"/production
 async function Results({ searchParams }: Pick<PageProps<"/production/work-centers">, "searchParams">) {
   const params = await searchParams;
   await connection();
-  const { filter, notices } = parseWorkCenterFilter(params);
+  const parsed = parseWorkCenterFilter(params);
   const savedCode = typeof params.saved === "string" && WORK_CENTER_CODE.test(params.saved) ? params.saved : undefined;
 
-  let data;
+  let loaded;
   try {
-    data = await withDb(async (db) => ({
-      rows: await listWorkCenters(db, filter),
-      processes: await listProcessOptions(db),
-      saved: savedCode ? await getWorkCenter(db, savedCode) : undefined,
-    }));
+    const [rows0, processes, saved] = await withDb((db) =>
+      Promise.all([
+        listWorkCenters(db, parsed.filter),
+        listProcessOptions(db),
+        savedCode ? getWorkCenter(db, savedCode) : undefined,
+      ]),
+    );
+    const { filter, notices } = dropUnknownProcess(parsed.filter, parsed.notices, processes);
+    // 없는 공정이었으면 거르지 않은 목록을 다시 읽는다(드문 경우).
+    const rows = filter === parsed.filter ? rows0 : await withDb((db) => listWorkCenters(db, filter));
+    loaded = { rows, processes, saved, filter, notices };
   } catch (error) {
     return <LoadFailed error={error} what="작업장 목록" />;
   }
 
+  const { rows, processes, saved, filter, notices } = loaded;
   return (
     <>
-      {data.saved && <SavedNotice workCenter={data.saved} shown={data.rows.some((r) => r.id === data.saved!.id)} />}
-      <WorkCenterSearch filter={filter} notices={notices} processes={data.processes} />
-      <WorkCenterList rows={data.rows} filter={filter} savedCode={data.saved?.code} />
+      {saved && <SavedNotice workCenter={saved} shown={rows.some((r) => r.id === saved.id)} />}
+      <WorkCenterSearch filter={filter} notices={notices} processes={processes} />
+      <WorkCenterList rows={rows} filter={filter} savedCode={saved?.code} />
     </>
   );
 }

@@ -29,8 +29,8 @@ import {
   stockCounts,
   stockMoves,
   unitSpecs,
-  workCenters,
   warehouses,
+  workCenters,
 } from "@/db/schema";
 import { emptyDb } from "./pglite";
 
@@ -730,8 +730,8 @@ describe("마이그레이션 0017 · 0018 — 작업장 표 · 샘플 작업장(
     await h.client.exec(readFileSync("drizzle/0016_process_values.sql", "utf8"));
     return h;
   }
-  const codeOfProcess = async (h: Awaited<ReturnType<typeof dataDb>>) => {
-    const rows = await h.db
+  const workCentersWithProcess = (h: Awaited<ReturnType<typeof dataDb>>) =>
+    h.db
       .select({
         code: workCenters.code,
         name: workCenters.name,
@@ -742,8 +742,6 @@ describe("마이그레이션 0017 · 0018 — 작업장 표 · 샘플 작업장(
       .from(workCenters)
       .innerJoin(processes, eq(processes.id, workCenters.processId))
       .orderBy(asc(workCenters.id));
-    return rows;
-  };
 
   it("데이터가 있는 DB — 0017 은 표만 만들고, 0018 이 샘플 작업장 아홉을 공정과 이어 넣는다. 샘플 전체는 다시 넣지 않는다", async () => {
     const h = await dataDb();
@@ -754,7 +752,7 @@ describe("마이그레이션 0017 · 0018 — 작업장 표 · 샘플 작업장(
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
-    const rows = await codeOfProcess(h);
+    const rows = await workCentersWithProcess(h);
     expect(rows).toHaveLength(9);
     expect(rows.map((r) => r.code)).toEqual(SAMPLE_WORK_CENTERS.map((w) => w.code));
   });
@@ -762,7 +760,7 @@ describe("마이그레이션 0017 · 0018 — 작업장 표 · 샘플 작업장(
   it("0018 의 값은 SAMPLE_WORK_CENTERS 와 같다(순서까지, 공정 코드로 견준다)", async () => {
     const h = await dataDb();
     await h.migrate();
-    expect((await codeOfProcess(h)).map((r) => [r.code, r.name, r.processCode, r.note, r.active])).toEqual(
+    expect((await workCentersWithProcess(h)).map((r) => [r.code, r.name, r.processCode, r.note, r.active])).toEqual(
       SAMPLE_WORK_CENTERS.map((w) => [w.code, w.name, w.processCode, w.note, true]),
     );
   });

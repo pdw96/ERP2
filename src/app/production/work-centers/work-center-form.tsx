@@ -100,14 +100,18 @@ export function WorkCenterForm(props: Props) {
             usable.length === 0 ? (
               <div>
                 <p className="mb-1 font-semibold">공정</p>
-                <p className="rounded border border-dashed border-rule px-3 py-2">
+                <p id="f-process" tabIndex={-1} className="rounded border border-dashed border-rule px-3 py-2">
                   사용 중인 공정이 없습니다 — 먼저{" "}
                   <Link href="/production/processes" className="underline underline-offset-4">
                     「공정 등록」
                   </Link>
                   에서 공정을 등록하세요
                 </p>
-                {errors.process && <p className="mt-1 text-sm font-semibold text-red-700">{errors.process}</p>}
+                {errors.process && (
+                  <p id="e-process" className="mt-1 text-sm font-semibold text-red-700">
+                    {errors.process}
+                  </p>
+                )}
               </div>
             ) : (
               <div className="sm:max-w-96">
