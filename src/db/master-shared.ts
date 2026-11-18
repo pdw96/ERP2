@@ -18,6 +18,8 @@ export const REGISTER_LOCK = {
   stock: 2026110901,
   // BOM(조각 「BOM」 PR A) — BOM 저장 · 지우기, 그리고 BOM 에 기대는 고침(품목의 단위). 순환 검사가 BOM 전체를 한 차례로 본다(ADR 0026).
   bom: 2026111201,
+  // 공정 등록(메뉴 「공정 등록」) — 공정 등록 · 고침의 상한(50) 검사를 한 차례로 본다.
+  processes: 2026111801,
 } as const;
 
 export type Params = Record<string, string | string[] | undefined>;

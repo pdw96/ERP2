@@ -11,6 +11,7 @@ import {
   SAMPLE_MOVES,
   SAMPLE_NUMBER_RULES,
   SAMPLE_PARTNERS,
+  SAMPLE_PROCESSES,
   SAMPLE_UNIT_SPECS,
   SAMPLE_WAREHOUSES,
 } from "./sample";
@@ -24,6 +25,7 @@ import {
   numberRules,
   numberRuleSeqs,
   partners,
+  processes,
   stockBalances,
   stockCountLines,
   stockCounts,
@@ -51,6 +53,7 @@ export const RESET_TABLES = [
   "number_rule_seqs",
   "number_rules",
   "warehouses",
+  "processes",
   "partners",
   "unit_specs",
   "codes",
@@ -77,6 +80,7 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
       .insert(warehouses)
       .values(SAMPLE_WAREHOUSES)
       .returning({ id: warehouses.id, code: warehouses.code });
+    await tx.insert(processes).values(SAMPLE_PROCESSES);
     await tx.insert(numberRules).values(SAMPLE_NUMBER_RULES);
     await tx.insert(partners).values(SAMPLE_PARTNERS);
     const idOf = (code: string) => placed.find((w) => w.code === code)!.id;
@@ -114,6 +118,7 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
       number_rule_seqs: await n(numberRuleSeqs),
       number_rules: SAMPLE_NUMBER_RULES.length,
       warehouses: SAMPLE_WAREHOUSES.length,
+      processes: SAMPLE_PROCESSES.length,
       partners: SAMPLE_PARTNERS.length,
       unit_specs: SAMPLE_UNIT_SPECS.length,
       codes: SAMPLE_CODES.length,

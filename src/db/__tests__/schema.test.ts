@@ -3,7 +3,7 @@ import { eq, getTableName, isTable } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { resetToSample } from "@/db/reset";
 import * as schema from "@/db/schema";
-import { codes, items, partners, warehouses } from "@/db/schema";
+import { codes, items, partners, processes, warehouses } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { migratedDb, rejection } from "./pglite";
 
@@ -28,7 +28,7 @@ const item = (over: Partial<typeof items.$inferInsert> = {}) => ({
 });
 
 describe("테이블", () => {
-  it("스키마의 테이블은 열여섯이다 — 기준정보 다섯과 단위 사양 · 번호 규칙 · 번호 규칙의 일련 · 수불 전표 · 수불 줄 · 잔액 · 실사 · 실사 줄 · BOM 머리 · BOM 줄 · BOM 고친 이력", () => {
+  it("스키마의 테이블은 열일곱이다 — 기준정보 다섯과 공정 · 단위 사양 · 번호 규칙 · 번호 규칙의 일련 · 수불 전표 · 수불 줄 · 잔액 · 실사 · 실사 줄 · BOM 머리 · BOM 줄 · BOM 고친 이력", () => {
     const names = Object.values(schema).filter(isTable).map(getTableName).sort();
     expect(names).toEqual([
       "bom_changes",
@@ -40,6 +40,7 @@ describe("테이블", () => {
       "number_rule_seqs",
       "number_rules",
       "partners",
+      "processes",
       "stock_balances",
       "stock_count_lines",
       "stock_counts",
@@ -142,6 +143,32 @@ describe("창고", () => {
     ["겹치는 코드", { code: "WH-01", name: "창고" }, "warehouses_code_unique"],
   ])("%s → 거절", async (_name, values, constraint) => {
     expect(await rejection(db.insert(warehouses).values(values))).toMatchObject({ constraint });
+  });
+});
+
+describe("공정", () => {
+  it("맞는 꼴은 저장되고 기본값이 붙는다", async () => {
+    const [row] = await db.insert(processes).values({ code: "DA2", name: "다이 본딩 2" }).returning();
+    expect(row).toMatchObject({ code: "DA2", name: "다이 본딩 2", note: "", active: true });
+  });
+
+  it.each([
+    ["소문자", { code: "da", name: "x" }, "processes_code_format"],
+    ["한 글자", { code: "D", name: "x" }, "processes_code_format"],
+    ["일곱 자", { code: "ABCDEFG", name: "x" }, "processes_code_format"],
+    ["숫자로 시작", { code: "1A", name: "x" }, "processes_code_format"],
+    ["빈 이름", { code: "XX", name: "" }, "processes_name_length"],
+    ["51자 이름", { code: "XX", name: "가".repeat(51) }, "processes_name_length"],
+    ["501자 비고", { code: "XX", name: "x", note: "가".repeat(501) }, "processes_note_length"],
+  ])("%s → 거절", async (_name, values, constraint) => {
+    expect(await rejection(db.insert(processes).values(values))).toMatchObject({ constraint });
+  });
+
+  it("같은 코드 두 번 → 거절", async () => {
+    await db.insert(processes).values({ code: "DA2", name: "다이 본딩 2" });
+    expect(await rejection(db.insert(processes).values({ code: "DA2", name: "또" }))).toMatchObject({
+      constraint: "processes_code_unique",
+    });
   });
 });
 
