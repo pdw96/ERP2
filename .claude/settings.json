@@ -1,5 +1,34 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "enabledPlugins": {
     "security-guidance@anthropic-plugin-directory": true
+  },
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.local)",
+      "Read(./.env.*.local)",
+      "Read(./.env.production*)",
+      "Read(./.env.development*)",
+      "Edit(./.env)",
+      "Edit(./.env.local)",
+      "Edit(./.env.*.local)",
+      "Edit(./.env.production*)",
+      "Edit(./.env.development*)",
+      "Read(/**/.env)",
+      "Read(/**/.env.local)",
+      "Read(/**/.env.*.local)",
+      "Read(/**/.env.production*)",
+      "Read(/**/.env.development*)",
+      "Read(/**/.env.test*)",
+      "Read(/**/.env.staging*)",
+      "Edit(/**/.env)",
+      "Edit(/**/.env.local)",
+      "Edit(/**/.env.*.local)",
+      "Edit(/**/.env.production*)",
+      "Edit(/**/.env.development*)",
+      "Edit(/**/.env.test*)",
+      "Edit(/**/.env.staging*)"
+    ]
   }
 }
