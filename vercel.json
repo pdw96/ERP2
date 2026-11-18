@@ -1,4 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "crons": [{ "path": "/api/cron/reset", "schedule": "0 19 * * *" }]
+  "crons": [{ "path": "/api/cron/reset", "schedule": "0 19 * * *" }],
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ':(exclude)docs' ':(exclude).claude' ':(exclude).github' ':(exclude)*.md'"
 }
