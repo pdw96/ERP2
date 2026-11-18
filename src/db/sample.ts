@@ -4,6 +4,7 @@ import type { MoveType } from "@/lib/master-codes";
 import type {
   codeGroups,
   codes,
+  defectTypes,
   items,
   numberRules,
   partners,
@@ -34,6 +35,8 @@ export const SAMPLE_CODE_GROUPS: New<typeof codeGroups>[] = [
   // 재고 수불(PR C, ADR 0016) — 수불 유형은 재고 계산이 기대는 시스템 코드, 조정 사유는 사용자 코드.
   { code: "MOVE_TYPE", name: "수불 유형", isSystem: true },
   { code: "ADJ_REASON", name: "조정 사유", isSystem: false },
+  // 불량 유형(메뉴 「불량 유형」)의 대분류 — 사용자 코드. 마이그레이션 0020 이 데이터가 있는 DB 에 같은 값을 넣는다(시험이 견준다).
+  { code: "DEFECT_CLS", name: "불량 대분류", isSystem: false },
 ];
 
 export const SAMPLE_CODES: New<typeof codes>[] = [
@@ -76,6 +79,11 @@ export const SAMPLE_CODES: New<typeof codes>[] = [
   { groupCode: "ITEM_CLS3", code: "POWER", name: "전원", sortOrder: 10 },
   { groupCode: "ITEM_CLS3", code: "SENSOR", name: "센서", sortOrder: 20 },
   { groupCode: "ITEM_CLS3", code: "GENERAL", name: "범용", sortOrder: 30 },
+  // 불량 대분류 — 마이그레이션 0020 이 데이터가 있는 DB 에 같은 값을 넣는다.
+  { groupCode: "DEFECT_CLS", code: "APPEAR", name: "외관", sortOrder: 10 },
+  { groupCode: "DEFECT_CLS", code: "DIM", name: "치수", sortOrder: 20 },
+  { groupCode: "DEFECT_CLS", code: "BOND", name: "접합", sortOrder: 30 },
+  { groupCode: "DEFECT_CLS", code: "ELEC", name: "전기 특성", sortOrder: 40 },
 ];
 
 /**
@@ -117,6 +125,26 @@ export const SAMPLE_WORK_CENTERS: (Pick<New<typeof workCenters>, "code" | "name"
   { code: "MD-1", name: "몰딩 1호기", processCode: "MD", note: "" },
   { code: "MK-1", name: "레이저 마킹 1호기", processCode: "MK", note: "" },
   { code: "FT-1", name: "최종 검사 1라인", processCode: "FT", note: "" },
+];
+
+// 불량 유형 열넷 — 대분류 넷에 걸쳐(메뉴 「불량 유형」). 발생 공정은 코드로 가리키고(비면 공통), 되돌림 · 마이그레이션이 id 로 바꿔 넣는다.
+export const SAMPLE_DEFECT_TYPES: (Pick<New<typeof defectTypes>, "code" | "name" | "cls" | "note"> & {
+  processCodes: string[];
+})[] = [
+  { code: "CHIP", name: "칩핑", cls: "APPEAR", note: "", processCodes: ["SAW"] },
+  { code: "CRACK", name: "다이 크랙", cls: "APPEAR", note: "", processCodes: ["BG", "SAW", "DA"] },
+  { code: "SCRATCH", name: "긁힘", cls: "APPEAR", note: "", processCodes: [] },
+  { code: "FM", name: "이물", cls: "APPEAR", note: "", processCodes: [] },
+  { code: "THK-OUT", name: "두께 벗어남", cls: "DIM", note: "", processCodes: ["BG"] },
+  { code: "DA-VOID", name: "접착 보이드", cls: "BOND", note: "", processCodes: ["DA"] },
+  { code: "DA-TILT", name: "다이 기울어짐", cls: "DIM", note: "", processCodes: ["DA"] },
+  { code: "WIRE-BRK", name: "와이어 끊어짐", cls: "BOND", note: "", processCodes: ["WB"] },
+  { code: "BALL-LIFT", name: "볼 들뜸", cls: "BOND", note: "", processCodes: ["WB"] },
+  { code: "WIRE-SWP", name: "와이어 휨", cls: "DIM", note: "", processCodes: ["WB", "MD"] },
+  { code: "MD-VOID", name: "몰드 기포", cls: "APPEAR", note: "", processCodes: ["MD"] },
+  { code: "MK-ERR", name: "마킹 불량", cls: "APPEAR", note: "", processCodes: ["MK"] },
+  { code: "OPEN", name: "오픈", cls: "ELEC", note: "", processCodes: ["FT"] },
+  { code: "SHORT", name: "쇼트", cls: "ELEC", note: "", processCodes: ["FT"] },
 ];
 
 export const SAMPLE_WAREHOUSES: New<typeof warehouses>[] = [

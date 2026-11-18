@@ -3,7 +3,16 @@ import { eq, getTableName, isTable } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { resetToSample } from "@/db/reset";
 import * as schema from "@/db/schema";
-import { codes, items, partners, processes, warehouses, workCenters } from "@/db/schema";
+import {
+  codes,
+  defectTypeProcesses,
+  defectTypes,
+  items,
+  partners,
+  processes,
+  warehouses,
+  workCenters,
+} from "@/db/schema";
 import type { Db } from "@/db/types";
 import { migratedDb, rejection } from "./pglite";
 
@@ -28,7 +37,7 @@ const item = (over: Partial<typeof items.$inferInsert> = {}) => ({
 });
 
 describe("테이블", () => {
-  it("스키마의 테이블은 열여덟이다 — 기준정보 다섯과 공정 · 작업장 · 단위 사양 · 번호 규칙 · 번호 규칙의 일련 · 수불 전표 · 수불 줄 · 잔액 · 실사 · 실사 줄 · BOM 머리 · BOM 줄 · BOM 고친 이력", () => {
+  it("스키마의 테이블은 스물이다 — 기준정보 다섯과 공정 · 작업장 · 불량 유형 · 불량 유형의 발생 공정 · 단위 사양 · 번호 규칙 · 번호 규칙의 일련 · 수불 전표 · 수불 줄 · 잔액 · 실사 · 실사 줄 · BOM 머리 · BOM 줄 · BOM 고친 이력", () => {
     const names = Object.values(schema).filter(isTable).map(getTableName).sort();
     expect(names).toEqual([
       "bom_changes",
@@ -36,6 +45,8 @@ describe("테이블", () => {
       "boms",
       "code_groups",
       "codes",
+      "defect_type_processes",
+      "defect_types",
       "items",
       "number_rule_seqs",
       "number_rules",
@@ -217,6 +228,85 @@ describe("작업장", () => {
     expect(
       await rejection(db.insert(workCenters).values({ code: "DA-3", name: "하나", processId: 999999 })),
     ).toMatchObject({ constraint: "work_centers_process_id_processes_id_fk" });
+  });
+});
+
+describe("불량 유형", () => {
+  const processId = async (code: string) => {
+    const [p] = await db.select().from(processes).where(eq(processes.code, code));
+    return p.id;
+  };
+  const defect = (over: Partial<typeof defectTypes.$inferInsert> = {}) => ({
+    code: "TEST-1",
+    name: "시험 불량",
+    cls: "APPEAR",
+    ...over,
+  });
+
+  it("맞는 꼴은 저장되고 기본값이 붙는다", async () => {
+    const [row] = await db.insert(defectTypes).values(defect()).returning();
+    expect(row).toMatchObject({
+      code: "TEST-1",
+      name: "시험 불량",
+      clsGroup: "DEFECT_CLS",
+      cls: "APPEAR",
+      note: "",
+      active: true,
+    });
+  });
+
+  it.each([
+    ["소문자", "chip", "x", "", "defect_types_code_format"],
+    ["한 글자", "D", "x", "", "defect_types_code_format"],
+    ["11자", "ABCDEFGHIJK", "x", "", "defect_types_code_format"],
+    ["숫자로 시작", "1A", "x", "", "defect_types_code_format"],
+    ["끝 하이픈", "DA-", "x", "", "defect_types_code_format"],
+    ["하이픈 둘", "D--A", "x", "", "defect_types_code_format"],
+    ["빈 이름", "TEST-1", "", "", "defect_types_name_length"],
+    ["51자 이름", "TEST-1", "가".repeat(51), "", "defect_types_name_length"],
+    ["501자 비고", "TEST-1", "x", "가".repeat(501), "defect_types_note_length"],
+  ])("%s → 거절", async (_name, code, name, note, constraint) => {
+    expect(await rejection(db.insert(defectTypes).values(defect({ code, name, note })))).toMatchObject({ constraint });
+  });
+
+  it("같은 코드 두 번 → 거절", async () => {
+    await db.insert(defectTypes).values(defect({ code: "CHIP2" }));
+    expect(await rejection(db.insert(defectTypes).values(defect({ code: "CHIP2" })))).toMatchObject({
+      constraint: "defect_types_code_unique",
+    });
+  });
+
+  it("없는 대분류 → 거절", async () => {
+    expect(await rejection(db.insert(defectTypes).values(defect({ cls: "NOPE" })))).toMatchObject({
+      constraint: "defect_types_cls_fk",
+    });
+  });
+
+  it("대분류는 DEFECT_CLS 묶음만 — 다른 묶음의 값 → 거절", async () => {
+    expect(await rejection(db.insert(defectTypes).values(defect({ clsGroup: "UNIT", cls: "EA" })))).toMatchObject({
+      constraint: "defect_types_cls_group_fixed",
+    });
+  });
+
+  it("발생 공정은 (불량 유형, 공정) 한 번씩 — 같은 쌍 두 번 → 기본 키 거절", async () => {
+    const [d] = await db.insert(defectTypes).values(defect()).returning();
+    const pid = await processId("DA");
+    await db.insert(defectTypeProcesses).values({ defectTypeId: d.id, processId: pid });
+    expect(
+      await rejection(db.insert(defectTypeProcesses).values({ defectTypeId: d.id, processId: pid })),
+    ).toMatchObject({ constraint: "defect_type_processes_defect_type_id_process_id_pk" });
+  });
+
+  it("없는 공정 · 없는 불량 유형 → 거절", async () => {
+    const [d] = await db.insert(defectTypes).values(defect()).returning();
+    expect(
+      await rejection(db.insert(defectTypeProcesses).values({ defectTypeId: d.id, processId: 999999 })),
+    ).toMatchObject({ constraint: "defect_type_processes_process_id_processes_id_fk" });
+    expect(
+      await rejection(
+        db.insert(defectTypeProcesses).values({ defectTypeId: 999999, processId: await processId("DA") }),
+      ),
+    ).toMatchObject({ constraint: "defect_type_processes_defect_type_id_defect_types_id_fk" });
   });
 });
 
