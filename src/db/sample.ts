@@ -1,7 +1,7 @@
 import { ITEM_TYPES, MOVE_TYPES, PROC_TYPES, type ItemType } from "@/lib/master-codes";
 import type { MoveLineValues } from "@/lib/move-input";
 import type { MoveType } from "@/lib/master-codes";
-import type { codeGroups, codes, items, numberRules, partners, unitSpecs, warehouses } from "./schema";
+import type { codeGroups, codes, items, numberRules, partners, processes, unitSpecs, warehouses } from "./schema";
 
 // 샘플 데이터 — 가상 반도체 후공정(패키징) 회사. 매일 밤 되돌림(ADR 0004)과 첫 배포가 이 값으로 테이블을 채운다.
 // 실제 회사명 · 실제 사람의 정보를 쓰지 않는다(CLAUDE.md). 거래처 이름은 「(가상)」으로 시작하고,
@@ -81,6 +81,17 @@ export const SAMPLE_UNIT_SPECS: New<typeof unitSpecs>[] = [
   { unit: "L", baseUnit: "ML", factor: 1000, decimals: 3 },
   { unit: "ML", baseUnit: "ML", factor: 1, decimals: 0 },
   { unit: "MG", baseUnit: "G", factor: 0.001, decimals: 0 },
+];
+
+// 공정 일곱 — 반도체 후공정의 차례(메뉴 「공정 등록」). 코드는 영문 대문자로 시작하는 2 ~ 6자.
+export const SAMPLE_PROCESSES: New<typeof processes>[] = [
+  { code: "BG", name: "웨이퍼 연삭", note: "웨이퍼 뒷면을 깎아 두께를 맞춘다" },
+  { code: "SAW", name: "쏘잉", note: "웨이퍼를 칩 단위로 자른다" },
+  { code: "DA", name: "다이 본딩", note: "칩을 리드프레임에 붙인다" },
+  { code: "WB", name: "와이어 본딩", note: "칩과 리드를 금 와이어로 잇는다" },
+  { code: "MD", name: "몰딩", note: "에폭시 몰딩 컴파운드로 감싼다" },
+  { code: "MK", name: "마킹", note: "제품 윗면에 품명 · LOT 를 새긴다" },
+  { code: "FT", name: "최종 검사", note: "전기 특성과 겉모양을 검사한다" },
 ];
 
 export const SAMPLE_WAREHOUSES: New<typeof warehouses>[] = [

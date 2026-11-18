@@ -128,6 +128,28 @@ export const warehouses = pgTable(
 );
 
 /**
+ * 공정(메뉴 「공정 등록」) — 생산에서 거치는 단계의 목록: 코드 · 공정명 · 비고 · 사용 여부. 지우지 않고 「사용 안 함」으로 둔다.
+ * 코드는 영문 대문자로 시작하는 2 ~ 6자(`DA`, `WB`)이고 사람이 넣으며, 등록 뒤 바꾸지 않는다.
+ * 꼴은 저자 판정 2026-11-18(메뉴 「공정 등록」).
+ */
+export const processes = pgTable(
+  "processes",
+  {
+    id: id(),
+    code: text("code").notNull().unique(),
+    name: text("name").notNull(),
+    note: text("note").notNull().default(""),
+    active: boolean("active").notNull().default(true),
+    ...timestamps(),
+  },
+  (t) => [
+    check("processes_code_format", sql`${t.code} ~ '^[A-Z][A-Z0-9]{1,5}$'`),
+    check("processes_name_length", sql`char_length(${t.name}) between 1 and 50`),
+    check("processes_note_length", sql`char_length(${t.note}) <= 500`),
+  ],
+);
+
+/**
  * LOT 번호 규칙(조각 「재고 수불」 PR B, ADR 0016) — 머리 · 구분자 · 날짜 꼴 · 일련 자릿수. 번호는 늘 머리 → 날짜 → 일련이고,
  * 있는 조각 사이에 구분자를 넣는다(src/lib/number-rule.ts). 만드는 품목(반제품 · 완제품)에만 쓴다.
  * 유형마다 기본 규칙이 하나다(`default_for`) — 기본 규칙은 「사용 안 함」이 아니다. 규칙은 지우지 않는다.
