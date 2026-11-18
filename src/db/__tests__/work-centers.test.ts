@@ -7,7 +7,6 @@ import {
   createWorkCenter,
   dropUnknownProcess,
   getWorkCenter,
-  listProcessOptions,
   listWorkCenters,
   parseWorkCenterFilter,
   updateWorkCenter,
@@ -127,15 +126,6 @@ describe("작업장 하나", () => {
     });
     expect(await getWorkCenter(db, "da-1")).toBeUndefined();
     expect(await getWorkCenter(db, "x y")).toBeUndefined();
-  });
-});
-
-describe("공정 고르기", () => {
-  it("모든 공정을 코드 순으로", async () => {
-    await deactivateProcess("MK");
-    const options = await listProcessOptions(db);
-    expect(codesOf(options)).toEqual(["BG", "DA", "FT", "MD", "MK", "SAW", "WB"]);
-    expect(options.find((o) => o.code === "MK")).toEqual({ code: "MK", name: "마킹", active: false });
   });
 });
 

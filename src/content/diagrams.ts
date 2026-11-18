@@ -228,7 +228,7 @@ export const MODULE_MAP: readonly MapModule[] = [
   {
     module: "품질",
     tables: [
-      { id: "defect", name: "불량 유형", slice: "라우팅" },
+      { id: "defect", name: "불량 유형", table: "defect_types", slice: "라우팅" },
       { id: "insp", name: "검사 항목 · 기준", slice: "품질" },
       { id: "qrec", name: "검사 기록", slice: "품질" },
       { id: "disp", name: "불량 처분 — 재작업 · 폐기", slice: "품질" },

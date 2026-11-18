@@ -1,7 +1,8 @@
 import Form from "next/form";
 import Link from "next/link";
 import { SavedNotice as Notice } from "@/components/saved-notice";
-import type { ProcessOption, WorkCenterFilter, WorkCenterFilterNotice, WorkCenterRow } from "@/db/work-centers";
+import type { ProcessOption } from "@/db/processes";
+import type { WorkCenterFilter, WorkCenterFilterNotice, WorkCenterRow } from "@/db/work-centers";
 
 // 작업장 목록 화면의 부품 — 찾기, 표, 저장 뒤의 알림.
 

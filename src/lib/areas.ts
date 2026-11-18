@@ -152,7 +152,7 @@ export const AREAS: readonly Area[] = [
       {
         label: "품질 기준정보",
         menus: [
-          { label: "불량 유형", slice: "라우팅" },
+          { label: "불량 유형", slice: "라우팅", href: "/quality/defect-types" },
           { label: "검사 항목 · 기준", slice: "품질" },
         ],
       },

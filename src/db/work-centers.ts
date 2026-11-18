@@ -22,6 +22,7 @@ import {
   versionOf,
   type Params,
 } from "./master-shared";
+import type { ProcessOption } from "./processes";
 import { processes, workCenters } from "./schema";
 import type { Db } from "./types";
 
@@ -103,16 +104,6 @@ export async function getWorkCenter(db: Db, code: string): Promise<WorkCenterWit
     .innerJoin(processes, eq(workCenters.processId, processes.id))
     .where(eq(workCenters.code, code));
   return row;
-}
-
-export type ProcessOption = { code: string; name: string; active: boolean };
-
-/** 등록 화면의 공정 고르기 — 모든 공정을 코드 순으로(「사용 안 함」은 화면이 가린다). */
-export async function listProcessOptions(db: Db): Promise<ProcessOption[]> {
-  return db
-    .select({ code: processes.code, name: processes.name, active: processes.active })
-    .from(processes)
-    .orderBy(asc(processes.code));
 }
 
 // ── 등록 · 수정 ─────────────────────────────────────────

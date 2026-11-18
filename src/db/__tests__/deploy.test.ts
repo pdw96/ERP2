@@ -9,6 +9,7 @@ import { describeFailure } from "@/db/status";
 import {
   SAMPLE_CODE_GROUPS,
   SAMPLE_CODES,
+  SAMPLE_DEFECT_TYPES,
   SAMPLE_ITEMS,
   SAMPLE_NUMBER_RULES,
   SAMPLE_PROCESSES,
@@ -21,6 +22,8 @@ import {
   boms,
   codeGroups,
   codes,
+  defectTypeProcesses,
+  defectTypes,
   items,
   numberRules,
   partners,
@@ -53,6 +56,8 @@ const TABLES = [
   "boms",
   "code_groups",
   "codes",
+  "defect_type_processes",
+  "defect_types",
   "items",
   "number_rule_seqs",
   "number_rules",
@@ -76,13 +81,13 @@ async function tableNames(h: Awaited<ReturnType<typeof emptyDb>>) {
 }
 
 describe("마이그레이션과 첫 샘플 데이터", () => {
-  it("빈 DB 에 적용하면 테이블 열여덟이 생기고 샘플 데이터(샘플 수불 · 실사 · BOM 까지)가 들어간다", async () => {
+  it("빈 DB 에 적용하면 테이블 스물이 생기고 샘플 데이터(샘플 수불 · 실사 · BOM 까지)가 들어간다", async () => {
     const h = await fresh();
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(await tableNames(h)).toEqual(TABLES);
-    expect(await h.db.select().from(codeGroups)).toHaveLength(9);
-    expect(log[0]).toMatch(/^마이그레이션: 적용된 것 19개 — 이번에 19개 적용$/);
+    expect(await h.db.select().from(codeGroups)).toHaveLength(10);
+    expect(log[0]).toMatch(/^마이그레이션: 적용된 것 21개 — 이번에 21개 적용$/);
     expect(log[1]).toMatch(
       /^샘플 데이터: 빈 DB 라 넣었다 — bom_changes 20 · bom_lines 16 · boms 4 · stock_count_lines 12 · stock_counts 2 · stock_balances 24 · stock_move_lines 32 · stock_moves 11 · items 14 · /,
     );
@@ -97,7 +102,7 @@ describe("마이그레이션과 첫 샘플 데이터", () => {
     const log: string[] = [];
     await prepareDatabase(h.db, { ...quiet, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 19개 — 이번에 0개 적용",
+      "마이그레이션: 적용된 것 21개 — 이번에 0개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -168,7 +173,7 @@ describe("마이그레이션 0001 · 0002 — 거래처의 국가(PR G)", () => 
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 19개 — 이번에 18개 적용",
+      "마이그레이션: 적용된 것 21개 — 이번에 20개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(
@@ -221,7 +226,7 @@ describe("마이그레이션 0003 · 0004 — 품목 · 거래처의 설명용 �
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 19개 — 이번에 16개 적용",
+      "마이그레이션: 적용된 것 21개 — 이번에 18개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(
@@ -318,7 +323,7 @@ describe("마이그레이션 0005 · 0006 — 단위 사양(조각 「재고 수
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 19개 — 이번에 14개 적용",
+      "마이그레이션: 적용된 것 21개 — 이번에 16개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     // 마이그레이션이 넣은 단위 · 사양은 샘플 데이터와 같다 — 매일 밤 되돌린 뒤와 어긋나지 않게.
@@ -401,7 +406,7 @@ describe("마이그레이션 0007 · 0008 — 번호 규칙 · 품목의 재고 
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 19개 — 이번에 12개 적용",
+      "마이그레이션: 적용된 것 21개 — 이번에 14개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
 
@@ -534,7 +539,7 @@ describe("마이그레이션 0009 — 품목의 기본 창고가 불량창고를
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 19개 — 이번에 10개 적용",
+      "마이그레이션: 적용된 것 21개 — 이번에 12개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     const [rm] = await h.db.select().from(items).where(eq(items.code, "RM-0001"));
@@ -558,7 +563,7 @@ describe("마이그레이션 0010 · 0011 — 수불 유형 · 조정 사유와 
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 19개 — 이번에 9개 적용",
+      "마이그레이션: 적용된 것 21개 — 이번에 11개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     const groups = await h.db
@@ -601,7 +606,7 @@ describe("마이그레이션 0012 — 재고 실사 표(조각 「재고 수불�
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 19개 — 이번에 7개 적용",
+      "마이그레이션: 적용된 것 21개 — 이번에 9개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -622,7 +627,7 @@ describe("마이그레이션 0013 — BOM 표(조각 「BOM」 PR A)", () => {
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 19개 — 이번에 6개 적용",
+      "마이그레이션: 적용된 것 21개 — 이번에 8개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -642,7 +647,7 @@ describe("마이그레이션 0014 — BOM 고친 이력 표(조각 「BOM」 PR 
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 19개 — 이번에 5개 적용",
+      "마이그레이션: 적용된 것 21개 — 이번에 7개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -677,7 +682,7 @@ describe("마이그레이션 0015 · 0016 — 공정 표 · 샘플 공정(메뉴
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 19개 — 이번에 4개 적용",
+      "마이그레이션: 적용된 것 21개 — 이번에 6개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -748,7 +753,7 @@ describe("마이그레이션 0017 · 0018 — 작업장 표 · 샘플 작업장(
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 19개 — 이번에 2개 적용",
+      "마이그레이션: 적용된 것 21개 — 이번에 4개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -787,5 +792,122 @@ describe("마이그레이션 0017 · 0018 — 작업장 표 · 샘플 작업장(
     expect(await h.db.select().from(workCenters)).toHaveLength(0);
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: () => {} });
     expect(await h.db.select().from(workCenters)).toHaveLength(SAMPLE_WORK_CENTERS.length);
+  });
+});
+
+describe("마이그레이션 0019 · 0020 — 불량 유형 표 · 샘플 불량 유형(메뉴 「불량 유형」)", () => {
+  async function dataDb(applied = 19) {
+    const h = await fresh();
+    await h.migrate(firstMigrations(applied)); // 0018 까지 — 샘플 공정은 들어 있고 불량 유형 표는 아직 없다
+    await h.client.exec(`
+      insert into code_groups (code, name, is_system) values ('UNIT', '단위', false);
+      insert into warehouses (code, name) values ('WH-01', '(가상) 옛 창고');
+    `);
+    // 0016 은 데이터가 없을 때 넣지 않았다 — 데이터를 넣은 뒤 그 SQL 만 다시 돌려 샘플 공정을 갖춘다(운영 DB 의 모양).
+    await h.client.exec(readFileSync("drizzle/0016_process_values.sql", "utf8"));
+    return h;
+  }
+  const defectsWithProcesses = async (h: Awaited<ReturnType<typeof dataDb>>) => {
+    const rows = await h.db
+      .select({
+        code: defectTypes.code,
+        name: defectTypes.name,
+        cls: defectTypes.cls,
+        note: defectTypes.note,
+        active: defectTypes.active,
+        id: defectTypes.id,
+      })
+      .from(defectTypes)
+      .orderBy(asc(defectTypes.id));
+    const links = await h.db
+      .select({ defectTypeId: defectTypeProcesses.defectTypeId, processCode: processes.code })
+      .from(defectTypeProcesses)
+      .innerJoin(processes, eq(processes.id, defectTypeProcesses.processId))
+      .orderBy(asc(processes.id));
+    return rows.map((r) => ({
+      ...r,
+      processCodes: links.filter((l) => l.defectTypeId === r.id).map((l) => l.processCode),
+    }));
+  };
+  const sampleProcessOrder = SAMPLE_PROCESSES.map((p) => p.code);
+  const linkCount = SAMPLE_DEFECT_TYPES.reduce((n, d) => n + d.processCodes.length, 0);
+
+  it("데이터가 있는 DB — 0019 는 표만 만들고, 0020 이 묶음 · 값 · 샘플 불량 유형 열넷과 발생 공정을 넣는다. 샘플 전체는 다시 넣지 않는다", async () => {
+    const h = await dataDb();
+    const log: string[] = [];
+    await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
+    expect(log).toEqual([
+      "마이그레이션: 적용된 것 21개 — 이번에 2개 적용",
+      "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
+    ]);
+    expect(await tableNames(h)).toEqual(TABLES);
+    const rows = await defectsWithProcesses(h);
+    expect(rows).toHaveLength(14);
+    expect(rows.map((r) => r.code)).toEqual(SAMPLE_DEFECT_TYPES.map((d) => d.code));
+    expect(linkCount).toBe(15);
+    expect(rows.flatMap((r) => r.processCodes)).toHaveLength(15);
+  });
+
+  it("0020 의 묶음 · 값 · 불량 유형 · 발생 공정은 sample.ts 와 같다", async () => {
+    const h = await dataDb();
+    await h.migrate();
+    const group = SAMPLE_CODE_GROUPS.find((g) => g.code === "DEFECT_CLS")!;
+    expect(
+      (await h.db.select().from(codeGroups).where(eq(codeGroups.code, "DEFECT_CLS"))).map((g) => [
+        g.code,
+        g.name,
+        g.isSystem,
+      ]),
+    ).toEqual([[group.code, group.name, group.isSystem]]);
+    expect(
+      (await h.db.select().from(codes).where(eq(codes.groupCode, "DEFECT_CLS")).orderBy(asc(codes.id))).map((c) => [
+        c.code,
+        c.name,
+        c.sortOrder,
+        c.active,
+      ]),
+    ).toEqual(SAMPLE_CODES.filter((c) => c.groupCode === "DEFECT_CLS").map((c) => [c.code, c.name, c.sortOrder, true]));
+    expect(
+      (await defectsWithProcesses(h)).map((r) => [r.code, r.name, r.cls, r.note, r.active, r.processCodes]),
+    ).toEqual(
+      SAMPLE_DEFECT_TYPES.map((d) => [
+        d.code,
+        d.name,
+        d.cls,
+        d.note,
+        true,
+        sampleProcessOrder.filter((c) => d.processCodes.includes(c)),
+      ]),
+    );
+  });
+
+  it("방문자가 같은 코드로 먼저 등록한 불량 유형은 덮어쓰지 않고 잇기도 더하지 않으며, 다시 돌려도 늘지 않는다", async () => {
+    const h = await dataDb(20); // 0019 까지 — 표는 있고 샘플 불량 유형은 아직 없다
+    await h.client.exec(`
+      insert into code_groups (code, name, is_system) values ('DEFECT_CLS', '불량 대분류', false);
+      insert into codes (group_code, code, name, sort_order) values ('DEFECT_CLS', 'APPEAR', '겉모양', 10);
+      insert into defect_types (code, name, cls, note) values ('CHIP', '방문자의 칩', 'APPEAR', '내 설명'), ('ZZ-1', '방문자 불량', 'APPEAR', '');
+    `);
+    await h.migrate();
+    const chip = await h.db.select().from(defectTypes).where(eq(defectTypes.code, "CHIP"));
+    expect(chip.map((r) => [r.name, r.note])).toEqual([["방문자의 칩", "내 설명"]]);
+    const after = await defectsWithProcesses(h);
+    expect(after.find((r) => r.code === "CHIP")!.processCodes).toEqual([]);
+    expect(after).toHaveLength(SAMPLE_DEFECT_TYPES.length + 1);
+    expect(after.flatMap((r) => r.processCodes)).toHaveLength(linkCount - 1);
+    const text = readFileSync("drizzle/0020_defect_type_values.sql", "utf8");
+    await h.client.exec(text);
+    const again = await defectsWithProcesses(h);
+    expect(again).toHaveLength(SAMPLE_DEFECT_TYPES.length + 1);
+    expect(again.flatMap((r) => r.processCodes)).toHaveLength(linkCount - 1);
+  });
+
+  it("빈 DB — 0020 은 넣지 않고(묶음이 없다), 배포 빌드의 샘플이 열넷을 넣는다", async () => {
+    const h = await fresh();
+    await h.migrate();
+    expect(await h.db.select().from(defectTypes)).toHaveLength(0);
+    await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: () => {} });
+    expect(await h.db.select().from(defectTypes)).toHaveLength(SAMPLE_DEFECT_TYPES.length);
+    expect(await h.db.select().from(defectTypeProcesses)).toHaveLength(linkCount);
   });
 });

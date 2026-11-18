@@ -55,6 +55,7 @@ describe("목록", () => {
     expect(await listCodeGroups(db)).toEqual([
       { code: "ADJ_REASON", name: "조정 사유", isSystem: false, values: 5 },
       { code: "COUNTRY", name: "국가", isSystem: false, values: 5 },
+      { code: "DEFECT_CLS", name: "불량 대분류", isSystem: false, values: 4 },
       { code: "ITEM_CLS1", name: "품목 대분류", isSystem: false, values: 8 },
       { code: "ITEM_CLS2", name: "품목 중분류", isSystem: false, values: 3 },
       { code: "ITEM_CLS3", name: "품목 소분류", isSystem: false, values: 3 },

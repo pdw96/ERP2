@@ -134,6 +134,20 @@
       "when": 1795020758557,
       "tag": "0018_work_center_values",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795029789203,
+      "tag": "0019_defect_types",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795029792202,
+      "tag": "0020_defect_type_values",
+      "breakpoints": true
     }
   ]
 }

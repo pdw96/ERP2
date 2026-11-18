@@ -47,11 +47,13 @@ describe("ModuleHome", () => {
     expect(screen.queryAllByRole("link")).toHaveLength(2);
   });
 
-  it("품질 — 지은 화면이 없으면 「준비 중입니다」와 메뉴 묶음을 보인다", () => {
+  it("품질 — 「불량 유형」은 링크이고, 나머지 메뉴는 준비 중으로 메뉴 묶음에 보인다", () => {
     render(<ModuleHome href="/quality" />);
-    expect(screen.getByText("준비 중입니다.")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "품질 기준정보" })).toBeInTheDocument();
-    expect(screen.queryAllByRole("link")).toHaveLength(0);
+    expect(screen.queryByText("준비 중입니다.")).toBeNull();
+    const group = within(screen.getByRole("region", { name: "품질 기준정보" }));
+    expect(group.getByRole("link", { name: /불량 유형/ })).toHaveAttribute("href", "/quality/defect-types");
+    expect(group.getByText("검사 항목 · 기준").parentElement).toHaveTextContent("준비 중 · 조각 「품질」");
+    expect(screen.queryAllByRole("link")).toHaveLength(1);
   });
 
   it("생산 — 「BOM 등록」 · 「BOM 조회」 · 「공정 등록」 · 「작업장 등록」이 링크이고 메뉴 「BOM」은 없다(ADR 0026 의 6)", () => {

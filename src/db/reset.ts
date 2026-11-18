@@ -5,6 +5,7 @@ import {
   SAMPLE_BOMS,
   SAMPLE_CODE_GROUPS,
   SAMPLE_CODES,
+  SAMPLE_DEFECT_TYPES,
   SAMPLE_COUNTS,
   SAMPLE_DEFAULT_WAREHOUSES,
   SAMPLE_ITEMS,
@@ -22,6 +23,8 @@ import {
   boms,
   codeGroups,
   codes,
+  defectTypeProcesses,
+  defectTypes,
   items,
   numberRules,
   numberRuleSeqs,
@@ -55,6 +58,8 @@ export const RESET_TABLES = [
   "number_rule_seqs",
   "number_rules",
   "warehouses",
+  "defect_type_processes",
+  "defect_types",
   "work_centers",
   "processes",
   "partners",
@@ -93,6 +98,19 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
         processId: steps.find((p) => p.code === processCode)!.id,
       })),
     );
+    // 불량 유형 — 발생 공정은 코드로 가리켜 id 로 이어 넣는다(비면 공통).
+    const defects = await tx
+      .insert(defectTypes)
+      .values(SAMPLE_DEFECT_TYPES.map((d) => ({ code: d.code, name: d.name, cls: d.cls, note: d.note })))
+      .returning({ id: defectTypes.id, code: defectTypes.code });
+    await tx.insert(defectTypeProcesses).values(
+      SAMPLE_DEFECT_TYPES.flatMap((d) =>
+        d.processCodes.map((processCode) => ({
+          defectTypeId: defects.find((x) => x.code === d.code)!.id,
+          processId: steps.find((p) => p.code === processCode)!.id,
+        })),
+      ),
+    );
     await tx.insert(numberRules).values(SAMPLE_NUMBER_RULES);
     await tx.insert(partners).values(SAMPLE_PARTNERS);
     const idOf = (code: string) => placed.find((w) => w.code === code)!.id;
@@ -115,7 +133,8 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
         | typeof stockCountLines
         | typeof boms
         | typeof bomLines
-        | typeof bomChanges,
+        | typeof bomChanges
+        | typeof defectTypeProcesses,
     ) => (await tx.select({ n: count() }).from(t))[0].n;
     return {
       bom_changes: await n(bomChanges),
@@ -131,6 +150,8 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
       number_rules: SAMPLE_NUMBER_RULES.length,
       warehouses: SAMPLE_WAREHOUSES.length,
       work_centers: SAMPLE_WORK_CENTERS.length,
+      defect_types: SAMPLE_DEFECT_TYPES.length,
+      defect_type_processes: await n(defectTypeProcesses),
       processes: SAMPLE_PROCESSES.length,
       partners: SAMPLE_PARTNERS.length,
       unit_specs: SAMPLE_UNIT_SPECS.length,

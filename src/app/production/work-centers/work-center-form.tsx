@@ -12,7 +12,7 @@ import {
   ReadOnly,
   Section,
 } from "@/components/form-parts";
-import type { ProcessOption } from "@/db/work-centers";
+import type { ProcessOption } from "@/db/processes";
 import {
   WORK_CENTER_FIELDS,
   type WorkCenterErrors,

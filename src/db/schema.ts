@@ -9,6 +9,7 @@ import {
   jsonb,
   numeric,
   pgTable,
+  primaryKey,
   smallint,
   text,
   timestamp,
@@ -175,6 +176,59 @@ export const workCenters = pgTable(
     check("work_centers_name_length", sql`char_length(${t.name}) between 1 and 50`),
     check("work_centers_note_length", sql`char_length(${t.note}) <= 500`),
     index("work_centers_process_idx").on(t.processId),
+  ],
+);
+
+/**
+ * 불량 유형(메뉴 「불량 유형」) — 검사 · 실적에서 고르는 불량의 이름 목록: 코드 · 불량유형명 · 대분류 · 비고 · 사용 여부.
+ * 코드는 영문 대문자로 시작하는 2 ~ 10자(`CHIP`, `DA-VOID`)이고 사람이 넣으며, 등록 뒤 바꾸지 않고 지우지 않는다(「사용 안 함」으로 둔다).
+ * 대분류는 공통코드 묶음 DEFECT_CLS 의 값 하나를 (묶음, 코드)로 가리킨다(품목의 분류와 같은 방식). 발생 공정은 아래 잇는 표로 여럿이다.
+ */
+export const defectTypes = pgTable(
+  "defect_types",
+  {
+    id: id(),
+    code: text("code").notNull().unique(),
+    name: text("name").notNull(),
+    clsGroup: text("cls_group").notNull().default("DEFECT_CLS"),
+    cls: text("cls").notNull(),
+    note: text("note").notNull().default(""),
+    active: boolean("active").notNull().default(true),
+    ...timestamps(),
+  },
+  (t) => [
+    check(
+      "defect_types_code_format",
+      sql`${t.code} ~ '^[A-Z](-?[A-Z0-9])+$' and char_length(${t.code}) between 2 and 10`,
+    ),
+    check("defect_types_name_length", sql`char_length(${t.name}) between 1 and 50`),
+    check("defect_types_note_length", sql`char_length(${t.note}) <= 500`),
+    check("defect_types_cls_group_fixed", sql`${t.clsGroup} = 'DEFECT_CLS'`),
+    foreignKey({
+      name: "defect_types_cls_fk",
+      columns: [t.clsGroup, t.cls],
+      foreignColumns: [codes.groupCode, codes.code],
+    }),
+  ],
+);
+
+/**
+ * 불량 유형의 발생 공정 — 어느 공정에서 나는 불량인가(여럿). 한 불량 유형에 한 공정은 한 번이고, 하나도 없으면 「공통」(어느 공정에서나 후보)이다.
+ * 공정이 있는 동안 지우지 못한다(restrict). 불량 유형은 지우는 길이 없어 cascade 는 시험 정리용이다.
+ */
+export const defectTypeProcesses = pgTable(
+  "defect_type_processes",
+  {
+    defectTypeId: integer("defect_type_id")
+      .notNull()
+      .references(() => defectTypes.id, { onDelete: "cascade" }),
+    processId: integer("process_id")
+      .notNull()
+      .references(() => processes.id, { onDelete: "restrict" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.defectTypeId, t.processId] }),
+    index("defect_type_processes_process_idx").on(t.processId),
   ],
 );
 

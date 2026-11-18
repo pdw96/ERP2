@@ -7,6 +7,7 @@ import { lastResetAt } from "@/db/status";
 import {
   SAMPLE_CODE_GROUPS,
   SAMPLE_CODES,
+  SAMPLE_DEFECT_TYPES,
   SAMPLE_ITEMS,
   SAMPLE_NUMBER_RULES,
   SAMPLE_PARTNERS,
@@ -21,6 +22,8 @@ import {
   bomLines,
   boms,
   codes,
+  defectTypeProcesses,
+  defectTypes,
   items,
   numberRuleSeqs,
   numberRules,
@@ -62,6 +65,11 @@ async function snapshot() {
     partners: strip(await db.select().from(partners).orderBy(asc(partners.id))),
     processes: strip(await db.select().from(processes).orderBy(asc(processes.id))),
     workCenters: strip(await db.select().from(workCenters).orderBy(asc(workCenters.id))),
+    defectTypes: strip(await db.select().from(defectTypes).orderBy(asc(defectTypes.id))),
+    defectTypeProcesses: await db
+      .select()
+      .from(defectTypeProcesses)
+      .orderBy(asc(defectTypeProcesses.defectTypeId), asc(defectTypeProcesses.processId)),
     codes: strip(await db.select().from(codes).orderBy(asc(codes.id))),
     unitSpecs: strip(await db.select().from(unitSpecs).orderBy(asc(unitSpecs.id))),
     numberRules: strip(await db.select().from(numberRules).orderBy(asc(numberRules.id))),
@@ -128,6 +136,18 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
       .set({ baseQty: 1 })
       .where(sql`${boms.itemId} = (select id from items where code = 'SF-0002')`);
 
+    // 불량 유형 — 방문자가 하나 더 만들고, SCRATCH 에 공정을 붙이고, WIRE-SWP 의 공정 하나를 뺀다.
+    await db.execute(sql`insert into defect_types (code, name, cls) values ('ZZ-1', '방문자 불량', 'DIM')`);
+    await db.execute(
+      sql`insert into defect_type_processes (defect_type_id, process_id) values
+        ((select id from defect_types where code = 'SCRATCH'), (select id from processes where code = 'DA')),
+        ((select id from defect_types where code = 'ZZ-1'), (select id from processes where code = 'MD'))`,
+    );
+    await db.execute(
+      sql`delete from defect_type_processes where defect_type_id = (select id from defect_types where code = 'WIRE-SWP')
+        and process_id = (select id from processes where code = 'MD')`,
+    );
+
     const counts = await resetToSample(db);
     expect(await snapshot()).toEqual(clean);
     expect(counts).toEqual({
@@ -145,6 +165,8 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
       warehouses: SAMPLE_WAREHOUSES.length,
       partners: SAMPLE_PARTNERS.length,
       work_centers: SAMPLE_WORK_CENTERS.length,
+      defect_types: SAMPLE_DEFECT_TYPES.length,
+      defect_type_processes: SAMPLE_DEFECT_TYPES.flatMap((d) => d.processCodes).length,
       processes: SAMPLE_PROCESSES.length,
       unit_specs: SAMPLE_UNIT_SPECS.length,
       codes: SAMPLE_CODES.length,
@@ -155,6 +177,16 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
     // 작업장은 공정의 id 로 이어진다 — 되돌린 뒤에도 DA-2 는 공정 DA 에 걸린다.
     const da2 = clean.workCenters.find((w) => w.code === "DA-2")!;
     expect(clean.processes.find((p) => p.id === da2.processId)?.code).toBe("DA");
+    // 불량 유형의 발생 공정은 공정의 id 로 이어진다 — 되돌린 뒤에도 WIRE-SWP 의 공정은 WB · MD 이고 SCRATCH 는 없다(공통).
+    const linksOf = (code: string) => {
+      const d = clean.defectTypes.find((x) => x.code === code)!;
+      return clean.defectTypeProcesses
+        .filter((l) => l.defectTypeId === d.id)
+        .map((l) => clean.processes.find((p) => p.id === l.processId)!.code)
+        .sort();
+    };
+    expect(linksOf("WIRE-SWP")).toEqual(["MD", "WB"]);
+    expect(linksOf("SCRATCH")).toEqual([]);
     // 번호 규칙의 일련은 샘플 수불이 반제품 · 완제품의 LOT 를 저절로 받으며 생긴다 — 규칙마다 하나(7일 전).
     expect(clean.numberRuleSeqs.map((s) => [s.ruleCode, s.lastSeq])).toEqual([
       ["LOT_SF", 2],
