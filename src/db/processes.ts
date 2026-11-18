@@ -77,7 +77,8 @@ export type ProcessSaveResult =
   { ok: true; code: string } | { ok: false; errors: ProcessErrors; formError?: string; values: ProcessValues };
 
 const DUPLICATE = "이미 있는 공정코드입니다";
-const DUPLICATE_INACTIVE = "「사용 안 함」으로 있는 공정입니다 — 목록에서 그 공정을 「사용」으로 바꾸세요";
+const DUPLICATE_INACTIVE =
+  "「사용 안 함」으로 있는 공정입니다 — 목록에서 「사용 안 함 포함」을 켜고 그 공정을 「사용」으로 바꾸세요";
 
 // DB 제약에 걸린 것(서버의 검사를 빠뜨렸을 때)을 칸으로 가른다.
 const CONSTRAINT_FIELD: Record<string, ProcessField> = {

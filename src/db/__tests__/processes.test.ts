@@ -94,7 +94,9 @@ describe("등록", () => {
     const r = await createProcess(db, { code: "MK", name: "마킹 2", note: "" });
     expect(r).toMatchObject({
       ok: false,
-      errors: { code: "「사용 안 함」으로 있는 공정입니다 — 목록에서 그 공정을 「사용」으로 바꾸세요" },
+      errors: {
+        code: "「사용 안 함」으로 있는 공정입니다 — 목록에서 「사용 안 함 포함」을 켜고 그 공정을 「사용」으로 바꾸세요",
+      },
     });
   });
 

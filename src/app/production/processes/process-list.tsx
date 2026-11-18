@@ -107,30 +107,30 @@ export function ProcessList({
           </tr>
         </thead>
         <tbody>
-          {rows.map((w) => (
+          {rows.map((p) => (
             <tr
-              key={w.id}
-              className={`border-b border-rule align-top ${w.code === savedCode ? "bg-safety/15" : ""} ${
-                w.active ? "" : "text-muted"
+              key={p.id}
+              className={`border-b border-rule align-top ${p.code === savedCode ? "bg-safety/15" : ""} ${
+                p.active ? "" : "text-muted"
               }`}
             >
               <td className="px-3 py-2.5 font-mono text-sm whitespace-nowrap">
                 <Link
-                  href={`/production/processes/${w.code}`}
+                  href={`/production/processes/${p.code}`}
                   className="font-semibold text-ink underline underline-offset-4 hover:text-machine"
                 >
-                  {w.code}
+                  {p.code}
                 </Link>
               </td>
               <td className="px-3 py-2.5 wrap-anywhere">
-                <span className="font-semibold">{w.name}</span>
-                {!w.active && (
+                <span className="font-semibold">{p.name}</span>
+                {!p.active && (
                   <span className="ml-2 rounded border border-rule px-1.5 py-0.5 text-xs whitespace-nowrap">
                     사용 안 함
                   </span>
                 )}
               </td>
-              <td className="px-3 py-2.5 text-sm wrap-anywhere whitespace-pre-line">{w.note}</td>
+              <td className="px-3 py-2.5 text-sm wrap-anywhere whitespace-pre-line">{p.note}</td>
             </tr>
           ))}
         </tbody>

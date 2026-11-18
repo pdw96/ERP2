@@ -35,10 +35,18 @@ export default function EditProcessPage({ params }: PageProps<"/production/proce
 async function EditProcess({ params }: Pick<PageProps<"/production/processes/[code]">, "params">) {
   const { code } = await params;
   await connection();
+  // 퍼센트 부호가 깨진 주소(%E0 등)는 DB 를 부르기 전에 없는 공정으로 본다 — 불러오기 실패 화면이 아니다.
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(code);
+  } catch (error) {
+    if (error instanceof URIError) notFound();
+    throw error;
+  }
   let process;
   try {
     // 꼴이 틀린 코드는 getProcess 가 없는 공정으로 돌려준다.
-    process = await withDb((db) => getProcess(db, decodeURIComponent(code)));
+    process = await withDb((db) => getProcess(db, decoded));
   } catch (error) {
     return <LoadFailed what="공정" error={error} />;
   }
