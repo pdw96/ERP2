@@ -15,6 +15,7 @@ import {
 } from "./master-shared";
 import { codeGroups, codes, unitSpecs } from "./schema";
 import { bomQuantitiesFit, lockBom } from "./boms";
+import { lockSalesPlans, salesPlanQuantitiesFit } from "./sales-plans";
 import { lockStock, unitQuantitiesFit } from "./stock";
 import type { Db } from "./types";
 
@@ -229,6 +230,10 @@ export async function updateCode(
         await lockBom(tx);
         if (!(await bomQuantitiesFit(tx, current.code, decimals.value.decimals)))
           throw new DecimalsMisfit(decimals.value.decimals);
+        // 판매계획의 수량도 그 단위의 자릿수를 지킨다 — BOM 다음에 판매계획의 잠금을 쥐고 본다.
+        await lockSalesPlans(tx);
+        if (!(await salesPlanQuantitiesFit(tx, current.code, decimals.value.decimals)))
+          throw new DecimalsMisfit(decimals.value.decimals);
       }
       const done = await tx
         .update(codes)
@@ -252,7 +257,7 @@ export async function updateCode(
       return {
         ok: false,
         errors: {
-          decimals: `이 단위의 수불 수량 · 작성 중 실사의 실물 수량 · BOM 의 기준수량 · 소요량 가운데 소수 ${error.decimals}자리에 맞지 않는 것이 있어 줄이지 못합니다`,
+          decimals: `이 단위의 수불 수량 · 작성 중 실사의 실물 수량 · BOM 의 기준수량 · 소요량 · 판매계획 수량 가운데 소수 ${error.decimals}자리에 맞지 않는 것이 있어 줄이지 못합니다`,
         },
         values,
       };

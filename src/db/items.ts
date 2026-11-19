@@ -51,6 +51,7 @@ import {
 import { nextCode } from "./numbering";
 import { codes, items, numberRules, warehouses } from "./schema";
 import { itemsInBoms, lockBom } from "./boms";
+import { itemsInSalesPlans, lockSalesPlans } from "./sales-plans";
 import { itemsWithMoves, lockStock } from "./stock";
 import type { Db } from "./types";
 
@@ -405,6 +406,10 @@ export async function updateItem(
       if (parsed.value.unit !== current.unit) {
         await lockBom(tx);
         if ((await itemsInBoms(tx, [current.id])).size) return { ok: false, errors: { unit: BOM_UNIT }, values };
+        // 판매계획에 든 품목도 단위를 바꾸지 못한다 — 재고 → BOM 다음에 판매계획의 잠금을 쥐고 센다.
+        await lockSalesPlans(tx);
+        if ((await itemsInSalesPlans(tx, [current.id])).size)
+          return { ok: false, errors: { unit: SALES_PLAN_UNIT }, values };
       }
       const done = await tx
         .update(items)
@@ -426,6 +431,7 @@ export async function updateItem(
 const MOVED_UNIT = "수불이 있거나 작성 중인 실사에 든 품목이라 단위를 바꾸지 못합니다 — 이미 넣은 수량의 뜻이 바뀝니다";
 const BOM_UNIT =
   "BOM 에 든 품목이라 단위를 바꾸지 못합니다 — 기준수량 · 소요량의 뜻이 바뀝니다. BOM 에서 뺀 뒤 바꾸세요";
+const SALES_PLAN_UNIT = "판매계획에 든 품목이라 단위를 바꾸지 못합니다 — 계획 수량의 뜻이 바뀝니다";
 const MOVED_LOT =
   "수불이 있거나 작성 중인 실사에 든 품목이라 LOT 관리를 바꾸지 못합니다 — 이미 넣은 수량의 뜻이 바뀝니다";
 
@@ -542,6 +548,14 @@ export async function saveItemRows(db: Db, rows: readonly SheetRow[]): Promise<S
         unitChanges.map((r) => r.current.id),
       );
       for (const r of unitChanges) if (inBoms.has(r.current.id)) blocked.set(r, { unit: BOM_UNIT });
+      // 판매계획에 든 품목의 단위를 바꾸는 줄도 남긴다 — BOM 다음에 판매계획의 잠금을 쥐고 센다.
+      await lockSalesPlans(tx);
+      const inPlans = await itemsInSalesPlans(
+        tx,
+        unitChanges.filter((r) => !blocked.has(r)).map((r) => r.current.id),
+      );
+      for (const r of unitChanges)
+        if (!blocked.has(r) && inPlans.has(r.current.id)) blocked.set(r, { unit: SALES_PLAN_UNIT });
     }
     const allowed = edits.filter((r) => !blocked.has(r));
     const done = await updateRowsWithVersion(

@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { count, eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { getUnitSpec, updateCode } from "@/db/codes";
+import { createItem, loadItemsForSheet, saveItemRows, updateItem } from "@/db/items";
 import { limitMessage, STALE } from "@/db/master-shared";
 import { resetToSample } from "@/db/reset";
 import {
@@ -21,6 +23,7 @@ import {
 import { items, partners, salesPlanChanges, salesPlans } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { cellKey, type SalesPlanCellInput } from "@/lib/sales-plan-input";
+import { CODE_KEY, ROW_ERROR } from "@/lib/sheet";
 import { addWeeks } from "@/lib/weeks";
 import { migratedDb, rejection } from "./pglite";
 
@@ -425,5 +428,74 @@ describe("판매계획 — 단위의 도우미", () => {
     expect(await salesPlanDemand(db, W1, W1)).toEqual([{ item: "FG-0001", week: W1, qty: "1000.5" }]);
     expect(await salesPlanQuantitiesFit(db, "EA", 1)).toBe(true);
     expect(await salesPlanQuantitiesFit(db, "KG", 0)).toBe(true);
+  });
+});
+
+describe("단위 — 판매계획에 든 품목은 단위 · 자릿수를 바꾸지 못한다", () => {
+  const PLAN_UNIT = "판매계획에 든 품목이라 단위를 바꾸지 못합니다 — 계획 수량의 뜻이 바뀝니다";
+  const base = {
+    procurement: "MAKE",
+    name: "계획 완제품",
+    leadTimeDays: "0",
+    safetyStock: "0",
+    minLot: "0",
+    lotMultiple: "0",
+    active: "Y",
+    lotManaged: "on",
+  };
+
+  async function newFg(unit = "EA"): Promise<string> {
+    const r = await createItem(db, { itemType: "FG", unit, ...base });
+    if (!r.ok) throw new Error(JSON.stringify(r));
+    return r.code;
+  }
+  const kg = (decimals: string) => ({ name: "킬로그램", sortOrder: "30", active: "Y", decimals });
+
+  it("한 건 수정 — 판매계획에 들면 거절, 계획을 비우면 바뀐다", async () => {
+    const fg = await newFg();
+    expect(await save([cell("BP-0004", fg, W1, "", "5")])).toEqual({ ok: true, changed: 1 });
+    expect(await updateItem(db, fg, { ...base, unit: "KG" })).toMatchObject({ ok: false, errors: { unit: PLAN_UNIT } });
+    expect(await save([cell("BP-0004", fg, W1, "5", "")])).toEqual({ ok: true, changed: 1 });
+    expect(await updateItem(db, fg, { ...base, unit: "KG" })).toEqual({ ok: true, code: fg });
+  });
+
+  it("시트 — 판매계획에 든 품목의 단위를 바꾸는 줄만 남고 다른 줄은 저장된다", async () => {
+    const planned = await newFg();
+    const other = await newFg();
+    expect(await save([cell("BP-0004", planned, W1, "", "5")])).toEqual({ ok: true, changed: 1 });
+    const rows = (await loadItemsForSheet(db, { q: "", includeInactive: true })).rows;
+    const r = await saveItemRows(db, [
+      { ...rows.find((x) => x[CODE_KEY] === planned)!, unit: "KG" },
+      { ...rows.find((x) => x[CODE_KEY] === other)!, unit: "KG" },
+    ]);
+    expect(r.saved.map((s) => s.code)).toEqual([other]);
+    expect(r.rejected[0].errors.unit ?? r.rejected[0].errors[ROW_ERROR]).toBe(PLAN_UNIT);
+  });
+
+  it("단위 자릿수를 줄이는 고침 — 판매계획 1.25 가 있으면 KG 을 1자리로 줄이지 못하고, 1.2 로 고치면 줄인다", async () => {
+    const fg = await newFg("KG");
+    expect(await save([cell("BP-0004", fg, W1, "", "1.25")])).toEqual({ ok: true, changed: 1 });
+    expect(await updateCode(db, "UNIT", "KG", kg("1"))).toMatchObject({
+      ok: false,
+      errors: { decimals: expect.stringContaining("판매계획 수량") },
+    });
+    expect((await getUnitSpec(db, "KG"))!.decimals).toBe(3);
+    expect(await save([cell("BP-0004", fg, W1, "1.25", "1.2")])).toEqual({ ok: true, changed: 1 });
+    expect((await updateCode(db, "UNIT", "KG", kg("1"))).ok).toBe(true);
+    expect((await getUnitSpec(db, "KG"))!.decimals).toBe(1);
+  });
+
+  it("소수 수량 1.5 를 저장한 뒤 「1.50 → 2」로 고치면 STALE 이 아니라 바뀐다", async () => {
+    const fg = await newFg("KG");
+    expect(await save([cell("BP-0004", fg, W1, "", "1.5")])).toEqual({ ok: true, changed: 1 });
+    const r = await save([cell("BP-0004", fg, W1, "1.50", "2")]);
+    expect(r.ok && r.changed).toBe(1);
+    const [row] = await db
+      .select({ q: sql<string>`${salesPlans.qty}::text` })
+      .from(salesPlans)
+      .innerJoin(items, eq(items.id, salesPlans.itemId))
+      .where(eq(items.code, fg));
+    expect(Number(row.q)).toBe(2);
+    expect((await open({ item: fg }, W1)).rows[0].cells).toEqual({ [W1]: "2" });
   });
 });
