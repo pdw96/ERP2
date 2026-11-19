@@ -56,15 +56,16 @@ describe("ModuleHome", () => {
     expect(screen.queryAllByRole("link")).toHaveLength(1);
   });
 
-  it("생산 — 「BOM 등록」 · 「BOM 조회」 · 「공정 등록」 · 「작업장 등록」이 링크이고 메뉴 「BOM」은 없다(ADR 0026 의 6)", () => {
+  it("생산 — 「BOM 등록」 · 「BOM 조회」 · 「공정 등록」 · 「작업장 등록」 · 「라우팅」이 링크이고 메뉴 「BOM」은 없다(ADR 0026 의 6)", () => {
     render(<ModuleHome href="/production" />);
     const group = within(screen.getByRole("region", { name: "생산 기준정보" }));
     expect(group.getByRole("link", { name: /BOM 등록/ })).toHaveAttribute("href", "/production/bom");
     expect(group.getByRole("link", { name: /BOM 조회/ })).toHaveAttribute("href", "/production/bom/inquiry");
     expect(group.getByRole("link", { name: /공정 등록/ })).toHaveAttribute("href", "/production/processes");
     expect(group.getByRole("link", { name: /작업장 등록/ })).toHaveAttribute("href", "/production/work-centers");
+    expect(group.getByRole("link", { name: /라우팅/ })).toHaveAttribute("href", "/production/routings");
     expect(group.queryByText(/^BOM$/)).toBeNull();
-    expect(screen.getAllByRole("link")).toHaveLength(4);
+    expect(screen.getAllByRole("link")).toHaveLength(5);
   });
 
   it("목록에 없는 모듈이면 멈춘다 — 메뉴와 화면이 어긋나지 않게", () => {

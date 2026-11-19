@@ -29,6 +29,10 @@ import {
   numberRules,
   partners,
   processes,
+  routingChanges,
+  routingMaterials,
+  routings,
+  routingSteps,
   stockBalances,
   stockCountLines,
   stockCounts,
@@ -87,6 +91,14 @@ async function snapshot() {
       delete rest.savedAt;
       return rest;
     }),
+    routings: strip(await db.select().from(routings).orderBy(asc(routings.id))),
+    routingSteps: await db.select().from(routingSteps).orderBy(asc(routingSteps.id)),
+    routingMaterials: await db.select().from(routingMaterials).orderBy(asc(routingMaterials.id)),
+    routingChanges: (await db.select().from(routingChanges).orderBy(asc(routingChanges.id))).map((row) => {
+      const rest: Partial<typeof row> = { ...row };
+      delete rest.savedAt;
+      return rest;
+    }),
   };
 }
 
@@ -128,6 +140,13 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
     await db.execute(
       sql`insert into bom_changes (parent_item_id, kind, after) values ((select id from items where code = 'FG-0001'), 'BASE', '{"baseQty":"1"}')`,
     );
+    // 라우팅 — 줄 하나를 고치고, 자재 하나를 떼고, 라우팅 하나를 지우고, 고친 이력을 더한다(되돌림이 비우고 샘플 라우팅의 저장이 다시 채운다).
+    await db.execute(sql`update routing_steps set note = '방문자 비고' where seq = 10`);
+    await db.execute(sql`delete from routing_materials where item_id = (select id from items where code = 'RM-0002')`);
+    await db.execute(sql`delete from routings where item_id = (select id from items where code = 'FG-0002')`);
+    await db.execute(
+      sql`insert into routing_changes (item_id, kind) values ((select id from items where code = 'FG-0001'), 'ROUTING_DEL')`,
+    );
     // BOM PR A — BOM 하나를 지우고 하나를 고친다.
     await db.execute(sql`delete from bom_lines where parent_item_id = (select id from items where code = 'FG-0002')`);
     await db.execute(sql`delete from boms where item_id = (select id from items where code = 'FG-0002')`);
@@ -150,7 +169,13 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
 
     const counts = await resetToSample(db);
     expect(await snapshot()).toEqual(clean);
+    expect([clean.routings.length, clean.routingSteps.length, clean.routingMaterials.length]).toEqual([4, 14, 14]);
+    expect(clean.routingChanges.length).toBeGreaterThan(0);
     expect(counts).toEqual({
+      routing_changes: clean.routingChanges.length,
+      routing_materials: clean.routingMaterials.length,
+      routing_steps: clean.routingSteps.length,
+      routings: clean.routings.length,
       bom_changes: clean.bomChanges.length,
       bom_lines: clean.bomLines.length,
       boms: clean.boms.length,
@@ -275,7 +300,7 @@ describe("코드 번호 — 같은 머리의 가장 큰 번호 + 1", () => {
     expect(await nextCode(db, "CS")).toBe("CS-0003");
     await db.execute(
       sql.raw(
-        `truncate table "bom_changes", "bom_lines", "boms", "stock_count_lines", "stock_balances", "stock_move_lines", "items"`,
+        `truncate table "routing_changes", "routing_materials", "routing_steps", "routings", "bom_changes", "bom_lines", "boms", "stock_count_lines", "stock_balances", "stock_move_lines", "items"`,
       ),
     );
     expect(await nextCode(db, "RM")).toBe("RM-0001");

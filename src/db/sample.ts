@@ -657,3 +657,65 @@ export const SAMPLE_BOMS: SampleBom[] = [
     ],
   },
 ];
+
+/**
+ * 샘플 라우팅(메뉴 「라우팅」 — 설계 승인). 이미 있는 샘플 품목 · 공정 · 작업장만 쓴다. 되돌림이 라우팅 저장(src/db/routings.ts)을 불러
+ * 넣고(BOM 뒤), 마이그레이션 0022 가 같은 값을 데이터가 있는 DB 에 넣는다(시험이 견준다). 순번은 줄 순서대로 10 · 20 · 30 … 이다.
+ * runSec 은 개당 작업시간(초, 소수 셋째 자리까지)이고 저장은 정수 밀리초다. materials 는 그 공정에 드는 자재 — 그 품목 BOM 의 자품목이다.
+ * FG-0002 의 웨이퍼(RM-0001)는 일부러 붙이지 않았다 — 붙이지 않은 자재가 화면에 「첫 공정에서 듦」으로 보인다.
+ */
+export type SampleRouting = {
+  item: string;
+  steps: {
+    process: string;
+    workCenter: string;
+    setupMin: number;
+    runSec: string;
+    note?: string;
+    materials?: string[];
+  }[];
+};
+
+export const SAMPLE_ROUTINGS: SampleRouting[] = [
+  {
+    item: "SF-0001",
+    steps: [
+      { process: "BG", workCenter: "BG-1", setupMin: 30, runSec: "0.300", materials: ["RM-0001"] },
+      { process: "SAW", workCenter: "SAW-1", setupMin: 20, runSec: "0.450" },
+      { process: "DA", workCenter: "DA-1", setupMin: 15, runSec: "0.600", materials: ["RM-0002", "RM-0005"] },
+    ],
+  },
+  {
+    item: "SF-0002",
+    steps: [
+      { process: "WB", workCenter: "WB-1", setupMin: 20, runSec: "2.400", materials: ["SF-0001", "RM-0003"] },
+      { process: "MD", workCenter: "MD-1", setupMin: 30, runSec: "0.120", materials: ["RM-0004"] },
+    ],
+  },
+  {
+    item: "FG-0001",
+    steps: [
+      { process: "MK", workCenter: "MK-1", setupMin: 10, runSec: "0.080", materials: ["SF-0002"] },
+      {
+        process: "FT",
+        workCenter: "FT-1",
+        setupMin: 15,
+        runSec: "0.250",
+        note: "테이핑 · 포장 포함",
+        materials: ["SM-0001", "SM-0002"],
+      },
+    ],
+  },
+  {
+    item: "FG-0002",
+    steps: [
+      { process: "BG", workCenter: "BG-1", setupMin: 30, runSec: "0.300" },
+      { process: "SAW", workCenter: "SAW-1", setupMin: 20, runSec: "0.450" },
+      { process: "DA", workCenter: "DA-2", setupMin: 15, runSec: "0.700", materials: ["RM-0006", "RM-0005"] },
+      { process: "WB", workCenter: "WB-2", setupMin: 25, runSec: "4.800", materials: ["RM-0003"] },
+      { process: "MD", workCenter: "MD-1", setupMin: 30, runSec: "0.150", materials: ["RM-0004"] },
+      { process: "MK", workCenter: "MK-1", setupMin: 10, runSec: "0.080" },
+      { process: "FT", workCenter: "FT-1", setupMin: 20, runSec: "0.400", materials: ["SM-0002"] },
+    ],
+  },
+];

@@ -13,6 +13,7 @@ import {
   SAMPLE_NUMBER_RULES,
   SAMPLE_PARTNERS,
   SAMPLE_PROCESSES,
+  SAMPLE_ROUTINGS,
   SAMPLE_UNIT_SPECS,
   SAMPLE_WAREHOUSES,
   SAMPLE_WORK_CENTERS,
@@ -30,6 +31,10 @@ import {
   numberRuleSeqs,
   partners,
   processes,
+  routingChanges,
+  routingMaterials,
+  routings,
+  routingSteps,
   stockBalances,
   stockCountLines,
   stockCounts,
@@ -40,12 +45,17 @@ import {
   workCenters,
 } from "./schema";
 import { lockBom, saveBom } from "./boms";
+import { lockRouting, saveRouting } from "./routings";
 import { cancelMove, lockStock, saveMove } from "./stock";
 import { confirmCount, openCountSheet, saveCount } from "./stock-counts";
 import type { Db } from "./types";
 
 /** 되돌림이 비우고 다시 채우는 테이블 — 테이블을 더하는 조각은 여기에도 더한다(시험이 스키마와 견준다). */
 export const RESET_TABLES = [
+  "routing_changes",
+  "routing_materials",
+  "routing_steps",
+  "routings",
   "bom_changes",
   "bom_lines",
   "boms",
@@ -80,6 +90,8 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
     // 서로 기다려 한쪽이 교착(40P01)으로 되돌아간다(PR C 리뷰 1회차).
     await lockStock(tx);
     await lockBom(tx);
+    // 라우팅도 같다 — 샘플 라우팅을 넣는 saveRouting 이 비운 뒤 이 잠금을 다시 쥐므로(같은 트랜잭션이라 겹쳐 쥐어도 된다) 먼저 쥔다(PR #58 Codex 리뷰).
+    await lockRouting(tx);
     await tx.execute(sql.raw(`truncate table ${RESET_TABLES.map((t) => `"${t}"`).join(", ")} restart identity`));
     await tx.insert(codeGroups).values(SAMPLE_CODE_GROUPS);
     await tx.insert(codes).values(SAMPLE_CODES);
@@ -123,6 +135,7 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
     await insertSampleMoves(tx, today);
     await insertSampleCounts(tx, today);
     await insertSampleBoms(tx, today);
+    await insertSampleRoutings(tx);
     const n = async (
       t:
         | typeof stockMoves
@@ -134,9 +147,17 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
         | typeof boms
         | typeof bomLines
         | typeof bomChanges
-        | typeof defectTypeProcesses,
+        | typeof defectTypeProcesses
+        | typeof routings
+        | typeof routingSteps
+        | typeof routingMaterials
+        | typeof routingChanges,
     ) => (await tx.select({ n: count() }).from(t))[0].n;
     return {
+      routing_changes: await n(routingChanges),
+      routing_materials: await n(routingMaterials),
+      routing_steps: await n(routingSteps),
+      routings: await n(routings),
       bom_changes: await n(bomChanges),
       bom_lines: await n(bomLines),
       boms: await n(boms),
@@ -248,5 +269,25 @@ async function insertSampleBoms(tx: Db, today: string) {
     });
     if (!saved.ok)
       throw new Error(`샘플 BOM 저장 실패(${b.parent}): ${JSON.stringify([saved.errors, saved.formError])}`);
+  }
+}
+
+/** 샘플 라우팅을 넣는다 — 라우팅 저장(src/db/routings.ts)을 불러 화면과 같은 검사를 지난다(BOM 뒤 — 자재는 BOM 의 자품목이어야 한다). 틀리면 던져 되돌림 전체를 되돌린다. */
+async function insertSampleRoutings(tx: Db) {
+  for (const r of SAMPLE_ROUTINGS) {
+    const saved = await saveRouting(tx, {
+      item: r.item,
+      version: "",
+      steps: r.steps.map((s) => ({
+        process: s.process,
+        workCenter: s.workCenter,
+        setupMin: String(s.setupMin),
+        runSec: s.runSec,
+        note: s.note ?? "",
+      })),
+      materials: r.steps.flatMap((s, i) => (s.materials ?? []).map((item) => ({ item, step: String(i) }))),
+    });
+    if (!saved.ok)
+      throw new Error(`샘플 라우팅 저장 실패(${r.item}): ${JSON.stringify([saved.errors, saved.formError])}`);
   }
 }
