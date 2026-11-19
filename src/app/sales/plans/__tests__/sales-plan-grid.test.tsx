@@ -132,6 +132,17 @@ describe("판매계획 표", () => {
     expect(total("FG-0001", THIS)).toHaveTextContent("4,500");
   });
 
+  it("음수(-5)는 합계를 바꾸지 않지만 저장에는 보낸다 — 까닭은 서버가 돌려준다", async () => {
+    render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
+    fireEvent.change(cell("BP-0004", "FG-0001", "47주"), { target: { value: "-5" } });
+    expect(total("FG-0001", THIS)).toHaveTextContent("4,500");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "저장" })));
+    await waitFor(() => expect(h.save).toHaveBeenCalled());
+    expect(h.save.mock.calls[0][0]).toEqual([
+      { customer: "BP-0004", item: "FG-0001", week: THIS, before: "3000", after: "-5" },
+    ]);
+  });
+
   it("칸을 비우면 그 수량만큼 합계가 줄고, 숫자가 아닌 글자는 합계를 바꾸지 않는다", () => {
     render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
     fireEvent.change(cell("BP-0005", "FG-0001", "47주"), { target: { value: "" } });
@@ -175,6 +186,34 @@ describe("판매계획 표", () => {
 });
 
 describe("줄 더하기", () => {
+  // 거른 화면에는 거르기에 맞는 DB 의 줄이 모두 보인다 — 거르기에 맞는 쌍만 후보로 두면 새 줄은 DB 에 칸이 없는 쌍뿐이고, 저장 뒤에도 보인다.
+  it("고객으로 거르면 새 줄의 고객 후보는 그 고객뿐이다", () => {
+    const filtered = { ...sheet, rows: sheet.rows.slice(0, 1), filtered: true };
+    render(<SalesPlanGrid sheet={filtered} options={options} back={{ ...back, customer: "BP-0004" }} />);
+    const pickCustomer = screen.getByLabelText("새 줄 고객");
+    expect(optionTexts(pickCustomer).slice(1)).toEqual(["BP-0004 (가상) 라온전자"]);
+    fireEvent.change(pickCustomer, { target: { value: "BP-0004" } });
+    expect(optionTexts(screen.getByLabelText("새 줄 품목")).slice(1)).toEqual(["FG-0003 완제품 다"]);
+  });
+
+  it("품목으로 거르면 새 줄의 품목 후보는 그 품목뿐이다", () => {
+    const filtered = { ...sheet, rows: [], filtered: true };
+    render(<SalesPlanGrid sheet={filtered} options={options} back={{ ...back, item: "FG-0003" }} />);
+    expect(optionTexts(screen.getByLabelText("새 줄 고객")).slice(1)).toEqual([
+      "BP-0004 (가상) 라온전자",
+      "BP-0005 (가상) 마루반도체",
+    ]);
+    fireEvent.change(screen.getByLabelText("새 줄 고객"), { target: { value: "BP-0005" } });
+    expect(optionTexts(screen.getByLabelText("새 줄 품목")).slice(1)).toEqual(["FG-0003 완제품 다"]);
+  });
+
+  it("거른 고객이 새 줄 후보(「사용」 매출처)에 없으면 더할 줄이 없다", () => {
+    const filtered = { ...sheet, rows: sheet.rows.slice(2), filtered: true };
+    render(<SalesPlanGrid sheet={filtered} options={options} back={{ ...back, customer: "BP-0007" }} />);
+    expect(optionTexts(screen.getByLabelText("새 줄 고객")).slice(1)).toEqual([]);
+    expect(screen.getByText(/거른 고객 · 품목으로 더할 수 있는 줄이 없습니다/)).toBeInTheDocument();
+  });
+
   it("이미 있는 고객 × 품목은 후보에 없다 — 고객을 고르면 그 고객에게 이미 있는 품목이 빠진다", () => {
     render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
     const pickCustomer = screen.getByLabelText("새 줄 고객");

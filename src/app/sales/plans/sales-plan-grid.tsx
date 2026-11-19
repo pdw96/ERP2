@@ -25,12 +25,12 @@ const pairOf = (customer: string, item: string) => `${customer}|${item}`;
 const byCode = <T extends { code: string }>(a: T, b: T) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
 const domId = (key: string) => `plan-err-${key.replaceAll("|", "-")}`;
 
-/** 넣은 글자의 수량 — 빈 칸 · 0 은 null(지움), 읽지 못하면 undefined(서버가 까닭을 돌려준다). */
+/** 넣은 글자의 수량 — 빈 칸 · 0 은 null(지움), 읽지 못하거나 음수면 undefined(합계에 넣지 않고, 서버가 까닭을 돌려준다). */
 function valueOf(text: string): Milli | null | undefined {
   const s = text.trim();
   if (s === "") return null;
   const parsed = parseQty(s);
-  if (!parsed) return undefined;
+  if (!parsed || parsed.qty < ZERO) return undefined;
   return parsed.qty === ZERO ? null : parsed.qty;
 }
 
@@ -135,8 +135,11 @@ export function SalesPlanGrid({
   };
 
   // 새 줄의 후보 — 「사용」 매출처 · 「사용」 완제품 가운데 화면에 없는 쌍. 고를 품목이 남지 않은 고객은 뺀다.
-  const freeItems = (customer: string) => options.items.filter((i) => !pairs.has(pairOf(customer, i.code)));
-  const newCustomers = options.customers.filter((c) => freeItems(c.code).length > 0);
+  // 거른 화면이면 거른 고객 · 품목만 — 거르기에 맞는 DB 의 줄은 모두 화면에 있으니 새 줄은 DB 에 칸이 없는 쌍뿐이고, 저장 뒤 같은 거르기로 돌아와도 보인다.
+  const addItems = back.item ? options.items.filter((i) => i.code === back.item) : options.items;
+  const addCustomers = back.customer ? options.customers.filter((c) => c.code === back.customer) : options.customers;
+  const freeItems = (customer: string) => addItems.filter((i) => !pairs.has(pairOf(customer, i.code)));
+  const newCustomers = addCustomers.filter((c) => freeItems(c.code).length > 0);
   const newItems = newCustomers.some((c) => c.code === pickCustomer) ? freeItems(pickCustomer) : [];
   const canAdd = !!pickCustomer && newItems.some((i) => i.code === pickItem);
 
@@ -150,8 +153,8 @@ export function SalesPlanGrid({
       });
   };
   const addRow = () => {
-    const customer = options.customers.find((c) => c.code === pickCustomer);
-    const item = options.items.find((i) => i.code === pickItem);
+    const customer = addCustomers.find((c) => c.code === pickCustomer);
+    const item = addItems.find((i) => i.code === pickItem);
     if (!customer || !item || !canAdd) return;
     setAdded((a) => [...a, { customer, item, cells: {}, added: true }]);
     setPickCustomer("");
@@ -482,7 +485,9 @@ export function SalesPlanGrid({
           </button>
           {newCustomers.length === 0 && (
             <p className="text-sm text-muted sm:col-span-full">
-              더할 수 있는 고객 × 품목이 없습니다 — 「사용」 매출처와 「사용」 완제품의 쌍이 모두 표에 있습니다.
+              {filtered
+                ? "거른 고객 · 품목으로 더할 수 있는 줄이 없습니다 — 새 줄은 「사용」 매출처 × 「사용」 완제품 가운데 표에 없는 쌍입니다. 다른 쌍은 거르기를 풀고 더하세요."
+                : "더할 수 있는 고객 × 품목이 없습니다 — 「사용」 매출처와 「사용」 완제품의 쌍이 모두 표에 있습니다."}
             </p>
           )}
           <p className="text-sm text-muted sm:col-span-full">더한 줄은 칸에 수량을 넣고 저장해야 남습니다.</p>
