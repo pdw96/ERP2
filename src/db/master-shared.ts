@@ -24,6 +24,8 @@ export const REGISTER_LOCK = {
   workCenters: 2026111802,
   // 불량 유형(메뉴 「불량 유형」) — 등록(개수 상한 100 을 세고 넣기)만 한 차례로 본다. 고침은 이 잠금을 잡지 않는다.
   defectTypes: 2026111803,
+  // 라우팅(메뉴 「라우팅」) — 라우팅 저장 · 지우기(공정 줄 전체 5,000 · 고친 이력 50,000 상한을 세고 넣기)를 한 차례로 본다.
+  routings: 2026111901,
 } as const;
 
 export type Params = Record<string, string | string[] | undefined>;

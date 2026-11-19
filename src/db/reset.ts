@@ -30,6 +30,10 @@ import {
   numberRuleSeqs,
   partners,
   processes,
+  routingChanges,
+  routingMaterials,
+  routings,
+  routingSteps,
   stockBalances,
   stockCountLines,
   stockCounts,
@@ -46,6 +50,10 @@ import type { Db } from "./types";
 
 /** 되돌림이 비우고 다시 채우는 테이블 — 테이블을 더하는 조각은 여기에도 더한다(시험이 스키마와 견준다). */
 export const RESET_TABLES = [
+  "routing_changes",
+  "routing_materials",
+  "routing_steps",
+  "routings",
   "bom_changes",
   "bom_lines",
   "boms",
@@ -134,9 +142,17 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
         | typeof boms
         | typeof bomLines
         | typeof bomChanges
-        | typeof defectTypeProcesses,
+        | typeof defectTypeProcesses
+        | typeof routings
+        | typeof routingSteps
+        | typeof routingMaterials
+        | typeof routingChanges,
     ) => (await tx.select({ n: count() }).from(t))[0].n;
     return {
+      routing_changes: await n(routingChanges),
+      routing_materials: await n(routingMaterials),
+      routing_steps: await n(routingSteps),
+      routings: await n(routings),
       bom_changes: await n(bomChanges),
       bom_lines: await n(bomLines),
       boms: await n(boms),

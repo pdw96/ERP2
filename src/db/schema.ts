@@ -176,6 +176,8 @@ export const workCenters = pgTable(
     check("work_centers_name_length", sql`char_length(${t.name}) between 1 and 50`),
     check("work_centers_note_length", sql`char_length(${t.note}) <= 500`),
     index("work_centers_process_idx").on(t.processId),
+    // 라우팅 공정 줄이 (작업장, 공정)을 함께 가리키려면 이 쌍이 유일해야 한다(routing_steps_work_center_fk).
+    unique("work_centers_id_process_unique").on(t.id, t.processId),
   ],
 );
 
@@ -762,5 +764,109 @@ export const bomChanges = pgTable(
       sql`(${t.kind} in ('LINE_ADD', 'LINE_DEL', 'LINE_EDIT')) = (${t.childItemId} is not null and ${t.lineNo} is not null)`,
     ),
     check("bom_changes_line_no_range", sql`${t.lineNo} is null or ${t.lineNo} between 1 and 200`),
+  ],
+);
+
+// ── 라우팅(메뉴 「라우팅」) ─────────────────────────────────
+
+/**
+ * 라우팅 머리 — 품목(반제품 · 완제품)마다 하나. `updated_at` 이 버전이다 — 화면을 연 뒤 남이 저장한 라우팅을 덮지 않는다.
+ * 품목의 유형 · 「사용 안 함」 검사는 서버가 본다.
+ */
+export const routings = pgTable("routings", {
+  id: id(),
+  itemId: integer("item_id")
+    .notNull()
+    .unique()
+    .references(() => items.id),
+  ...timestamps(),
+});
+
+/**
+ * 라우팅의 공정 줄 — 순번(10 · 20 …, 저장할 때 서버가 매김) · 공정 · 작업장 · 준비시간(분) · 개당 작업시간(밀리초) · 비고.
+ * 작업장은 그 줄 공정의 작업장만 가리킨다 — (작업장, 공정)이 작업장 표의 (번호, 공정)을 가리킨다. 한 라우팅은 50줄까지(서버가 본다).
+ */
+export const routingSteps = pgTable(
+  "routing_steps",
+  {
+    id: id(),
+    routingId: integer("routing_id")
+      .notNull()
+      .references(() => routings.id, { onDelete: "cascade" }),
+    seq: smallint("seq").notNull(),
+    processId: integer("process_id")
+      .notNull()
+      .references(() => processes.id),
+    workCenterId: integer("work_center_id").notNull(),
+    setupMin: integer("setup_min").notNull(),
+    runMs: integer("run_ms").notNull(),
+    note: text("note").notNull().default(""),
+  },
+  (t) => [
+    foreignKey({
+      name: "routing_steps_work_center_fk",
+      columns: [t.workCenterId, t.processId],
+      foreignColumns: [workCenters.id, workCenters.processId],
+    }),
+    unique("routing_steps_seq_unique").on(t.routingId, t.seq),
+    index("routing_steps_work_center_idx").on(t.workCenterId),
+    index("routing_steps_process_idx").on(t.processId),
+    check("routing_steps_seq_range", sql`${t.seq} between 10 and 500 and ${t.seq} % 10 = 0`),
+    check("routing_steps_setup_range", sql`${t.setupMin} between 0 and 1440`),
+    check("routing_steps_run_range", sql`${t.runMs} between 0 and 3600000`),
+    check("routing_steps_note_length", sql`char_length(${t.note}) <= 200`),
+  ],
+);
+
+/**
+ * 라우팅의 투입 자재 — 어느 공정(순번)에서 어떤 자재가 드는지. 한 자재는 한 라우팅에서 한 공정에만 붙는다.
+ * (라우팅, 순번)이 공정 줄을 가리켜 줄이 지워지면 자재도 함께 지워진다. 자재가 BOM 의 자품목인지는 서버가 본다.
+ */
+export const routingMaterials = pgTable(
+  "routing_materials",
+  {
+    id: id(),
+    routingId: integer("routing_id").notNull(),
+    seq: smallint("seq").notNull(),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => items.id),
+  },
+  (t) => [
+    foreignKey({
+      name: "routing_materials_step_fk",
+      columns: [t.routingId, t.seq],
+      foreignColumns: [routingSteps.routingId, routingSteps.seq],
+    }).onDelete("cascade"),
+    unique("routing_materials_item_unique").on(t.routingId, t.itemId),
+  ],
+);
+
+/**
+ * 라우팅의 고친 이력 — 라우팅을 저장 · 지울 때마다 생긴 일 하나가 한 줄이다. 한 저장의 줄은 같은 일시를 갖는다.
+ * 구분 — 라우팅 등록 · 지움 · 공정 더함 · 뺌 · 고침 · 자재 붙임 · 옮김 · 뗌. 전 · 후는 바뀐 칸만 든다.
+ * 품목을 가리키고 라우팅 머리는 가리키지 않는다 — 지운 라우팅의 이력이 남게. 이력은 화면에서 고치거나 지우지 못한다.
+ */
+export const routingChanges = pgTable(
+  "routing_changes",
+  {
+    id: id(),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => items.id),
+    savedAt: timestamp("saved_at", { withTimezone: true }).notNull().defaultNow(),
+    kind: text("kind").notNull(),
+    seq: smallint("seq"),
+    materialItemId: integer("material_item_id").references(() => items.id),
+    before: jsonb("before").$type<Record<string, string>>(),
+    after: jsonb("after").$type<Record<string, string>>(),
+  },
+  (t) => [
+    index("routing_changes_item_idx").on(t.itemId, t.savedAt),
+    check(
+      "routing_changes_kind",
+      sql`${t.kind} in ('ROUTING_ADD', 'ROUTING_DEL', 'STEP_ADD', 'STEP_DEL', 'STEP_EDIT', 'MAT_ADD', 'MAT_MOVE', 'MAT_DEL')`,
+    ),
+    check("routing_changes_material_kinds", sql`(${t.kind} like 'MAT_%') = (${t.materialItemId} is not null)`),
   ],
 );
