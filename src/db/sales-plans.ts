@@ -154,12 +154,20 @@ export type SalesPlanSheet = {
   totals: SalesPlanTotal[];
   /** 거르기가 걸렸는가 — 줄은 거른 것만, 합계는 전체 고객. */
   filtered: boolean;
+  /**
+   * 거르기 후보 — 거르기와 상관없이 DB 에 칸이 있는(어느 주든) 모든 고객 · 품목, 코드 차례. 「사용 안 함」 · 매출처 아님도 든다
+   * (한쪽을 거른 화면에서도 다른 쪽 후보가 줄지 않게).
+   */
+  planned: { customers: PlanCustomer[]; items: PlanItem[] };
 };
+
+const byCode = <T extends { code: string }>(a: T, b: T) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
 
 /**
  * 판매계획 한 쪽(13주) — 줄은 DB 에 칸이 하나라도 있는(어느 주든) 고객 × 품목 가운데 거르기를 따른 것, 고객 코드 · 품목 코드 차례.
  * 칸은 그 13주 것만. 품목 합계는 거르기와 상관없이 모든 고객의 합이고, 그 13주에 계획이 있는 품목만 품목 코드 차례로.
  * from 이 월요일이 아니면 이번 주부터 연다.
+ * 모든 읽기를 읽기 전용 REPEATABLE READ 트랜잭션 하나에서 한다 — 줄 · 칸 · 합계가 한 스냅숏에서 나와, 그 사이 끝난 저장이 합계에만 드는 일이 없다.
  */
 export async function openSalesPlan(
   db: Db,
@@ -170,81 +178,86 @@ export async function openSalesPlan(
   const weeks = pageWeeks(isMonday(opts.from) ? opts.from : thisWeek);
   const from = weeks[0];
   const to = weeks[weeks.length - 1];
-  const where = filterWhere(opts.filter);
+  const { filter } = opts;
 
-  const pairs = await db
-    .selectDistinct({ partnerId: salesPlans.partnerId, itemId: salesPlans.itemId })
-    .from(salesPlans)
-    .innerJoin(partners, eq(partners.id, salesPlans.partnerId))
-    .innerJoin(items, eq(items.id, salesPlans.itemId))
-    .where(where);
+  return db.transaction(
+    async (tx) => {
+      // 칸이 있는 모든 고객 × 품목 — 거르기 후보는 이것 전체, 줄은 거르기를 따른 것.
+      const allPairs = await tx
+        .selectDistinct({ partnerId: salesPlans.partnerId, itemId: salesPlans.itemId })
+        .from(salesPlans);
+      const partnerIds = [...new Set(allPairs.map((p) => p.partnerId))];
+      const itemIds = [...new Set(allPairs.map((p) => p.itemId))];
+      const customerById = new Map(
+        (partnerIds.length
+          ? await tx.select(customerColumns).from(partners).where(inArray(partners.id, partnerIds))
+          : []
+        ).map((c) => [c.id, c] as const),
+      );
+      const itemById = new Map(
+        (itemIds.length ? await itemsWhere(tx, inArray(items.id, itemIds)) : []).map((i) => [i.id, i] as const),
+      );
+      const itemByCode = new Map([...itemById.values()].map((i) => [i.code, i] as const));
 
-  const rows: SalesPlanRow[] = [];
-  if (pairs.length) {
-    const partnerIds = [...new Set(pairs.map((p) => p.partnerId))];
-    const itemIds = [...new Set(pairs.map((p) => p.itemId))];
-    const customerById = new Map(
-      (await db.select(customerColumns).from(partners).where(inArray(partners.id, partnerIds))).map(
-        (c) => [c.id, c] as const,
-      ),
-    );
-    const itemById = new Map((await itemsWhere(db, inArray(items.id, itemIds))).map((i) => [i.id, i] as const));
-    const cells = await db
-      .select({
-        partnerId: salesPlans.partnerId,
-        itemId: salesPlans.itemId,
-        week: salesPlans.weekStart,
-        qty: qtyText(salesPlans.qty),
-      })
-      .from(salesPlans)
-      .innerJoin(partners, eq(partners.id, salesPlans.partnerId))
-      .innerJoin(items, eq(items.id, salesPlans.itemId))
-      .where(and(where, sql`${salesPlans.weekStart} between ${from}::date and ${to}::date`));
-    const cellsOf = new Map<string, Record<string, string>>();
-    for (const c of cells) {
-      const k = `${c.partnerId}|${c.itemId}`;
-      const row = cellsOf.get(k) ?? {};
-      row[c.week] = canonText(c.qty);
-      cellsOf.set(k, row);
-    }
-    for (const p of pairs) {
-      const customer = customerById.get(p.partnerId)!;
-      const item = itemById.get(p.itemId)!;
-      rows.push({
-        customer: customerOf(customer),
-        item: itemOf(item),
-        cells: cellsOf.get(`${p.partnerId}|${p.itemId}`) ?? {},
-      });
-    }
-    rows.sort((a, b) =>
-      a.customer.code === b.customer.code
-        ? a.item.code < b.item.code
-          ? -1
-          : 1
-        : a.customer.code < b.customer.code
-          ? -1
-          : 1,
-    );
-  }
+      const pairs = allPairs.filter(
+        (p) =>
+          (!filter.customer || customerById.get(p.partnerId)!.code === filter.customer) &&
+          (!filter.item || itemById.get(p.itemId)!.code === filter.item),
+      );
 
-  const demand = await salesPlanDemand(db, from, to);
-  const totals: SalesPlanTotal[] = [];
-  if (demand.length) {
-    const codes = [...new Set(demand.map((d) => d.item))];
-    for (const item of await itemsWhere(db, inArray(items.code, codes))) {
-      const cells: Record<string, string> = {};
-      for (const d of demand) if (d.item === item.code) cells[d.week] = d.qty;
-      totals.push({ item: itemOf(item), cells });
-    }
-  }
+      const rows: SalesPlanRow[] = [];
+      if (pairs.length) {
+        const cells = await tx
+          .select({
+            partnerId: salesPlans.partnerId,
+            itemId: salesPlans.itemId,
+            week: salesPlans.weekStart,
+            qty: qtyText(salesPlans.qty),
+          })
+          .from(salesPlans)
+          .innerJoin(partners, eq(partners.id, salesPlans.partnerId))
+          .innerJoin(items, eq(items.id, salesPlans.itemId))
+          .where(and(filterWhere(filter), sql`${salesPlans.weekStart} between ${from}::date and ${to}::date`));
+        const cellsOf = new Map<string, Record<string, string>>();
+        for (const c of cells) {
+          const k = `${c.partnerId}|${c.itemId}`;
+          const row = cellsOf.get(k) ?? {};
+          row[c.week] = canonText(c.qty);
+          cellsOf.set(k, row);
+        }
+        for (const p of pairs) {
+          rows.push({
+            customer: customerOf(customerById.get(p.partnerId)!),
+            item: itemOf(itemById.get(p.itemId)!),
+            cells: cellsOf.get(`${p.partnerId}|${p.itemId}`) ?? {},
+          });
+        }
+        rows.sort((a, b) => byCode(a.customer, b.customer) || byCode(a.item, b.item));
+      }
 
-  return {
-    thisWeek,
-    weeks,
-    rows,
-    totals,
-    filtered: !!(opts.filter.customer || opts.filter.item),
-  };
+      // 합계의 품목은 모두 칸이 있는 품목이라 위에서 읽은 것에 든다.
+      const demand = await salesPlanDemand(tx, from, to);
+      const totals: SalesPlanTotal[] = [];
+      for (const code of [...new Set(demand.map((d) => d.item))]) {
+        const cells: Record<string, string> = {};
+        for (const d of demand) if (d.item === code) cells[d.week] = d.qty;
+        totals.push({ item: itemOf(itemByCode.get(code)!), cells });
+      }
+
+      return {
+        thisWeek,
+        weeks,
+        rows,
+        totals,
+        filtered: !!(filter.customer || filter.item),
+        planned: {
+          customers: [...customerById.values()].sort(byCode).map(customerOf),
+          items: [...itemById.values()].sort(byCode).map(itemOf),
+        },
+      };
+    },
+    { isolationLevel: "repeatable read", accessMode: "read only" },
+  );
 }
 
 /**

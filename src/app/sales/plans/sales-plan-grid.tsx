@@ -4,11 +4,11 @@ import Form from "next/form";
 import Link from "next/link";
 import { startTransition, useActionState, useState, type FormEvent, type MouseEvent } from "react";
 import type { PlanCustomer, PlanItem, SalesPlanSheet } from "@/db/sales-plans";
-import { formatMilli, parseQty, ZERO, type Milli } from "@/lib/move-input";
+import { formatMilli, ZERO, type Milli } from "@/lib/move-input";
 import { cellKey, type SalesPlanCellInput } from "@/lib/sales-plan-input";
 import { isEditableWeek, pageStarts, PAGE_WEEKS, weekLabel, weekRange } from "@/lib/weeks";
 import { saveSalesPlanAction, type SalesPlanActionState } from "./actions";
-import { milliOf, shownQty } from "./plan-qty";
+import { milliOf, shownQty, typedQty } from "./plan-qty";
 
 // 판매계획 표(메뉴 「판매계획」) — 줄은 고객 × 완제품, 칸은 13주. 고친 칸만 [저장]으로 보내고(전 = 불러온 값, 후 = 넣은 글자 그대로),
 // 검사는 서버가 하며 화면은 틀린 칸 아래에 까닭을 보인다(값은 화면이 쥐고 있어 그대로 남는다). 지난 주 칸은 잠긴다.
@@ -17,22 +17,13 @@ import { milliOf, shownQty } from "./plan-qty";
 
 type Back = { from: string; customer: string; item: string };
 type Row = { customer: PlanCustomer; item: PlanItem; cells: Record<string, string>; added?: boolean };
-/** 고친 칸 하나 — diff 는 품목 합계에 더할 차이(읽지 못하는 글자는 0). */
+/** 고친 칸 하나 — diff 는 품목 합계에 더할 차이(서버가 거절할 글자는 0). */
 type Change = { input: SalesPlanCellInput; item: PlanItem; week: string; diff: Milli };
 
 const LEAVE = "저장하지 않은 칸이 있습니다 — 넘기면 사라집니다";
 const pairOf = (customer: string, item: string) => `${customer}|${item}`;
 const byCode = <T extends { code: string }>(a: T, b: T) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
 const domId = (key: string) => `plan-err-${key.replaceAll("|", "-")}`;
-
-/** 넣은 글자의 수량 — 빈 칸 · 0 은 null(지움), 읽지 못하거나 음수면 undefined(합계에 넣지 않고, 서버가 까닭을 돌려준다). */
-function valueOf(text: string): Milli | null | undefined {
-  const s = text.trim();
-  if (s === "") return null;
-  const parsed = parseQty(s);
-  if (!parsed || parsed.qty < ZERO) return undefined;
-  return parsed.qty === ZERO ? null : parsed.qty;
-}
 
 /** 주소 — 빈 값은 뺀다. from 이 없으면 이번 주부터. */
 function planHref(from: string | undefined, back: Back): string {
@@ -94,7 +85,7 @@ export function SalesPlanGrid({
       if (text === undefined || !isEditableWeek(week, thisWeek)) continue;
       const loaded = r.cells[week];
       const before = loaded === undefined ? null : milliOf(loaded);
-      const after = valueOf(text);
+      const after = typedQty(text, r.item.decimals);
       if (after === before) continue;
       changes.push({
         input: { customer: r.customer.code, item: r.item.code, week, before: loaded ?? "", after: text },
@@ -174,8 +165,9 @@ export function SalesPlanGrid({
   };
 
   const wrong = Object.keys(errors).length;
-  const filterCustomers = choices([sheet.rows.map((r) => r.customer), options.customers], back.customer);
-  const filterItems = choices([sheet.rows.map((r) => r.item), options.items], back.item);
+  // 거르기 후보 — DB 에 칸이 있는 모든 고객 · 품목(거르기와 상관없이) ∪ 새 줄 후보. 한쪽을 걸러도 다른 쪽 후보가 줄지 않는다.
+  const filterCustomers = choices([sheet.planned.customers, options.customers], back.customer);
+  const filterItems = choices([sheet.planned.items, options.items], back.item);
   const field = "w-full min-w-0 rounded border border-rule bg-white px-3 py-2 text-base";
 
   return (

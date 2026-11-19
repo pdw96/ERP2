@@ -74,6 +74,7 @@ const sheet: SalesPlanSheet = {
     { item: fg2, cells: { [THIS]: "700" } },
   ],
   filtered: false,
+  planned: { customers: [laon, maru, north], items: [fg1, fg2] },
 };
 const options = { customers: [laon, maru], items: [fg1, fg3] };
 const back = { from: PAST, customer: "", item: "" };
@@ -141,6 +142,26 @@ describe("판매계획 표", () => {
     expect(h.save.mock.calls[0][0]).toEqual([
       { customer: "BP-0004", item: "FG-0001", week: THIS, before: "3000", after: "-5" },
     ]);
+  });
+
+  it("상한을 넘는 수(999,999,999 · 1,000,000,000)는 합계를 바꾸지 않지만 저장에는 보낸다", async () => {
+    render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
+    fireEvent.change(cell("BP-0004", "FG-0001", "47주"), { target: { value: "999,999,999" } });
+    expect(total("FG-0001", THIS)).toHaveTextContent("4,500");
+    fireEvent.change(cell("BP-0004", "FG-0001", "48주"), { target: { value: "1,000,000,000" } });
+    expect(total("FG-0001", NEXT)).toHaveTextContent("2,500");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "저장" })));
+    await waitFor(() => expect(h.save).toHaveBeenCalled());
+    expect(h.save.mock.calls[0][0]).toEqual([
+      { customer: "BP-0004", item: "FG-0001", week: THIS, before: "3000", after: "999,999,999" },
+      { customer: "BP-0004", item: "FG-0001", week: NEXT, before: "2500", after: "1,000,000,000" },
+    ]);
+  });
+
+  it("정수 단위 품목의 빈 칸에 「0.0」을 넣으면 바뀐 칸이 아니다 — 서버도 지움으로 읽는다", () => {
+    render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
+    fireEvent.change(cell("BP-0005", "FG-0001", "48주"), { target: { value: "0.0" } });
+    expect(screen.getByRole("button", { name: "저장" })).toBeDisabled();
   });
 
   it("칸을 비우면 그 수량만큼 합계가 줄고, 숫자가 아닌 글자는 합계를 바꾸지 않는다", () => {
@@ -307,6 +328,25 @@ describe("쪽 넘기기 · 거르기", () => {
       "FG-0003 완제품 다",
     ]);
     expect(search.querySelector('input[type="hidden"][name="from"]')).toHaveValue(THIS);
+  });
+
+  it("고객을 거른 화면에서도 품목 후보 · 고객 후보는 DB 의 모든 줄(planned) — 「사용 안 함」 품목 · 매출처 아님 고객이 남는다", () => {
+    // 거른 화면의 줄은 라온 × 완제품 가 하나뿐 — 「사용 안 함」 완제품 나 · 매출처 아님 노스필드는 줄에도 새 줄 후보에도 없다.
+    const filteredSheet: SalesPlanSheet = { ...fromThis, rows: [sheet.rows[0]], filtered: true };
+    render(<SalesPlanGrid sheet={filteredSheet} options={options} back={backThis} />);
+    const search = screen.getByRole("search", { name: "판매계획 거르기" });
+    expect(optionTexts(within(search).getByLabelText("고객"))).toEqual([
+      "모든 고객",
+      "BP-0004 (가상) 라온전자",
+      "BP-0005 (가상) 마루반도체",
+      "BP-0007 (가상) 노스필드디바이스",
+    ]);
+    expect(optionTexts(within(search).getByLabelText("품목"))).toEqual([
+      "모든 품목",
+      "FG-0001 완제품 가",
+      "FG-0002 완제품 나",
+      "FG-0003 완제품 다",
+    ]);
   });
 
   it("거른 화면이면 합계가 전체 고객이라고 알린다", () => {

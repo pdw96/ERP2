@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { count, eq, inArray, sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getUnitSpec, updateCode } from "@/db/codes";
 import { createItem, loadItemsForSheet, saveItemRows, updateItem } from "@/db/items";
 import { limitMessage, STALE } from "@/db/master-shared";
@@ -356,6 +356,49 @@ describe("판매계획 — 품목 합계 · 거르기 · 고친 이력의 범위
     expect(next.totals.map((t) => t.item.code)).toEqual(["FG-0002"]);
 
     expect((await open({ item: "FG-0002" })).rows.map((r) => r.item.code)).toEqual(["FG-0002"]);
+  });
+
+  it("거르기 후보(planned)는 거르기와 상관없이 칸이 있는 모든 고객 · 품목 — 「사용 안 함」 · 매출처 아님도 남는다", async () => {
+    await save([
+      cell("BP-0004", "FG-0001", W1, "", "3000"),
+      cell("BP-0007", "FG-0002", addWeeks(TW, 20), "", "500"),
+      cell("BP-0005", "FG-0001", W2, "", "100"),
+    ]);
+    await db
+      .update(partners)
+      .set({ active: false, isCustomer: false, isSupplier: true })
+      .where(eq(partners.code, "BP-0007"));
+    await db.update(items).set({ active: false }).where(eq(items.code, "FG-0002"));
+
+    for (const filter of [{}, { customer: "BP-0004" }, { item: "FG-0001" }, { customer: "BP-0005", item: "FG-0001" }]) {
+      const { planned } = await open(filter);
+      expect(planned.customers.map((c) => c.code)).toEqual(["BP-0004", "BP-0005", "BP-0007"]);
+      expect(planned.customers[2]).toMatchObject({ active: false, isCustomer: false });
+      expect(planned.items.map((i) => i.code)).toEqual(["FG-0001", "FG-0002"]);
+      expect(planned.items[1]).toMatchObject({ active: false });
+    }
+    expect((await open({ customer: "BP-0004" })).rows.map((r) => r.customer.code)).toEqual(["BP-0004"]);
+  });
+
+  it("열기는 한 스냅숏(읽기 전용 REPEATABLE READ 트랜잭션)에서 줄 · 합계를 읽는다", async () => {
+    await save([cell("BP-0004", "FG-0001", W1, "", "3000"), cell("BP-0005", "FG-0001", W1, "", "2000")]);
+    const spy = vi.spyOn(db, "transaction");
+    try {
+      const sheet = await open({ customer: "BP-0004" });
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy.mock.calls[0][1]).toEqual({ isolationLevel: "repeatable read", accessMode: "read only" });
+      expect(sheet.rows.map((r) => [r.customer.code, r.cells])).toEqual([["BP-0004", { [W1]: "3000" }]]);
+      expect(sheet.totals.map((t) => [t.item.code, t.cells])).toEqual([["FG-0001", { [W1]: "5000" }]]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("칸이 하나도 없으면 줄 · 합계 · 거르기 후보가 모두 빈다", async () => {
+    const sheet = await open();
+    expect(sheet.rows).toEqual([]);
+    expect(sheet.totals).toEqual([]);
+    expect(sheet.planned).toEqual({ customers: [], items: [] });
   });
 
   it("고친 이력은 거르기를 따른다", async () => {
