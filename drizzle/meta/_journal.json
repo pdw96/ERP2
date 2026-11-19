@@ -169,6 +169,13 @@
       "when": 1795086232873,
       "tag": "0023_sales_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795088617340,
+      "tag": "0024_sales_plan_values",
+      "breakpoints": true
     }
   ]
 }

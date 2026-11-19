@@ -13,8 +13,10 @@ import {
   SAMPLE_DEFECT_TYPES,
   SAMPLE_ITEMS,
   SAMPLE_NUMBER_RULES,
+  SAMPLE_PARTNERS,
   SAMPLE_PROCESSES,
   SAMPLE_ROUTINGS,
+  SAMPLE_SALES_PLANS,
   SAMPLE_UNIT_SPECS,
   SAMPLE_WORK_CENTERS,
 } from "@/db/sample";
@@ -29,6 +31,8 @@ import {
   items,
   numberRules,
   partners,
+  salesPlanChanges,
+  salesPlans,
   processes,
   routingChanges,
   routingMaterials,
@@ -99,9 +103,9 @@ describe("마이그레이션과 첫 샘플 데이터", () => {
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(await tableNames(h)).toEqual(TABLES);
     expect(await h.db.select().from(codeGroups)).toHaveLength(10);
-    expect(log[0]).toMatch(/^마이그레이션: 적용된 것 24개 — 이번에 24개 적용$/);
+    expect(log[0]).toMatch(/^마이그레이션: 적용된 것 25개 — 이번에 25개 적용$/);
     expect(log[1]).toMatch(
-      /^샘플 데이터: 빈 DB 라 넣었다 — sales_plan_changes 0 · sales_plans 0 · routing_changes 32 · routing_materials 14 · routing_steps 14 · routings 4 · bom_changes 20 · bom_lines 16 · boms 4 · stock_count_lines 12 · stock_counts 2 · stock_balances 24 · stock_move_lines 32 · stock_moves 11 · items 14 · /,
+      /^샘플 데이터: 빈 DB 라 넣었다 — sales_plan_changes 0 · sales_plans 66 · routing_changes 32 · routing_materials 14 · routing_steps 14 · routings 4 · bom_changes 20 · bom_lines 16 · boms 4 · stock_count_lines 12 · stock_counts 2 · stock_balances 24 · stock_move_lines 32 · stock_moves 11 · items 14 · /,
     );
   });
 
@@ -114,7 +118,7 @@ describe("마이그레이션과 첫 샘플 데이터", () => {
     const log: string[] = [];
     await prepareDatabase(h.db, { ...quiet, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 24개 — 이번에 0개 적용",
+      "마이그레이션: 적용된 것 25개 — 이번에 0개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -185,7 +189,7 @@ describe("마이그레이션 0001 · 0002 — 거래처의 국가(PR G)", () => 
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 24개 — 이번에 23개 적용",
+      "마이그레이션: 적용된 것 25개 — 이번에 24개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(
@@ -238,7 +242,7 @@ describe("마이그레이션 0003 · 0004 — 품목 · 거래처의 설명용 �
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 24개 — 이번에 21개 적용",
+      "마이그레이션: 적용된 것 25개 — 이번에 22개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(
@@ -335,7 +339,7 @@ describe("마이그레이션 0005 · 0006 — 단위 사양(조각 「재고 수
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 24개 — 이번에 19개 적용",
+      "마이그레이션: 적용된 것 25개 — 이번에 20개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     // 마이그레이션이 넣은 단위 · 사양은 샘플 데이터와 같다 — 매일 밤 되돌린 뒤와 어긋나지 않게.
@@ -418,7 +422,7 @@ describe("마이그레이션 0007 · 0008 — 번호 규칙 · 품목의 재고 
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 24개 — 이번에 17개 적용",
+      "마이그레이션: 적용된 것 25개 — 이번에 18개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
 
@@ -551,7 +555,7 @@ describe("마이그레이션 0009 — 품목의 기본 창고가 불량창고를
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 24개 — 이번에 15개 적용",
+      "마이그레이션: 적용된 것 25개 — 이번에 16개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     const [rm] = await h.db.select().from(items).where(eq(items.code, "RM-0001"));
@@ -575,7 +579,7 @@ describe("마이그레이션 0010 · 0011 — 수불 유형 · 조정 사유와 
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 24개 — 이번에 14개 적용",
+      "마이그레이션: 적용된 것 25개 — 이번에 15개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     const groups = await h.db
@@ -618,7 +622,7 @@ describe("마이그레이션 0012 — 재고 실사 표(조각 「재고 수불�
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 24개 — 이번에 12개 적용",
+      "마이그레이션: 적용된 것 25개 — 이번에 13개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -639,7 +643,7 @@ describe("마이그레이션 0013 — BOM 표(조각 「BOM」 PR A)", () => {
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 24개 — 이번에 11개 적용",
+      "마이그레이션: 적용된 것 25개 — 이번에 12개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -659,7 +663,7 @@ describe("마이그레이션 0014 — BOM 고친 이력 표(조각 「BOM」 PR 
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 24개 — 이번에 10개 적용",
+      "마이그레이션: 적용된 것 25개 — 이번에 11개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -694,7 +698,7 @@ describe("마이그레이션 0015 · 0016 — 공정 표 · 샘플 공정(메뉴
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 24개 — 이번에 9개 적용",
+      "마이그레이션: 적용된 것 25개 — 이번에 10개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -765,7 +769,7 @@ describe("마이그레이션 0017 · 0018 — 작업장 표 · 샘플 작업장(
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 24개 — 이번에 7개 적용",
+      "마이그레이션: 적용된 것 25개 — 이번에 8개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -849,7 +853,7 @@ describe("마이그레이션 0019 · 0020 — 불량 유형 표 · 샘플 불량
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 24개 — 이번에 5개 적용",
+      "마이그레이션: 적용된 것 25개 — 이번에 6개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -986,7 +990,7 @@ describe("마이그레이션 0021 · 0022 — 라우팅 표 · 샘플 라우팅(
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 24개 — 이번에 2개 적용",
+      "마이그레이션: 적용된 것 25개 — 이번에 3개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await h.db.select().from(routings)).toHaveLength(4);
@@ -1058,5 +1062,95 @@ describe("마이그레이션 0021 · 0022 — 라우팅 표 · 샘플 라우팅(
     expect(await h.db.select().from(routingSteps)).toHaveLength(14);
     expect(await h.db.select().from(routingMaterials)).toHaveLength(14);
     expect(await h.db.select().from(routingChanges)).toHaveLength(32);
+  });
+});
+
+describe("마이그레이션 0023 · 0024 — 판매계획 표 · 샘플 판매계획(메뉴 「판매계획」)", () => {
+  async function dataDb(applied = 24) {
+    const h = await fresh();
+    await h.migrate(firstMigrations(applied)); // 0023 까지 — 표는 있고 샘플 판매계획은 아직 없다
+    // 샘플 품목 · 거래처가 기대는 묶음 · 값 · 번호 규칙을 먼저 둔다.
+    await h.db.insert(codeGroups).values(SAMPLE_CODE_GROUPS);
+    await h.db.insert(codes).values(SAMPLE_CODES);
+    await h.db.insert(numberRules).values(SAMPLE_NUMBER_RULES);
+    await h.db.insert(partners).values(SAMPLE_PARTNERS);
+    await h.db.insert(items).values(SAMPLE_ITEMS);
+    return h;
+  }
+  type H = Awaited<ReturnType<typeof dataDb>>;
+  /** 칸을 (고객, 품목, 이번 주에서 센 주 수, 수량)으로 — 주는 SQL 을 돌린 날 기준이라 offset 으로 견준다. */
+  const cellRows = async (h: H) => {
+    const r = await h.client.query<{ customer: string; item: string; off: number; qty: string }>(
+      `select p.code as customer, i.code as item,
+              ((s.week_start - (date_trunc('week', now() at time zone 'Asia/Seoul'))::date) / 7)::int as off,
+              s.qty::text as qty
+         from sales_plans s join partners p on p.id = s.partner_id join items i on i.id = s.item_id
+         order by p.code, i.code, s.week_start`,
+    );
+    return r.rows.map((x) => [x.customer, x.item, x.off, Number(x.qty)]);
+  };
+  const expectedCells = (skip: string[] = []) =>
+    SAMPLE_SALES_PLANS.filter((p) => !skip.includes(`${p.customer}|${p.item}`))
+      .flatMap((p) => p.weeks.map((w) => [p.customer, p.item, w.offset, Number(w.qty)]))
+      .sort(
+        (a, b) => String(a[0]).localeCompare(String(b[0])) || String(a[1]).localeCompare(String(b[1])) || +a[2] - +b[2],
+      );
+  const total = SAMPLE_SALES_PLANS.reduce((n, p) => n + p.weeks.length, 0);
+
+  it("데이터가 있는 DB — 0024 가 샘플 판매계획 다섯 줄을 넣고, 칸이 SAMPLE_SALES_PLANS 와 같다(이력은 비어 있다)", async () => {
+    const h = await dataDb();
+    const log: string[] = [];
+    await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
+    expect(log).toEqual([
+      "마이그레이션: 적용된 것 25개 — 이번에 1개 적용",
+      "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
+    ]);
+    expect(await h.db.select().from(salesPlans)).toHaveLength(total);
+    expect(await cellRows(h)).toEqual(expectedCells());
+    expect(await h.db.select().from(salesPlanChanges)).toHaveLength(0);
+  });
+
+  it("0024 를 다시 돌려도 바뀌지 않는다", async () => {
+    const h = await dataDb();
+    await h.migrate();
+    const first = await cellRows(h);
+    await h.client.exec(readFileSync("drizzle/0024_sales_plan_values.sql", "utf8"));
+    expect(await cellRows(h)).toEqual(first);
+    expect(first).toEqual(expectedCells());
+  });
+
+  it("방문자가 먼저 넣은 고객 × 품목은 건너뛴다 — 그 줄은 방문자의 칸만 남고, 나머지 줄은 샘플이 든다", async () => {
+    const h = await dataDb();
+    await h.client.exec(`
+      insert into sales_plans (partner_id, item_id, week_start, qty)
+      values ((select id from partners where code = 'BP-0004'), (select id from items where code = 'FG-0001'),
+              (date_trunc('week', now() at time zone 'Asia/Seoul'))::date + 14, 123);
+    `);
+    await h.migrate();
+    const rows = await cellRows(h);
+    expect(rows.filter((r) => r[0] === "BP-0004" && r[1] === "FG-0001")).toEqual([["BP-0004", "FG-0001", 2, 123]]);
+    expect(rows.filter((r) => !(r[0] === "BP-0004" && r[1] === "FG-0001"))).toEqual(expectedCells(["BP-0004|FG-0001"]));
+  });
+
+  it("「사용 안 함」 · 매출처가 아닌 고객 · 「사용 안 함」 품목의 줄은 넣지 않는다", async () => {
+    const h = await dataDb();
+    await h.client.exec(`
+      update partners set active = false where code = 'BP-0005';
+      update partners set is_customer = false, is_supplier = true where code = 'BP-0007';
+      update items set active = false where code = 'FG-0002';
+    `);
+    await h.migrate();
+    expect(await cellRows(h)).toEqual(
+      expectedCells(["BP-0005|FG-0001", "BP-0007|FG-0001", "BP-0007|FG-0002", "BP-0004|FG-0002"]),
+    );
+  });
+
+  it("빈 DB — 0024 는 넣지 않고(묶음이 없다), 배포 빌드의 샘플이 칸을 넣는다", async () => {
+    const h = await fresh();
+    await h.migrate();
+    expect(await h.db.select().from(salesPlans)).toHaveLength(0);
+    await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: () => {} });
+    expect(await h.db.select().from(salesPlans)).toHaveLength(total);
+    expect(await h.db.select().from(salesPlanChanges)).toHaveLength(0);
   });
 });
