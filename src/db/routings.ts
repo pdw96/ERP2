@@ -1,5 +1,7 @@
-import { and, asc, count, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, ne, or, sql, type SQL } from "drizzle-orm";
 import { ITEM_CODE } from "@/lib/bom-input";
+import { PROCESS_CODE } from "@/lib/process-input";
+import { WORK_CENTER_CODE } from "@/lib/work-center-input";
 import {
   formatRunMs,
   parseRouting,
@@ -9,7 +11,19 @@ import {
   type RoutingStepErrors,
   type RoutingValues,
 } from "@/lib/routing-input";
-import { limitMessage, REGISTER_LOCK, STALE, touched, VERSION, versionIs, versionOf } from "./master-shared";
+import {
+  first,
+  likeLiteral,
+  limitMessage,
+  REGISTER_LOCK,
+  searchText,
+  STALE,
+  touched,
+  VERSION,
+  versionIs,
+  versionOf,
+  type Params,
+} from "./master-shared";
 import {
   bomLines,
   boms,
@@ -708,4 +722,69 @@ export async function routingHistory(db: Db, code: string): Promise<{ total: num
       after: r.after ?? {},
     })),
   };
+}
+
+// ── 목록 ─────────────────────────────────────────────
+
+/** process · workCenter 가 빈 글자면 모든 공정 · 작업장. */
+export type RoutingFilter = { q: string; process: string; workCenter: string };
+export type RoutingFilterNotice = { field: "q" | "process" | "workCenter"; message: string };
+
+/** 주소의 거르기 값을 읽는다. 꼴이 틀린 값은 거르지 않고 알린다. */
+export function parseRoutingFilter(params: Params): { filter: RoutingFilter; notices: RoutingFilterNotice[] } {
+  const search = searchText(params);
+  const notices: RoutingFilterNotice[] = search.notice ? [{ field: "q", message: search.notice }] : [];
+  const read = (raw: string | string[] | undefined, re: RegExp, field: "process" | "workCenter", label: string) => {
+    const v = (first(raw) ?? "").trim();
+    if (!v) return "";
+    if (re.test(v)) return v;
+    notices.push({ field, message: `받지 않는 ${label} 값이라 거르지 않았습니다` });
+    return "";
+  };
+  const process = read(params.process, PROCESS_CODE, "process", "공정");
+  const workCenter = read(params.workCenter, WORK_CENTER_CODE, "workCenter", "작업장");
+  return { filter: { q: search.q, process, workCenter }, notices };
+}
+
+/** 라우팅 한 줄 — flow 는 순번 차례 공정코드, runSec 은 개당 시간(밀리초) 합을 초 글자로. */
+export type RoutingListRow = {
+  code: string;
+  name: string;
+  itemType: string;
+  active: boolean;
+  flow: string[];
+  steps: number;
+  setupMin: number;
+  runSec: string;
+};
+
+/** 품목코드 차례. 찾기는 품목코드 · 품명(대소문자 무시). 공정 · 작업장은 그것을 쓰는 줄이 있는 라우팅만. 쿼리 한 번. */
+export async function listRoutings(db: Db, filter: RoutingFilter): Promise<RoutingListRow[]> {
+  const where: SQL[] = [];
+  if (filter.q) where.push(or(ilike(items.code, likeLiteral(filter.q)), ilike(items.name, likeLiteral(filter.q)))!);
+  if (filter.process)
+    where.push(sql`exists (select 1 from ${routingSteps} x join ${processes} xp on xp.id = x.process_id
+      where x.routing_id = ${routings.id} and xp.code = ${filter.process})`);
+  if (filter.workCenter)
+    where.push(sql`exists (select 1 from ${routingSteps} x join ${workCenters} xw on xw.id = x.work_center_id
+      where x.routing_id = ${routings.id} and xw.code = ${filter.workCenter})`);
+  const rows = await db
+    .select({
+      code: items.code,
+      name: items.name,
+      itemType: items.itemType,
+      active: items.active,
+      flow: sql<string | null>`string_agg(${processes.code}, ',' order by ${routingSteps.seq})`,
+      steps: sql<number>`count(${routingSteps.id})::int`,
+      setupMin: sql<number>`coalesce(sum(${routingSteps.setupMin}), 0)::int`,
+      runMs: sql<number>`coalesce(sum(${routingSteps.runMs}), 0)::int`,
+    })
+    .from(routings)
+    .innerJoin(items, eq(items.id, routings.itemId))
+    .leftJoin(routingSteps, eq(routingSteps.routingId, routings.id))
+    .leftJoin(processes, eq(processes.id, routingSteps.processId))
+    .where(and(...where))
+    .groupBy(items.id, routings.id)
+    .orderBy(asc(items.code));
+  return rows.map(({ flow, runMs, ...r }) => ({ ...r, flow: flow ? flow.split(",") : [], runSec: formatRunMs(runMs) }));
 }

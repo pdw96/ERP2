@@ -6,6 +6,8 @@ import { limitMessage, STALE } from "@/db/master-shared";
 import { resetToSample } from "@/db/reset";
 import {
   deleteRouting,
+  listRoutings,
+  parseRoutingFilter,
   openRouting,
   ROUTING_STEP_LIMIT,
   routingFormOptions,
@@ -600,5 +602,56 @@ describe("라우팅 저장", () => {
 
     const r = await rejected({ item: "SF-0002", version: "", steps: [step("DA", "DA-1", "0", "1")], materials: [] });
     expect(r.formError).toBe(limitMessage("라우팅 공정 줄", ROUTING_STEP_LIMIT));
+  });
+});
+
+describe("라우팅 목록", () => {
+  const none = { q: "", process: "", workCenter: "" };
+  beforeEach(async () => {
+    await resetToSample(db, TODAY);
+  });
+
+  it("목록은 품목코드 차례 — 공정 MD 로 거르면 SF-0002 · FG-0002, 작업장 DA-2 로 거르면 FG-0002", async () => {
+    const all = await listRoutings(db, none);
+    expect(all.map((r) => r.code)).toEqual(["FG-0001", "FG-0002", "SF-0001", "SF-0002"]);
+    expect((await listRoutings(db, { ...none, process: "MD" })).map((r) => r.code)).toEqual(["FG-0002", "SF-0002"]);
+    expect((await listRoutings(db, { ...none, workCenter: "DA-2" })).map((r) => r.code)).toEqual(["FG-0002"]);
+  });
+
+  it("공정 흐름은 순번 차례, 줄 수 · 준비시간 합 · 개당 시간 합을 든다", async () => {
+    const rows = await listRoutings(db, none);
+    const sf1 = rows.find((r) => r.code === "SF-0001")!;
+    expect(sf1.flow).toEqual(["BG", "SAW", "DA"]);
+    expect(sf1.steps).toBe(3);
+    expect(rows.find((r) => r.code === "FG-0002")!.flow).toEqual(["BG", "SAW", "DA", "WB", "MD", "MK", "FT"]);
+    const steps = await db
+      .select({ setup: routingSteps.setupMin, run: routingSteps.runMs })
+      .from(routingSteps)
+      .innerJoin(routings, eq(routings.id, routingSteps.routingId))
+      .innerJoin(items, eq(items.id, routings.itemId))
+      .where(eq(items.code, "SF-0001"));
+    const sums = { setup: steps.reduce((a, x) => a + x.setup, 0), run: steps.reduce((a, x) => a + x.run, 0) };
+    expect(sf1.setupMin).toBe(sums.setup);
+    expect(sf1.runSec).toBe(`${Math.trunc(sums.run / 1000)}.${String(sums.run % 1000).padStart(3, "0")}`);
+  });
+
+  it("q 는 품명으로도 찾는다", async () => {
+    const [it0] = await db.select({ name: items.name }).from(items).where(eq(items.code, "FG-0001"));
+    const rows = await listRoutings(db, { ...none, q: it0.name.slice(0, 3) });
+    expect(rows.map((r) => r.code)).toContain("FG-0001");
+    expect((await listRoutings(db, { ...none, q: "sf-0002" })).map((r) => r.code)).toEqual(["SF-0002"]);
+  });
+
+  it("꼴 틀린 공정 · 작업장 값은 거르지 않고 알린다", () => {
+    const { filter, notices } = parseRoutingFilter({ process: "bad code!", workCenter: "x y", q: " 가 " });
+    expect(filter).toEqual({ q: "가", process: "", workCenter: "" });
+    expect(notices).toEqual([
+      { field: "process", message: "받지 않는 공정 값이라 거르지 않았습니다" },
+      { field: "workCenter", message: "받지 않는 작업장 값이라 거르지 않았습니다" },
+    ]);
+    expect(parseRoutingFilter({ process: "MD", workCenter: "DA-2" })).toEqual({
+      filter: { q: "", process: "MD", workCenter: "DA-2" },
+      notices: [],
+    });
   });
 });

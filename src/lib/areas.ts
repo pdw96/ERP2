@@ -121,7 +121,7 @@ export const AREAS: readonly Area[] = [
           { label: "BOM 조회", slice: "BOM", href: "/production/bom/inquiry" },
           { label: "공정 등록", slice: "라우팅", href: "/production/processes" },
           { label: "작업장 등록", slice: "라우팅", href: "/production/work-centers" },
-          { label: "라우팅", slice: "라우팅" },
+          { label: "라우팅", slice: "라우팅", href: "/production/routings" },
           { label: "근무 캘린더", slice: "능력계획(CRP)" },
           { label: "작업장 능력", slice: "능력계획(CRP)" },
         ],
