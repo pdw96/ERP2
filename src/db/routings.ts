@@ -102,6 +102,31 @@ const itemOf = (i: ItemRow): RoutingItem => ({
 export type WorkCenterChoice = { code: string; name: string; active: boolean };
 export type ProcessChoice = { code: string; name: string; active: boolean; workCenters: WorkCenterChoice[] };
 
+/** 공정마다 그 작업장을 붙인다 — 둘 다 코드 차례. */
+async function processChoices(db: Db, activeOnly: boolean): Promise<ProcessChoice[]> {
+  const procs = await db
+    .select({ id: processes.id, code: processes.code, name: processes.name, active: processes.active })
+    .from(processes)
+    .where(activeOnly ? eq(processes.active, true) : undefined)
+    .orderBy(asc(processes.code));
+  const centers = await db
+    .select({
+      processId: workCenters.processId,
+      code: workCenters.code,
+      name: workCenters.name,
+      active: workCenters.active,
+    })
+    .from(workCenters)
+    .where(activeOnly ? eq(workCenters.active, true) : undefined)
+    .orderBy(asc(workCenters.code));
+  return procs.map(({ id, ...p }) => ({
+    ...p,
+    workCenters: centers
+      .filter((c) => c.processId === id)
+      .map((c) => ({ code: c.code, name: c.name, active: c.active })),
+  }));
+}
+
 /** 새 라우팅의 품목(라우팅이 없는 「사용」 SF · FG)과 고를 공정(「사용」 공정 · 그 「사용」 작업장, 코드 차례). */
 export async function routingFormOptions(db: Db): Promise<{ newItems: RoutingItem[]; processes: ProcessChoice[] }> {
   const newItems = await db
@@ -117,30 +142,12 @@ export async function routingFormOptions(db: Db): Promise<{ newItems: RoutingIte
     .leftJoin(routings, eq(routings.itemId, items.id))
     .where(and(eq(items.active, true), inArray(items.itemType, [...ROUTING_TYPES]), sql`${routings.id} is null`))
     .orderBy(asc(items.code));
-  const procs = await db
-    .select({ id: processes.id, code: processes.code, name: processes.name, active: processes.active })
-    .from(processes)
-    .where(eq(processes.active, true))
-    .orderBy(asc(processes.code));
-  const centers = await db
-    .select({
-      processId: workCenters.processId,
-      code: workCenters.code,
-      name: workCenters.name,
-      active: workCenters.active,
-    })
-    .from(workCenters)
-    .where(eq(workCenters.active, true))
-    .orderBy(asc(workCenters.code));
-  return {
-    newItems,
-    processes: procs.map(({ id, ...p }) => ({
-      ...p,
-      workCenters: centers
-        .filter((c) => c.processId === id)
-        .map((c) => ({ code: c.code, name: c.name, active: c.active })),
-    })),
-  };
+  return { newItems, processes: await processChoices(db, true) };
+}
+
+/** 목록 찾기의 공정 · 작업장 후보 — 「사용 안 함」까지 모두(그것을 쓰던 라우팅도 찾게). 코드 차례. */
+export function routingFilterOptions(db: Db): Promise<ProcessChoice[]> {
+  return processChoices(db, false);
 }
 
 // ── 열기 ─────────────────────────────────────────────
@@ -436,24 +443,35 @@ function sameRouting(old: Stored, steps: readonly NextStep[], mats: readonly Nex
   return sameSteps && old.materials.every((m) => posOf.has(m.itemId) && seqOf(posOf.get(m.itemId)!) === m.seq);
 }
 
+// postgres 드라이버는 행의 배열을, PGlite 는 { rows } 를 돌려준다.
+function rowsOf<T>(result: unknown): T[] {
+  return (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
+}
+
 /** 지금 고친 이력의 줄 수가 상한 안에 더 들어가는가. */
 async function changeRoom(tx: Db, adding: number): Promise<boolean> {
   const [{ n }] = await tx.select({ n: count() }).from(routingChanges);
   return n + adding <= ROUTING_CHANGE_LIMIT;
 }
 
+/**
+ * 고친 이력을 남긴다 — 일시는 잠금을 쥔 뒤에 읽은 한 시각을 줄마다 같이 쓴다. 칸의 기본값(now())은 트랜잭션을 연 시각이라, 잠금을 기다린 저장이
+ * 먼저 끝난 저장보다 이른 일시로 남아 이력의 차례가 뒤집힌다. 잠금을 쥔 트랜잭션 안에서만 부른다.
+ */
 async function recordChanges(tx: Db, rows: readonly ChangeRow[]) {
-  if (rows.length)
-    await tx.insert(routingChanges).values(
-      rows.map((r) => ({
-        itemId: r.itemId,
-        kind: r.kind,
-        seq: r.seq ?? null,
-        materialItemId: r.materialItemId ?? null,
-        before: r.before ?? null,
-        after: r.after ?? null,
-      })),
-    );
+  if (!rows.length) return;
+  const [{ at }] = rowsOf<{ at: string }>(await tx.execute(sql`select clock_timestamp()::text as at`));
+  await tx.insert(routingChanges).values(
+    rows.map((r) => ({
+      itemId: r.itemId,
+      savedAt: sql`${at}::timestamptz`,
+      kind: r.kind,
+      seq: r.seq ?? null,
+      materialItemId: r.materialItemId ?? null,
+      before: r.before ?? null,
+      after: r.after ?? null,
+    })),
+  );
 }
 
 // ── 저장 ─────────────────────────────────────────────
@@ -464,7 +482,7 @@ export type RoutingSaveResult =
 
 /**
  * 라우팅의 저장 — 한 트랜잭션에서 라우팅의 잠금을 쥐고 품목 → 버전 → 공정 · 작업장 → 투입 자재 → 상한 차례로 보고, 하나라도 틀리면 아무것도 저장하지 않는다.
- * 「사용 안 함」 공정 · 작업장과 BOM 에서 빠진 자재는 이 품목의 저장된 라우팅에 이미 있던 것만 다시 저장된다. 바꾼 것이 없으면 쓰지 않는다(버전 · 이력 그대로).
+ * 「사용 안 함」 공정 · 작업장은 그것을 쓰던 그 줄(원래 순번)에만, BOM 에서 빠진 자재는 이 품목의 저장된 라우팅에 이미 있던 것만 다시 저장된다. 바꾼 것이 없으면 쓰지 않는다(버전 · 이력 그대로).
  * 바꿨으면 줄 · 자재를 지우고 다시 넣고(순번 10 · 20 …), 고친 이력을 같은 트랜잭션에서 남긴다. changed 는 남긴 이력 줄 수다.
  */
 export async function saveRouting(db: Db, values: RoutingValues): Promise<RoutingSaveResult> {
@@ -527,17 +545,21 @@ export async function saveRouting(db: Db, values: RoutingValues): Promise<Routin
           .where(inArray(workCenters.code, [...new Set(v.steps.map((s) => s.workCenterCode))]))
       ).map((w) => [w.code, w] as const),
     );
-    const usedProcs = new Set(old?.steps.map((s) => s.processId));
-    const usedCenters = new Set(old?.steps.map((s) => s.workCenterId));
+    // 「사용 안 함」 공정 · 작업장은 그것을 쓰던 그 줄에만 다시 저장된다 — 원래 순번이 옛 줄을 가리키고(옛 줄 하나는 처음 가리킨 줄과만 짝, 고친 이력과
+    // 같다) 옛 줄의 공정(작업장)이 같을 때. 새 줄 · 다른 줄은 같은 라우팅의 다른 줄이 쓰고 있어도 넣지 못한다.
+    const oldBySeq = new Map(old?.steps.map((s) => [s.seq, s] as const));
+    const paired = new Set<number>();
     const steps: NextStep[] = [];
     const stepOf = (s: ParsedRoutingStep) => {
       const e: RoutingStepErrors = {};
+      const was = s.origSeq === null || paired.has(s.origSeq) ? undefined : oldBySeq.get(s.origSeq);
+      if (was) paired.add(was.seq);
       const p = procs.get(s.processCode);
       if (!p) e.process = "없는 공정입니다 — 목록에서 고르세요";
-      else if (!p.active && !usedProcs.has(p.id)) e.process = "「사용 안 함」인 공정입니다 — 다른 공정을 고르세요";
+      else if (!p.active && was?.processId !== p.id) e.process = "「사용 안 함」인 공정입니다 — 다른 공정을 고르세요";
       const w = centers.get(s.workCenterCode);
       if (!w) e.workCenter = "없는 작업장입니다 — 목록에서 고르세요";
-      else if (!w.active && !usedCenters.has(w.id))
+      else if (!w.active && was?.workCenterId !== w.id)
         e.workCenter = "「사용 안 함」인 작업장입니다 — 다른 작업장을 고르세요";
       else if (p && w.processId !== p.id) e.workCenter = "그 공정의 작업장이 아닙니다 — 이 공정의 작업장에서 고르세요";
       if (Object.keys(e).length) {
@@ -744,6 +766,32 @@ export function parseRoutingFilter(params: Params): { filter: RoutingFilter; not
   const process = read(params.process, PROCESS_CODE, "process", "공정");
   const workCenter = read(params.workCenter, WORK_CENTER_CODE, "workCenter", "작업장");
   return { filter: { q: search.q, process, workCenter }, notices };
+}
+
+const FILTER_FIELDS = ["q", "process", "workCenter"] as const;
+
+/**
+ * 꼴은 맞지만 없는 공정 · 작업장이면 꼴이 틀린 때처럼 거르지 않고(모든 공정 · 작업장) 알린다 — 찾기 칸은 「모든 …」인데 빈 목록이 나오지 않게.
+ * options 는 routingFilterOptions(「사용 안 함」까지 모두)다. 알림은 칸 차례로.
+ */
+export function dropUnknownRoutingFilter(
+  filter: RoutingFilter,
+  notices: readonly RoutingFilterNotice[],
+  options: readonly ProcessChoice[],
+): { filter: RoutingFilter; notices: RoutingFilterNotice[] } {
+  const next = { ...filter };
+  const added: RoutingFilterNotice[] = [];
+  if (next.process && !options.some((p) => p.code === next.process)) {
+    next.process = "";
+    added.push({ field: "process", message: "받지 않는 공정 값이라 거르지 않았습니다" });
+  }
+  if (next.workCenter && !options.some((p) => p.workCenters.some((w) => w.code === next.workCenter))) {
+    next.workCenter = "";
+    added.push({ field: "workCenter", message: "받지 않는 작업장 값이라 거르지 않았습니다" });
+  }
+  if (!added.length) return { filter, notices: [...notices] };
+  const all = [...notices, ...added].sort((a, b) => FILTER_FIELDS.indexOf(a.field) - FILTER_FIELDS.indexOf(b.field));
+  return { filter: next, notices: all };
 }
 
 /** 라우팅 한 줄 — flow 는 순번 차례 공정코드, runSec 은 개당 시간(밀리초) 합을 초 글자로. */

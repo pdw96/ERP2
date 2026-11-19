@@ -6,6 +6,7 @@ import { inputClass } from "@/components/form-parts";
 import type { ProcessChoice, RoutingSheet } from "@/db/routings";
 import { itemTypeName } from "@/lib/master-codes";
 import {
+  isBlankStep,
   ROUTING_MAX_STEPS,
   ROUTING_NOTE_MAX,
   seqOf,
@@ -16,7 +17,7 @@ import {
 import { deleteRoutingAction, saveRoutingAction, type RoutingDeleteState, type RoutingFormState } from "./actions";
 
 // 한 품목의 라우팅(메뉴 「라우팅」) — 공정 줄(순번 · 공정 · 작업장 · 준비시간 · 개당 작업시간 · 비고)과 BOM 자재마다의 투입 공정. 순번은 화면 차례대로
-// 10 · 20 … 으로 보이고 저장할 때 서버가 다시 매긴다. 줄을 옮기거나 지워도 자재는 그 공정 줄(화면 열쇠)을 따라가고, 지운 줄의 자재는 첫 공정에서 든다.
+// 10 · 20 … 으로 보이고 저장할 때 서버가 다시 매긴다 — 칸이 다 빈 줄은 저장 때 빠지니 순번 「—」 이고, 순번 · 자재의 투입 공정 후보에서 뺀다. 줄을 옮기거나 지워도 자재는 그 공정 줄(화면 열쇠)을 따라가고, 지운 줄의 자재는 첫 공정에서 든다.
 // 줄의 공정을 바꾸면 작업장을 비운다 — 작업장 후보는 그 공정의 것만. 검사는 서버가 하고 화면은 틀린 칸과 까닭을 보인다(값은 화면이 쥐고 있어 그대로 남는다).
 // 휴대폰 폭에서는 표를 옆으로 민다.
 
@@ -117,15 +118,24 @@ export function RoutingForm({ sheet, processes }: { sheet: RoutingSheet; process
       });
     return list;
   };
+  /** 줄마다 보이는 순번 — 칸이 다 빈 줄은 null(저장 때 빠진다), 나머지는 빈 줄을 빼고 센 차례로(서버가 매길 순번과 같다). */
+  let filled = 0;
+  const seqs = steps.map((s) => (isBlankStep(s) ? null : seqOf(filled++)));
+  /** 줄의 이름 — 칸 이름 · 단추 이름에 쓴다. 빈 줄은 순번이 없어 표의 차례로 부른다. */
+  const rowName = (index: number) => (seqs[index] === null ? `${index + 1}번째 빈 줄` : `${seqs[index]} 줄`);
   /** 자재의 투입 공정 후보에 보이는 줄 이름 — 「20 MD 몰딩」. */
   const stepLabel = (s: Step, index: number) => {
     const name = processOptions(s)
       .find((p) => p.code === s.process)
       ?.label.replace(INACTIVE, "");
-    return `${seqOf(index)} ${name ?? "공정을 고르지 않은 줄"}`;
+    return `${seqs[index]} ${name ?? "공정을 고르지 않은 줄"}`;
   };
 
-  const posOf = (uid: number | null) => (uid === null ? -1 : steps.findIndex((s) => s.uid === uid));
+  /** 자재가 붙은 줄의 차례 — 붙이지 않았거나 그 줄이 빈 줄이면 -1(첫 공정에서 듦). */
+  const posOf = (uid: number | null) => {
+    const at = uid === null ? -1 : steps.findIndex((s) => s.uid === uid);
+    return at >= 0 && seqs[at] !== null ? at : -1;
+  };
 
   const setStep = (index: number, patch: Partial<Step>, cleared: RoutingStepField[]) => {
     setSteps((all) => all.map((s, i) => (i === index ? { ...s, ...patch } : s)));
@@ -181,7 +191,7 @@ export function RoutingForm({ sheet, processes }: { sheet: RoutingSheet; process
     Object.keys(errors.materials).length;
   const hasErrors = !!formError || !!errors.item || wrong > 0;
   const unattached = sheet.materials.filter((_, j) => posOf(attach[j]) < 0).length;
-  const firstProcess = steps[0]?.process || "—";
+  const firstProcess = steps.find((_, i) => seqs[i] !== null)?.process || "—";
 
   return (
     <>
@@ -240,12 +250,14 @@ export function RoutingForm({ sheet, processes }: { sheet: RoutingSheet; process
                   <StepRow
                     key={s.uid}
                     index={index}
+                    seq={seqs[index]}
+                    name={rowName(index)}
                     last={index === steps.length - 1}
                     locked={pending}
                     step={s}
                     processOptions={processOptions(s)}
                     centerOptions={centerOptions(s)}
-                    materials={sheet.materials.filter((_, j) => attach[j] === s.uid)}
+                    materials={sheet.materials.filter((_, j) => posOf(attach[j]) === index)}
                     errors={errors.steps[index]}
                     onChange={(patch, cleared) => setStep(index, patch, cleared)}
                     onMove={(by) => move(index, by)}
@@ -342,11 +354,13 @@ export function RoutingForm({ sheet, processes }: { sheet: RoutingSheet; process
                               className={`${inputClass(!!error)} px-2 py-1.5`}
                             >
                               <option value="">첫 공정에서 듦</option>
-                              {steps.map((s, i) => (
-                                <option key={s.uid} value={String(i)}>
-                                  {stepLabel(s, i)}
-                                </option>
-                              ))}
+                              {steps.map((s, i) =>
+                                seqs[i] === null ? null : (
+                                  <option key={s.uid} value={String(i)}>
+                                    {stepLabel(s, i)}
+                                  </option>
+                                ),
+                              )}
                             </select>
                             {error && <p className="mt-1 text-xs font-semibold text-red-700">{error}</p>}
                           </td>
@@ -380,6 +394,8 @@ export function RoutingForm({ sheet, processes }: { sheet: RoutingSheet; process
 
 function StepRow({
   index,
+  seq,
+  name: rowName,
   last,
   locked,
   step,
@@ -392,6 +408,10 @@ function StepRow({
   onRemove,
 }: {
   index: number;
+  /** 보이는 순번 — 칸이 다 빈 줄은 null(「—」). */
+  seq: number | null;
+  /** 줄의 이름 — 「20 줄」, 빈 줄은 「3번째 빈 줄」. */
+  name: string;
   last: boolean;
   /** 저장 중 — 돌아올 까닭이 보낸 차례에 붙으니 줄의 차례를 바꾸지 못하게 한다. */
   locked: boolean;
@@ -404,7 +424,6 @@ function StepRow({
   onMove: (by: -1 | 1) => void;
   onRemove: () => void;
 }) {
-  const seq = seqOf(index);
   const name = (field: string) => `steps.${index}.${field}`;
   const e = errors ?? {};
   const cell = (invalid: boolean) => `${inputClass(invalid)} px-2 py-1.5`;
@@ -416,13 +435,13 @@ function StepRow({
     <>
       <tr className={`border-b border-rule align-top ${errors ? "bg-red-50" : ""}`}>
         <td className="px-2 py-2 text-right font-mono text-muted">
-          {seq}
+          {seq ?? "—"}
           {step.origSeq !== undefined && <input type="hidden" name={name("origSeq")} value={step.origSeq} />}
         </td>
         <td className="px-2 py-2">
           <select
             name={name("process")}
-            aria-label={`${seq} 줄 공정`}
+            aria-label={`${rowName} 공정`}
             value={step.process}
             onChange={(ev) => onChange({ process: ev.target.value, workCenter: "" }, ["process", "workCenter"])}
             aria-invalid={!!e.process || undefined}
@@ -440,7 +459,7 @@ function StepRow({
         <td className="px-2 py-2">
           <select
             name={name("workCenter")}
-            aria-label={`${seq} 줄 작업장`}
+            aria-label={`${rowName} 작업장`}
             value={step.workCenter}
             onChange={(ev) => onChange({ workCenter: ev.target.value }, ["workCenter"])}
             aria-invalid={!!e.workCenter || undefined}
@@ -458,7 +477,7 @@ function StepRow({
         <td className="px-2 py-2">
           <input
             name={name("setupMin")}
-            aria-label={`${seq} 줄 준비시간`}
+            aria-label={`${rowName} 준비시간`}
             value={step.setupMin}
             onChange={(ev) => onChange({ setupMin: ev.target.value }, ["setupMin"])}
             inputMode="numeric"
@@ -471,7 +490,7 @@ function StepRow({
         <td className="px-2 py-2">
           <input
             name={name("runSec")}
-            aria-label={`${seq} 줄 개당 시간`}
+            aria-label={`${rowName} 개당 시간`}
             value={step.runSec}
             onChange={(ev) => onChange({ runSec: ev.target.value }, ["runSec"])}
             inputMode="decimal"
@@ -495,7 +514,7 @@ function StepRow({
         <td className="px-2 py-2">
           <input
             name={name("note")}
-            aria-label={`${seq} 줄 비고`}
+            aria-label={`${rowName} 비고`}
             value={step.note}
             onChange={(ev) => onChange({ note: ev.target.value }, ["note"])}
             maxLength={ROUTING_NOTE_MAX}
@@ -510,7 +529,7 @@ function StepRow({
             type="button"
             onClick={() => onMove(-1)}
             disabled={locked || index === 0}
-            aria-label={`${seq} 줄 위로`}
+            aria-label={`${rowName} 위로`}
             className={button}
           >
             위로
@@ -519,12 +538,18 @@ function StepRow({
             type="button"
             onClick={() => onMove(1)}
             disabled={locked || last}
-            aria-label={`${seq} 줄 아래로`}
+            aria-label={`${rowName} 아래로`}
             className={button}
           >
             아래로
           </button>
-          <button type="button" onClick={onRemove} disabled={locked} aria-label={`${seq} 줄 지우기`} className={button}>
+          <button
+            type="button"
+            onClick={onRemove}
+            disabled={locked}
+            aria-label={`${rowName} 지우기`}
+            className={button}
+          >
             지우기
           </button>
         </td>
@@ -533,7 +558,7 @@ function StepRow({
         <tr className="border-b border-rule bg-red-50">
           <td />
           <td colSpan={7} className="px-2 pb-2 text-sm font-semibold text-red-700" role="status">
-            {seq} 줄 — {e.row}
+            {rowName} — {e.row}
           </td>
         </tr>
       )}

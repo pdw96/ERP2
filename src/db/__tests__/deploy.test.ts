@@ -1017,6 +1017,36 @@ describe("마이그레이션 0021 · 0022 — 라우팅 표 · 샘플 라우팅(
     expect(await h.db.select().from(routingMaterials)).toHaveLength(expectedMaterials(["SF-0001"]).length);
   });
 
+  it("0022 는 샘플 줄이 다 맞는 품목에만 넣는다 — 작업장이 없거나 다른 공정의 것이면 그 품목은 라우팅 머리부터 넣지 않는다", async () => {
+    const h = await dataDb();
+    // 데이터 DB 에서 방문자가 DA-2(FG-0002 만 씀)를 지우고, WB-1(SF-0002 만 씀)을 몰딩 공정으로 옮겨 두었다.
+    await h.client.exec(`
+      delete from work_centers where code = 'DA-2';
+      update work_centers set process_id = (select id from processes where code = 'MD') where code = 'WB-1';
+    `);
+    await h.migrate();
+    const skip = ["SF-0002", "FG-0002"];
+    const heads = await h.client.query<{ code: string }>(
+      `select i.code from routings r join items i on i.id = r.item_id order by i.code`,
+    );
+    expect(heads.rows.map((r) => r.code)).toEqual(["FG-0001", "SF-0001"]);
+    expect(await stepRows(h)).toEqual(expectedSteps(skip));
+    expect(await materialRows(h)).toEqual(expectedMaterials(skip));
+    // 다시 돌려도 그대로다.
+    await h.client.exec(readFileSync("drizzle/0022_routing_values.sql", "utf8"));
+    expect(await h.db.select().from(routings)).toHaveLength(2);
+    expect(await stepRows(h)).toEqual(expectedSteps(skip));
+  });
+
+  it("0022 는 「사용 안 함」 샘플 품목에는 넣지 않는다", async () => {
+    const h = await dataDb();
+    await h.client.exec(`update items set active = false where code = 'SF-0001'`);
+    await h.migrate();
+    expect(await h.db.select().from(routings)).toHaveLength(SAMPLE_ROUTINGS.length - 1);
+    expect(await stepRows(h)).toEqual(expectedSteps(["SF-0001"]));
+    expect(await materialRows(h)).toEqual(expectedMaterials(["SF-0001"]));
+  });
+
   it("빈 DB — 0022 는 넣지 않고 배포 빌드의 샘플이 넷을 넣는다", async () => {
     const h = await fresh();
     await h.migrate();

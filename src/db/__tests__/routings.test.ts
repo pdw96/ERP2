@@ -1,15 +1,17 @@
 // @vitest-environment node
-import { eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray, sql, type SQL } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { openBomSheet, saveBom } from "@/db/boms";
 import { limitMessage, STALE } from "@/db/master-shared";
 import { resetToSample } from "@/db/reset";
 import {
   deleteRouting,
+  dropUnknownRoutingFilter,
   listRoutings,
   parseRoutingFilter,
   openRouting,
   ROUTING_STEP_LIMIT,
+  routingFilterOptions,
   routingFormOptions,
   routingHistory,
   saveRouting,
@@ -367,10 +369,9 @@ describe("라우팅 저장", () => {
       1: { workCenter: "「사용 안 함」인 작업장입니다 — 다른 작업장을 고르세요" },
     });
 
-    // 이미 쓰던 라우팅은 고쳐 저장된다 — 줄을 더해 같은 공정 · 작업장을 한 번 더 써도.
+    // 이미 든 줄은 그대로 고쳐 저장된다.
     const values = await valuesOf("SF-0002");
     values.steps[0].setupMin = "15";
-    values.steps.push(step("MD", "MD-1", "5", "0.5"), step("DA", "DA-1", "5", "0.5"));
     expect((await saved(values)).ok).toBe(true);
 
     const opened = await openRouting(db, "SF-0002");
@@ -381,12 +382,56 @@ describe("라우팅 저장", () => {
       ["DA", true, "DA-1", false],
       ["WB", true, "WB-1", true],
       ["MD", false, "MD-1", true],
-      ["MD", false, "MD-1", true],
-      ["DA", true, "DA-1", false],
     ]);
     const options = await routingFormOptions(db);
     expect(options.processes.map((p) => p.code)).not.toContain("MD");
     expect(options.processes.find((p) => p.code === "DA")?.workCenters.map((w) => w.code)).toEqual(["DA-2"]);
+  });
+
+  it("「사용 안 함」 공정 · 작업장은 그것을 쓰던 그 줄에만 — 같은 라우팅의 다른 줄이 써도 새 줄 · 다른 줄에는 거절", async () => {
+    await saved(threeSteps());
+    await setActive(processes, "MD", false);
+    await setActive(workCenters, "DA-1", false);
+    const inactiveProcess = { process: "「사용 안 함」인 공정입니다 — 다른 공정을 고르세요" };
+    const inactiveCenter = { workCenter: "「사용 안 함」인 작업장입니다 — 다른 작업장을 고르세요" };
+
+    // (a) 원래 순번이 없는 새 줄 — 같은 라우팅의 다른 줄이 쓰고 있어도 거절, 그 줄 칸에.
+    const added = await valuesOf("SF-0002");
+    added.steps.push(step("DA", "DA-1", "5", "0.5"), step("MD", "MD-1", "5", "0.5"));
+    expect((await rejected(added)).errors.steps).toEqual({ 3: inactiveCenter, 4: inactiveProcess });
+
+    // 옛 줄이 다른 공정 · 작업장이던 줄(원래 순번 20 은 WB · WB-1)에 넣어도 거절.
+    const swapped = await valuesOf("SF-0002");
+    swapped.steps[1] = { ...swapped.steps[1], process: "MD", workCenter: "MD-1" };
+    expect((await rejected(swapped)).errors.steps).toEqual({ 1: inactiveProcess });
+    const otherCenter = await valuesOf("SF-0002");
+    otherCenter.steps[2] = { ...otherCenter.steps[2], process: "DA", workCenter: "DA-1" };
+    expect((await rejected(otherCenter)).errors.steps).toEqual({ 2: inactiveCenter });
+
+    // 같은 원래 순번을 둘째로 가리키는 줄(줄을 베껴 보냄)은 새 줄이다.
+    const copied = await valuesOf("SF-0002");
+    copied.steps.push({ ...copied.steps[0] });
+    expect((await rejected(copied)).errors.steps).toEqual({ 3: inactiveCenter });
+
+    // (b) 「사용 안 함」 작업장을 쓰던 줄은 그 작업장 그대로 고쳐 저장된다.
+    const kept = await valuesOf("SF-0002");
+    kept.steps[0].note = "그대로";
+    expect((await saved(kept)).changed).toBe(1);
+
+    // (c) 줄을 옮겨도(원래 순번이 따라간다) 그 줄의 「사용 안 함」 공정 · 작업장은 그대로 저장된다.
+    const moved = await valuesOf("SF-0002");
+    moved.steps = [moved.steps[2], moved.steps[1], moved.steps[0]];
+    moved.materials = moved.materials.map((m) =>
+      m.step === "0" ? { ...m, step: "2" } : m.step === "2" ? { ...m, step: "0" } : m,
+    );
+    expect((await saved(moved)).ok).toBe(true);
+    const opened = await openRouting(db, "SF-0002");
+    if (!opened.ok) throw new Error(opened.message);
+    expect(opened.sheet.steps.map((x) => `${x.seq} ${x.processCode} ${x.workCenterCode}`)).toEqual([
+      "10 MD MD-1",
+      "20 WB WB-1",
+      "30 DA DA-1",
+    ]);
   });
 
   it("BOM 에 없는 자재는 거절, BOM 에서 빠진 붙은 자재는 「BOM 에 없음」으로 열리고 그대로 저장 · 뗄 수 있다", async () => {
@@ -569,6 +614,51 @@ describe("라우팅 저장", () => {
     expect(await deleteRouting(db, "SF-0002", v.version!)).toEqual({ ok: false, notFound: true });
   });
 
+  it("고친 이력의 일시 — 잠금을 쥔 뒤의 한 시각을 한 저장 · 지우기의 줄 모두가 같이 쓴다(잠금을 기다린 저장이 앞선 저장보다 이르게 남지 않게)", async () => {
+    const rowsOf = async <T>(q: SQL) => ((await db.execute(q)) as unknown as { rows: T[] }).rows;
+    /** 트랜잭션을 연 뒤 잠금 앞에서 기다리는 DB — 남의 저장이 쥔 잠금을 기다리는 모양. 기다린 뒤의 시각을 적어 둔다. */
+    let waited = "";
+    const queued = {
+      transaction: (fn: (tx: Db) => Promise<unknown>) =>
+        db.transaction(async (tx) => {
+          await tx.execute(sql`select pg_sleep(0.05)`);
+          const result = (await tx.execute(sql`select clock_timestamp()::text as at`)) as unknown as {
+            rows: { at: string }[];
+          };
+          waited = result.rows[0].at;
+          return fn(tx);
+        }),
+    } as unknown as Db;
+    /** 지난번 뒤에 남은 이력 줄 — 일시가 몇 가지인가, 모두 기다린 뒤인가. */
+    let seen = 0;
+    const stamps = async () => {
+      const [r] = await rowsOf<{ rows: number; stamps: number; late: boolean }>(
+        sql`select count(*)::int as rows, count(distinct saved_at)::int as stamps,
+                   bool_and(saved_at >= ${waited}::timestamptz) as late
+              from routing_changes where id > ${seen}`,
+      );
+      const [{ last }] = await rowsOf<{ last: number }>(
+        sql`select coalesce(max(id), 0)::int as last from routing_changes`,
+      );
+      seen = last;
+      return r;
+    };
+
+    expect((await saveRouting(queued, threeSteps())).ok).toBe(true);
+    expect(await stamps()).toEqual({ rows: 6, stamps: 1, late: true });
+
+    const values = await valuesOf("SF-0002");
+    values.steps[1].note = "고침";
+    values.steps.pop();
+    values.materials = values.materials.map((m) => (m.step === "2" ? { ...m, step: "" } : m));
+    expect((await saveRouting(queued, values)).ok).toBe(true);
+    expect(await stamps()).toEqual({ rows: 3, stamps: 1, late: true });
+
+    const v = await valuesOf("SF-0002");
+    expect(await deleteRouting(queued, "SF-0002", v.version!)).toEqual({ ok: true, code: "SF-0002" });
+    expect(await stamps()).toEqual({ rows: 4, stamps: 1, late: true });
+  });
+
   it("공정 줄 상한 — 다른 라우팅 줄이 5,000 이면 formError limitMessage", async () => {
     // 품목 100 개(원자재 RM-0001 을 본뜬) 마다 라우팅 하나 · 공정 줄 50 — 5,000 줄.
     const [base] = await db
@@ -640,6 +730,46 @@ describe("라우팅 목록", () => {
     const rows = await listRoutings(db, { ...none, q: it0.name.slice(0, 3) });
     expect(rows.map((r) => r.code)).toContain("FG-0001");
     expect((await listRoutings(db, { ...none, q: "sf-0002" })).map((r) => r.code)).toEqual(["SF-0002"]);
+  });
+
+  it("찾기의 공정 · 작업장 후보는 「사용 안 함」까지 모두 — 그것으로 걸러도 그 공정 · 작업장을 쓰는 라우팅이 나온다", async () => {
+    await setActive(processes, "MD", false);
+    await setActive(workCenters, "DA-2", false);
+    const options = await routingFilterOptions(db);
+    const all = await db.select({ code: processes.code }).from(processes).orderBy(processes.code);
+    expect(options.map((p) => p.code)).toEqual(all.map((p) => p.code));
+    expect(options.find((p) => p.code === "MD")).toMatchObject({ active: false });
+    expect(options.find((p) => p.code === "DA")?.workCenters).toEqual([
+      { code: "DA-1", name: "다이 본딩 1라인", active: true },
+      { code: "DA-2", name: "다이 본딩 2라인", active: false },
+    ]);
+    expect(options.flatMap((p) => p.workCenters)).toHaveLength((await db.select().from(workCenters)).length);
+    // 고를 것(새로 넣는 줄)은 그대로 「사용」만.
+    expect((await routingFormOptions(db)).processes.map((p) => p.code)).not.toContain("MD");
+
+    const parsed = parseRoutingFilter({ process: "MD", workCenter: "DA-2" });
+    expect(dropUnknownRoutingFilter(parsed.filter, parsed.notices, options)).toEqual(parsed);
+    expect((await listRoutings(db, { ...none, process: "MD" })).map((r) => r.code)).toEqual(["FG-0002", "SF-0002"]);
+  });
+
+  it("꼴은 맞지만 없는 공정 · 작업장 값은 거르지 않고 알린다", async () => {
+    const options = await routingFilterOptions(db);
+    const parsed = parseRoutingFilter({ q: "FG", process: "ZZ", workCenter: "ZZ-9" });
+    expect(dropUnknownRoutingFilter(parsed.filter, parsed.notices, options)).toEqual({
+      filter: { q: "FG", process: "", workCenter: "" },
+      notices: [
+        { field: "process", message: "받지 않는 공정 값이라 거르지 않았습니다" },
+        { field: "workCenter", message: "받지 않는 작업장 값이라 거르지 않았습니다" },
+      ],
+    });
+    // 꼴이 틀린 알림과 섞여도 칸 차례(글자 · 공정 · 작업장)로, 한 칸에 하나.
+    const mixed = parseRoutingFilter({ process: "ZZ", workCenter: "x y" });
+    expect(dropUnknownRoutingFilter(mixed.filter, mixed.notices, options).notices.map((n) => n.field)).toEqual([
+      "process",
+      "workCenter",
+    ]);
+    const known = parseRoutingFilter({ process: "DA", workCenter: "DA-2" });
+    expect(dropUnknownRoutingFilter(known.filter, known.notices, options)).toEqual(known);
   });
 
   it("꼴 틀린 공정 · 작업장 값은 거르지 않고 알린다", () => {

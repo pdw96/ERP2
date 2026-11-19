@@ -6,7 +6,9 @@ import { itemTypeName } from "@/lib/master-codes";
 // 라우팅 목록 화면의 부품 — 찾기, 표.
 
 const field = "w-full min-w-0 rounded border border-rule px-3 py-2 text-base";
+const inactive = (active: boolean) => (active ? "" : " (사용 안 함)");
 
+/** processes — 「사용 안 함」까지 모든 공정 · 작업장(그것을 쓰던 라우팅도 찾게). */
 export function RoutingSearch({
   filter,
   notices,
@@ -44,6 +46,7 @@ export function RoutingSearch({
           {processes.map((p) => (
             <option key={p.code} value={p.code}>
               {p.code} {p.name}
+              {inactive(p.active)}
             </option>
           ))}
         </select>
@@ -56,6 +59,7 @@ export function RoutingSearch({
             p.workCenters.map((w) => (
               <option key={w.code} value={w.code}>
                 {w.code} {w.name}
+                {inactive(w.active)}
               </option>
             )),
           )}

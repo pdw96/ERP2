@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProcessChoice, RoutingSheet, RoutingSheetMaterial, RoutingSheetStep } from "@/db/routings";
-import { routingValues } from "@/lib/routing-input";
+import { parseRouting, routingValues } from "@/lib/routing-input";
 import { RoutingForm } from "../routing-form";
 
 // 라우팅 한 품목 화면의 폼(메뉴 「라우팅」) — 공정 줄 · 투입 자재를 고치고 「저장」으로 보낸다. 저장 · 지우기는 서버 동작이라 흉내 낸다 —
@@ -197,7 +197,8 @@ describe("공정 줄", () => {
   it("자재의 투입 공정을 고르면 그 줄 차례가 간다 — 새로 더한 줄도", async () => {
     render(<RoutingForm sheet={sheet} processes={processes} />);
     fireEvent.click(screen.getByRole("button", { name: "공정 줄 더하기" }));
-    fireEvent.change(screen.getByLabelText("30 줄 공정"), { target: { value: "DA" } });
+    // 칸이 다 빈 줄은 순번이 없다(저장 때 빠진다) — 공정을 고르면 30 이 된다.
+    fireEvent.change(screen.getByLabelText("3번째 빈 줄 공정"), { target: { value: "DA" } });
     fireEvent.change(screen.getByLabelText("30 줄 작업장"), { target: { value: "DA-2" } });
     const select = screen.getByLabelText("RM-0004 투입 공정");
     expect(optionTexts(select)).toEqual(["첫 공정에서 듦", "10 WB 와이어 본딩", "20 MD 몰딩", "30 DA 다이 본딩"]);
@@ -212,6 +213,48 @@ describe("공정 줄", () => {
     expect(sent().steps[2]).toMatchObject({ process: "DA", workCenter: "DA-2" });
     expect(sent().steps[2].origSeq).toBeUndefined();
     expect(stepOfMaterial("RM-0004")).toBe("2");
+  });
+  it("빈 줄은 순번 「—」 이고 자재의 투입 공정 후보가 아니다 — 순번 · 후보 이름 · 첫 공정 안내는 빈 줄을 빼고 센다, 보내는 step 은 보낸 줄의 차례", async () => {
+    render(
+      <RoutingForm
+        sheet={{ ...sheet, materials: [...sheet.materials, material({ code: "SM-0002", name: "방습백" })] }}
+        processes={processes}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "공정 줄 더하기" }));
+    fireEvent.click(screen.getByRole("button", { name: "3번째 빈 줄 위로" }));
+    fireEvent.click(screen.getByRole("button", { name: "2번째 빈 줄 위로" }));
+
+    const blank = screen.getByLabelText("1번째 빈 줄 공정").closest("tr")!;
+    expect(blank.cells[0].textContent).toBe("—");
+    expect(screen.getByLabelText("10 줄 공정")).toHaveValue("WB");
+    expect(screen.getByLabelText("20 줄 공정")).toHaveValue("MD");
+    expect(stepRow(10).cells[0].textContent).toBe("10");
+    expect(screen.getByText("붙이지 않은 자재 1개 — 첫 공정(WB)에서 듭니다")).toBeInTheDocument();
+    const select = screen.getByLabelText("RM-0004 투입 공정");
+    expect(optionTexts(select)).toEqual(["첫 공정에서 듦", "10 WB 와이어 본딩", "20 MD 몰딩"]);
+    expect(
+      within(select)
+        .getAllByRole("option")
+        .map((o) => (o as HTMLOptionElement).value),
+    ).toEqual(["", "1", "2"]);
+
+    // 자재를 붙인 줄의 칸을 다 비우면 그 자재는 첫 공정에서 든다(빈 줄을 가리켜 보내지 않는다).
+    fireEvent.change(screen.getByLabelText("SM-0002 투입 공정"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("10 줄 공정"), { target: { value: "" } });
+    for (const label of ["10 줄 준비시간", "10 줄 개당 시간"])
+      fireEvent.change(screen.getByLabelText(label), { target: { value: "" } });
+    expect(screen.getAllByText("—")).toHaveLength(2);
+    expect(screen.getByLabelText("SM-0002 투입 공정")).toHaveDisplayValue("첫 공정에서 듦");
+    expect(screen.getByText(/첫 공정\(MD\)에서 듭니다/)).toBeInTheDocument();
+    expect(optionTexts(screen.getByLabelText("RM-0004 투입 공정"))).toEqual(["첫 공정에서 듦", "10 MD 몰딩"]);
+
+    await save();
+    expect(sent().steps.map((s) => s.process ?? "")).toEqual(["", "", "MD"]);
+    expect(stepOfMaterial("RM-0004")).toBe("2");
+    expect(stepOfMaterial("SM-0002")).toBe("");
+    const parsed = parseRouting(sent());
+    expect(parsed.ok && parsed.value.materials.find((m) => m.itemCode === "RM-0004")?.stepPos).toBe(0);
   });
 });
 
@@ -313,6 +356,6 @@ describe("거절 · 지우기", () => {
     render(<RoutingForm sheet={{ ...sheet, version: null, steps: [], materials: [] }} processes={processes} />);
     expect(screen.queryByRole("button", { name: "라우팅 지우기" })).toBeNull();
     // 새 라우팅은 빈 줄 하나로 연다.
-    expect(screen.getByLabelText("10 줄 공정")).toHaveValue("");
+    expect(screen.getByLabelText("1번째 빈 줄 공정")).toHaveValue("");
   });
 });

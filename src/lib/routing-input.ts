@@ -68,7 +68,9 @@ export type RoutingParseResult =
   { ok: true; value: ParsedRouting } | { ok: false; errors: RoutingErrors; formError?: string };
 
 const t = (v: string | undefined) => (v ?? "").trim();
-const isBlankStep = (s: RoutingStepValues) => ROUTING_STEP_FIELDS.every((f) => t(s[f]) === "");
+/** 칸이 모두 빈 공정 줄 — 없는 줄로 친다(저장 때 빠지고 순번도 받지 않는다). 화면도 순번을 셀 때 이것으로 뺀다. */
+export const isBlankStep = (s: Partial<Record<RoutingStepField, string>>) =>
+  ROUTING_STEP_FIELDS.every((f) => t(s[f]) === "");
 const RUN_SEC = /^([0-9]{1,4})(?:\.([0-9]{1,3}))?$/;
 
 /** 개당 작업시간 글자(초)를 정수 밀리초로 — 0 ~ 3,600 초, 소수 셋째 자리까지. 틀리면 null. 부동소수 곱셈은 쓰지 않는다. */

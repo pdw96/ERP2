@@ -4,7 +4,13 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
-import { listRoutings, parseRoutingFilter, routingFormOptions } from "@/db/routings";
+import {
+  dropUnknownRoutingFilter,
+  listRoutings,
+  parseRoutingFilter,
+  routingFilterOptions,
+  routingFormOptions,
+} from "@/db/routings";
 import { withDb } from "@/db/request";
 import { ITEM_CODE } from "@/lib/bom-input";
 import { itemTypeName } from "@/lib/master-codes";
@@ -40,17 +46,25 @@ async function Results({ searchParams }: Pick<PageProps<"/production/routings">,
   if (ITEM_CODE.test(item)) redirect(`/production/routings/${item}`);
   const deleted = typeof params.deleted === "string" && ITEM_CODE.test(params.deleted) ? params.deleted : undefined;
   await connection();
-  const { filter, notices } = parseRoutingFilter(params);
+  const parsed = parseRoutingFilter(params);
   let data;
   try {
-    data = await withDb(async (db) => ({
-      rows: await listRoutings(db, filter),
-      options: await routingFormOptions(db),
-    }));
+    data = await withDb(async (db) => {
+      const filterOptions = await routingFilterOptions(db);
+      // 꼴은 맞지만 없는 공정 · 작업장 값은 거르지 않고 알린다(찾기 칸의 「모든 …」과 맞게).
+      const { filter, notices } = dropUnknownRoutingFilter(parsed.filter, parsed.notices, filterOptions);
+      return {
+        filter,
+        notices,
+        filterOptions,
+        rows: await listRoutings(db, filter),
+        options: await routingFormOptions(db),
+      };
+    });
   } catch (error) {
     return <LoadFailed error={error} what="라우팅 목록" />;
   }
-  const { rows, options } = data;
+  const { filter, notices, filterOptions, rows, options } = data;
 
   return (
     <>
@@ -92,7 +106,7 @@ async function Results({ searchParams }: Pick<PageProps<"/production/routings">,
           </p>
         )}
       </form>
-      <RoutingSearch filter={filter} notices={notices} processes={options.processes} />
+      <RoutingSearch filter={filter} notices={notices} processes={filterOptions} />
       <RoutingList rows={rows} filter={filter} />
     </>
   );

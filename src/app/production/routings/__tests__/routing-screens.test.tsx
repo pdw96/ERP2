@@ -72,4 +72,29 @@ describe("라우팅 찾기", () => {
     expect(screen.getByRole("option", { name: /DA-1/ })).toBeInTheDocument();
     expect(screen.getByText("받지 않는 공정 값이라 거르지 않았습니다")).toBeInTheDocument();
   });
+
+  it("「사용 안 함」 공정 · 작업장도 후보에 있고 표시한다 — 그것으로 거른 값이 칸에 보인다", () => {
+    render(
+      <RoutingSearch
+        filter={{ ...none, process: "MD", workCenter: "DA-2" }}
+        notices={[]}
+        processes={[
+          {
+            code: "DA",
+            name: "다이 본딩",
+            active: true,
+            workCenters: [
+              { code: "DA-1", name: "1라인", active: true },
+              { code: "DA-2", name: "2라인", active: false },
+            ],
+          },
+          { code: "MD", name: "몰딩", active: false, workCenters: [] },
+        ]}
+      />,
+    );
+    expect(screen.getByRole("combobox", { name: "공정" })).toHaveDisplayValue("MD 몰딩 (사용 안 함)");
+    expect(screen.getByRole("combobox", { name: "작업장" })).toHaveDisplayValue("DA-2 2라인 (사용 안 함)");
+    expect(screen.getByRole("option", { name: "DA 다이 본딩" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "DA-1 1라인" })).toBeInTheDocument();
+  });
 });
