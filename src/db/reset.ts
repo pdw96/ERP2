@@ -13,6 +13,7 @@ import {
   SAMPLE_NUMBER_RULES,
   SAMPLE_PARTNERS,
   SAMPLE_PROCESSES,
+  SAMPLE_ROUTINGS,
   SAMPLE_UNIT_SPECS,
   SAMPLE_WAREHOUSES,
   SAMPLE_WORK_CENTERS,
@@ -44,6 +45,7 @@ import {
   workCenters,
 } from "./schema";
 import { lockBom, saveBom } from "./boms";
+import { saveRouting } from "./routings";
 import { cancelMove, lockStock, saveMove } from "./stock";
 import { confirmCount, openCountSheet, saveCount } from "./stock-counts";
 import type { Db } from "./types";
@@ -131,6 +133,7 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
     await insertSampleMoves(tx, today);
     await insertSampleCounts(tx, today);
     await insertSampleBoms(tx, today);
+    await insertSampleRoutings(tx);
     const n = async (
       t:
         | typeof stockMoves
@@ -264,5 +267,25 @@ async function insertSampleBoms(tx: Db, today: string) {
     });
     if (!saved.ok)
       throw new Error(`샘플 BOM 저장 실패(${b.parent}): ${JSON.stringify([saved.errors, saved.formError])}`);
+  }
+}
+
+/** 샘플 라우팅을 넣는다 — 라우팅 저장(src/db/routings.ts)을 불러 화면과 같은 검사를 지난다(BOM 뒤 — 자재는 BOM 의 자품목이어야 한다). 틀리면 던져 되돌림 전체를 되돌린다. */
+async function insertSampleRoutings(tx: Db) {
+  for (const r of SAMPLE_ROUTINGS) {
+    const saved = await saveRouting(tx, {
+      item: r.item,
+      version: "",
+      steps: r.steps.map((s) => ({
+        process: s.process,
+        workCenter: s.workCenter,
+        setupMin: String(s.setupMin),
+        runSec: s.runSec,
+        note: s.note ?? "",
+      })),
+      materials: r.steps.flatMap((s, i) => (s.materials ?? []).map((item) => ({ item, step: String(i) }))),
+    });
+    if (!saved.ok)
+      throw new Error(`샘플 라우팅 저장 실패(${r.item}): ${JSON.stringify([saved.errors, saved.formError])}`);
   }
 }

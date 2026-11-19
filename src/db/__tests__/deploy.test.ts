@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { asc, eq, sql } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
+import { parseRunSec } from "@/lib/routing-input";
 import { isPooled, prepareDatabase } from "@/db/deploy";
 import { describeFailure } from "@/db/status";
 import {
@@ -13,6 +14,7 @@ import {
   SAMPLE_ITEMS,
   SAMPLE_NUMBER_RULES,
   SAMPLE_PROCESSES,
+  SAMPLE_ROUTINGS,
   SAMPLE_UNIT_SPECS,
   SAMPLE_WORK_CENTERS,
 } from "@/db/sample";
@@ -28,6 +30,10 @@ import {
   numberRules,
   partners,
   processes,
+  routingChanges,
+  routingMaterials,
+  routings,
+  routingSteps,
   stockCountLines,
   stockCounts,
   stockMoves,
@@ -91,9 +97,9 @@ describe("마이그레이션과 첫 샘플 데이터", () => {
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(await tableNames(h)).toEqual(TABLES);
     expect(await h.db.select().from(codeGroups)).toHaveLength(10);
-    expect(log[0]).toMatch(/^마이그레이션: 적용된 것 22개 — 이번에 22개 적용$/);
+    expect(log[0]).toMatch(/^마이그레이션: 적용된 것 23개 — 이번에 23개 적용$/);
     expect(log[1]).toMatch(
-      /^샘플 데이터: 빈 DB 라 넣었다 — routing_changes 0 · routing_materials 0 · routing_steps 0 · routings 0 · bom_changes 20 · bom_lines 16 · boms 4 · stock_count_lines 12 · stock_counts 2 · stock_balances 24 · stock_move_lines 32 · stock_moves 11 · items 14 · /,
+      /^샘플 데이터: 빈 DB 라 넣었다 — routing_changes 32 · routing_materials 14 · routing_steps 14 · routings 4 · bom_changes 20 · bom_lines 16 · boms 4 · stock_count_lines 12 · stock_counts 2 · stock_balances 24 · stock_move_lines 32 · stock_moves 11 · items 14 · /,
     );
   });
 
@@ -106,7 +112,7 @@ describe("마이그레이션과 첫 샘플 데이터", () => {
     const log: string[] = [];
     await prepareDatabase(h.db, { ...quiet, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 22개 — 이번에 0개 적용",
+      "마이그레이션: 적용된 것 23개 — 이번에 0개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -177,7 +183,7 @@ describe("마이그레이션 0001 · 0002 — 거래처의 국가(PR G)", () => 
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 22개 — 이번에 21개 적용",
+      "마이그레이션: 적용된 것 23개 — 이번에 22개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(
@@ -230,7 +236,7 @@ describe("마이그레이션 0003 · 0004 — 품목 · 거래처의 설명용 �
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 22개 — 이번에 19개 적용",
+      "마이그레이션: 적용된 것 23개 — 이번에 20개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(
@@ -327,7 +333,7 @@ describe("마이그레이션 0005 · 0006 — 단위 사양(조각 「재고 수
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 22개 — 이번에 17개 적용",
+      "마이그레이션: 적용된 것 23개 — 이번에 18개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     // 마이그레이션이 넣은 단위 · 사양은 샘플 데이터와 같다 — 매일 밤 되돌린 뒤와 어긋나지 않게.
@@ -410,7 +416,7 @@ describe("마이그레이션 0007 · 0008 — 번호 규칙 · 품목의 재고 
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 22개 — 이번에 15개 적용",
+      "마이그레이션: 적용된 것 23개 — 이번에 16개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
 
@@ -543,7 +549,7 @@ describe("마이그레이션 0009 — 품목의 기본 창고가 불량창고를
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 22개 — 이번에 13개 적용",
+      "마이그레이션: 적용된 것 23개 — 이번에 14개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     const [rm] = await h.db.select().from(items).where(eq(items.code, "RM-0001"));
@@ -567,7 +573,7 @@ describe("마이그레이션 0010 · 0011 — 수불 유형 · 조정 사유와 
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 22개 — 이번에 12개 적용",
+      "마이그레이션: 적용된 것 23개 — 이번에 13개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     const groups = await h.db
@@ -610,7 +616,7 @@ describe("마이그레이션 0012 — 재고 실사 표(조각 「재고 수불�
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 22개 — 이번에 10개 적용",
+      "마이그레이션: 적용된 것 23개 — 이번에 11개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -631,7 +637,7 @@ describe("마이그레이션 0013 — BOM 표(조각 「BOM」 PR A)", () => {
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 22개 — 이번에 9개 적용",
+      "마이그레이션: 적용된 것 23개 — 이번에 10개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -651,7 +657,7 @@ describe("마이그레이션 0014 — BOM 고친 이력 표(조각 「BOM」 PR 
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 22개 — 이번에 8개 적용",
+      "마이그레이션: 적용된 것 23개 — 이번에 9개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -686,7 +692,7 @@ describe("마이그레이션 0015 · 0016 — 공정 표 · 샘플 공정(메뉴
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 22개 — 이번에 7개 적용",
+      "마이그레이션: 적용된 것 23개 — 이번에 8개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -757,7 +763,7 @@ describe("마이그레이션 0017 · 0018 — 작업장 표 · 샘플 작업장(
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 22개 — 이번에 5개 적용",
+      "마이그레이션: 적용된 것 23개 — 이번에 6개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -841,7 +847,7 @@ describe("마이그레이션 0019 · 0020 — 불량 유형 표 · 샘플 불량
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
     expect(log).toEqual([
-      "마이그레이션: 적용된 것 22개 — 이번에 3개 적용",
+      "마이그레이션: 적용된 것 23개 — 이번에 4개 적용",
       "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
     ]);
     expect(await tableNames(h)).toEqual(TABLES);
@@ -913,5 +919,112 @@ describe("마이그레이션 0019 · 0020 — 불량 유형 표 · 샘플 불량
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: () => {} });
     expect(await h.db.select().from(defectTypes)).toHaveLength(SAMPLE_DEFECT_TYPES.length);
     expect(await h.db.select().from(defectTypeProcesses)).toHaveLength(linkCount);
+  });
+});
+
+describe("마이그레이션 0021 · 0022 — 라우팅 표 · 샘플 라우팅(메뉴 「라우팅」)", () => {
+  async function dataDb(applied = 22) {
+    const h = await fresh();
+    await h.migrate(firstMigrations(applied)); // 0021 까지 — 표는 있고 샘플 라우팅은 아직 없다
+    // 샘플 품목이 기대는 묶음 · 값 · 번호 규칙을 먼저 둔다.
+    await h.db.insert(codeGroups).values(SAMPLE_CODE_GROUPS);
+    await h.db.insert(codes).values(SAMPLE_CODES);
+    await h.db.insert(numberRules).values(SAMPLE_NUMBER_RULES);
+    // 0016 · 0018 은 데이터가 없을 때 넣지 않았다 — 데이터를 넣은 뒤 그 SQL 만 다시 돌려 샘플 공정 · 작업장을 갖춘다(운영 DB 의 모양).
+    await h.client.exec(readFileSync("drizzle/0016_process_values.sql", "utf8"));
+    await h.client.exec(readFileSync("drizzle/0018_work_center_values.sql", "utf8"));
+    await h.db.insert(items).values(SAMPLE_ITEMS);
+    return h;
+  }
+  type H = Awaited<ReturnType<typeof dataDb>>;
+  const stepRows = async (h: H) => {
+    const r = await h.client.query<{
+      item: string;
+      seq: number;
+      process: string;
+      wc: string;
+      setup: number;
+      run: number;
+      note: string;
+    }>(
+      `select i.code as item, s.seq, p.code as process, w.code as wc, s.setup_min as setup, s.run_ms as run, s.note
+         from routing_steps s join routings r on r.id = s.routing_id join items i on i.id = r.item_id
+         join processes p on p.id = s.process_id join work_centers w on w.id = s.work_center_id
+         order by r.id, s.seq`,
+    );
+    return r.rows.map((x) => [x.item, x.seq, x.process, x.wc, x.setup, x.run, x.note]);
+  };
+  const materialRows = async (h: H) => {
+    const r = await h.client.query<{ item: string; seq: number; material: string }>(
+      `select i.code as item, m.seq, mi.code as material
+         from routing_materials m join routings r on r.id = m.routing_id join items i on i.id = r.item_id
+         join items mi on mi.id = m.item_id order by r.id, m.seq, m.id`,
+    );
+    return r.rows.map((x) => [x.item, x.seq, x.material]);
+  };
+  const expectedSteps = (skip: string[] = []) =>
+    SAMPLE_ROUTINGS.filter((r) => !skip.includes(r.item)).flatMap((r) =>
+      r.steps.map((s, i) => [
+        r.item,
+        (i + 1) * 10,
+        s.process,
+        s.workCenter,
+        s.setupMin,
+        parseRunSec(s.runSec),
+        s.note ?? "",
+      ]),
+    );
+  const expectedMaterials = (skip: string[] = []) =>
+    SAMPLE_ROUTINGS.filter((r) => !skip.includes(r.item)).flatMap((r) =>
+      r.steps.flatMap((s, i) => (s.materials ?? []).map((m) => [r.item, (i + 1) * 10, m])),
+    );
+
+  it("데이터가 있는 DB — 0022 가 샘플 라우팅 넷을 넣고, 줄 · 자재가 SAMPLE_ROUTINGS 와 같다(순번 · 공정 · 작업장 · 준비 · 개당 ms · 비고 · 자재)", async () => {
+    const h = await dataDb();
+    const log: string[] = [];
+    await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });
+    expect(log).toEqual([
+      "마이그레이션: 적용된 것 23개 — 이번에 1개 적용",
+      "샘플 데이터: 이미 데이터가 있어 그대로 둔다",
+    ]);
+    expect(await h.db.select().from(routings)).toHaveLength(4);
+    expect(await h.db.select().from(routingSteps)).toHaveLength(14);
+    expect(await stepRows(h)).toEqual(expectedSteps());
+    expect(await materialRows(h)).toEqual(expectedMaterials());
+    expect(expectedMaterials()).toHaveLength(14);
+    // 이력은 넣지 않는다.
+    expect(await h.db.select().from(routingChanges)).toHaveLength(0);
+  });
+
+  it("0022 를 다시 돌려도 바뀌지 않고, 방문자가 먼저 만든 라우팅이 있는 품목은 건너뛴다", async () => {
+    const h = await dataDb(22);
+    await h.client.exec(`
+      insert into routings (item_id) values ((select id from items where code = 'SF-0001'));
+      insert into routing_steps (routing_id, seq, process_id, work_center_id, setup_min, run_ms, note)
+        select r.id, 10, p.id, w.id, 5, 1000, '방문자 줄' from routings r, processes p, work_centers w
+        where p.code = 'MD' and w.code = 'MD-1';
+    `);
+    await h.migrate();
+    const mine = await stepRows(h);
+    expect(mine.filter((r) => r[0] === "SF-0001")).toEqual([["SF-0001", 10, "MD", "MD-1", 5, 1000, "방문자 줄"]]);
+    expect(mine.filter((r) => r[0] !== "SF-0001")).toEqual(expectedSteps(["SF-0001"]));
+    expect((await materialRows(h)).filter((r) => r[0] === "SF-0001")).toEqual([]);
+    expect(await materialRows(h)).toEqual(expectedMaterials(["SF-0001"]));
+    const text = readFileSync("drizzle/0022_routing_values.sql", "utf8");
+    await h.client.exec(text);
+    expect(await stepRows(h)).toEqual(mine);
+    expect(await h.db.select().from(routings)).toHaveLength(SAMPLE_ROUTINGS.length);
+    expect(await h.db.select().from(routingMaterials)).toHaveLength(expectedMaterials(["SF-0001"]).length);
+  });
+
+  it("빈 DB — 0022 는 넣지 않고 배포 빌드의 샘플이 넷을 넣는다", async () => {
+    const h = await fresh();
+    await h.migrate();
+    expect(await h.db.select().from(routings)).toHaveLength(0);
+    await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: () => {} });
+    expect(await h.db.select().from(routings)).toHaveLength(SAMPLE_ROUTINGS.length);
+    expect(await h.db.select().from(routingSteps)).toHaveLength(14);
+    expect(await h.db.select().from(routingMaterials)).toHaveLength(14);
+    expect(await h.db.select().from(routingChanges)).toHaveLength(32);
   });
 });
