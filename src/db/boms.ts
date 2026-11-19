@@ -535,11 +535,22 @@ async function changeRoom(tx: Db, adding: number): Promise<boolean> {
   return n + adding <= BOM_CHANGE_LIMIT;
 }
 
-async function recordChanges(tx: Db, rows: readonly ChangeRow[]) {
+/**
+ * 고친 이력의 일시 — 잠금을 쥔 바로 뒤에 읽는다. 칸의 기본값(now())은 트랜잭션을 연 시각이라, 잠금을 기다린 저장 · 지우기가 먼저 끝난 것보다
+ * 이른 일시로 남아 이력의 차례가 뒤집힌다. lockBom 바로 뒤에 부른다.
+ */
+async function savedAtNow(tx: Db): Promise<string> {
+  const [{ at }] = rowsOf<{ at: string }>(await tx.execute(sql`select clock_timestamp()::text as at`));
+  return at;
+}
+
+/** 고친 이력을 남긴다 — 한 저장 · 지우기의 줄 모두가 같은 일시(at, savedAtNow)를 쓴다(이력 화면이 일시로 한 저장을 묶는다). */
+async function recordChanges(tx: Db, at: string, rows: readonly ChangeRow[]) {
   if (rows.length)
     await tx.insert(bomChanges).values(
       rows.map((r) => ({
         parentItemId: r.parentItemId,
+        savedAt: sql`${at}::timestamptz`,
         kind: r.kind,
         childItemId: r.childItemId ?? null,
         lineNo: r.lineNo ?? null,
@@ -614,6 +625,7 @@ export async function saveBoms(db: Db, tree: BomTreeValues): Promise<BomTreeSave
 
   return db.transaction(async (tx): Promise<BomTreeSaveResult> => {
     await lockBom(tx);
+    const at = await savedAtNow(tx);
 
     const codes = [...new Set([...plans.map((p) => p.parsed.parentCode), ...childCodes])];
     const known = new Map<string, BomItem>();
@@ -770,7 +782,7 @@ export async function saveBoms(db: Db, tree: BomTreeValues): Promise<BomTreeSave
         })),
       );
     }
-    await recordChanges(tx, changes);
+    await recordChanges(tx, at, changes);
     const root = plans[0].parent!;
     const saved = await headerOf(tx, root.id);
     return { ok: true, code: root.code, version: saved!.version, changed: writes.map((w) => w.plan.parent!.code) };
@@ -796,6 +808,7 @@ export async function deleteBom(
   if (!VERSION.test(version)) return { ok: false, formError: STALE };
   return db.transaction(async (tx) => {
     await lockBom(tx);
+    const at = await savedAtNow(tx);
     const parent = await itemByCode(tx, code);
     const header = parent && (await headerOf(tx, parent.id));
     if (!parent || !header) return { ok: false, notFound: true } as const;
@@ -826,7 +839,7 @@ export async function deleteBom(
       return { ok: false, formError: limitMessage("BOM 고친 이력", BOM_CHANGE_LIMIT) } as const;
     await tx.delete(bomLines).where(eq(bomLines.bomId, header.id));
     await tx.delete(boms).where(eq(boms.id, header.id));
-    await recordChanges(tx, changes);
+    await recordChanges(tx, at, changes);
     return { ok: true, code } as const;
   });
 }
