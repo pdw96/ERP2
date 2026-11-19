@@ -45,7 +45,7 @@ import {
   workCenters,
 } from "./schema";
 import { lockBom, saveBom } from "./boms";
-import { saveRouting } from "./routings";
+import { lockRouting, saveRouting } from "./routings";
 import { cancelMove, lockStock, saveMove } from "./stock";
 import { confirmCount, openCountSheet, saveCount } from "./stock-counts";
 import type { Db } from "./types";
@@ -90,6 +90,8 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
     // 서로 기다려 한쪽이 교착(40P01)으로 되돌아간다(PR C 리뷰 1회차).
     await lockStock(tx);
     await lockBom(tx);
+    // 라우팅도 같다 — 샘플 라우팅을 넣는 saveRouting 이 비운 뒤 이 잠금을 다시 쥐므로(같은 트랜잭션이라 겹쳐 쥐어도 된다) 먼저 쥔다(PR #58 Codex 리뷰).
+    await lockRouting(tx);
     await tx.execute(sql.raw(`truncate table ${RESET_TABLES.map((t) => `"${t}"`).join(", ")} restart identity`));
     await tx.insert(codeGroups).values(SAMPLE_CODE_GROUPS);
     await tx.insert(codes).values(SAMPLE_CODES);
