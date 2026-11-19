@@ -26,6 +26,8 @@ export const REGISTER_LOCK = {
   defectTypes: 2026111803,
   // 라우팅(메뉴 「라우팅」) — 라우팅 저장 · 지우기(공정 줄 전체 5,000 · 고친 이력 50,000 상한을 세고 넣기)를 한 차례로 본다.
   routings: 2026111901,
+  // 판매계획(메뉴 「판매계획」) — 저장(계획 칸 전체 20,000 · 고친 이력 50,000 상한을 세고 넣기)을 한 차례로 본다.
+  salesPlans: 2026111902,
 } as const;
 
 export type Params = Record<string, string | string[] | undefined>;

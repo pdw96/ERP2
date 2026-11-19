@@ -870,3 +870,57 @@ export const routingChanges = pgTable(
     check("routing_changes_material_kinds", sql`(${t.kind} like 'MAT_%') = (${t.materialItemId} is not null)`),
   ],
 );
+
+// ── 판매계획(메뉴 「판매계획」) ─────────────────────────────
+
+/**
+ * 판매계획 — 고객(거래처) × 완제품 × 주(그 주 월요일) 한 칸에 계획 수량 하나. 수량이 0 인 칸은 두지 않는다(지우면 줄이 없어진다).
+ * 품목이 완제품인지 · 거래처가 매출처인지는 서버가 본다. 한 칸의 값은 품목 단위의 소수 자릿수 이하다(서버가 본다).
+ */
+export const salesPlans = pgTable(
+  "sales_plans",
+  {
+    id: id(),
+    partnerId: integer("partner_id")
+      .notNull()
+      .references(() => partners.id),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => items.id),
+    weekStart: date("week_start", { mode: "string" }).notNull(),
+    qty: numeric("qty", { precision: 15, scale: 3, mode: "number" }).notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    unique("sales_plans_cell_unique").on(t.partnerId, t.itemId, t.weekStart),
+    index("sales_plans_item_week_idx").on(t.itemId, t.weekStart),
+    check("sales_plans_monday", sql`extract(isodow from ${t.weekStart}) = 1`),
+    check("sales_plans_qty_range", sql`${t.qty} > 0 and ${t.qty} <= 99999999`),
+  ],
+);
+
+/**
+ * 판매계획의 고친 이력 — 칸 하나를 고칠 때마다 한 줄(고객 · 품목 · 주 · 일시 · 전 · 후). 전이 비면 새로 정한 칸, 후가 비면 지운 칸이다.
+ * 판매계획 칸을 가리키지 않아 지운 칸의 이력도 남는다. 이력은 화면에서 고치거나 지우지 못한다.
+ */
+export const salesPlanChanges = pgTable(
+  "sales_plan_changes",
+  {
+    id: id(),
+    partnerId: integer("partner_id")
+      .notNull()
+      .references(() => partners.id),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => items.id),
+    weekStart: date("week_start", { mode: "string" }).notNull(),
+    savedAt: timestamp("saved_at", { withTimezone: true }).notNull().defaultNow(),
+    before: numeric("before", { precision: 15, scale: 3, mode: "number" }),
+    after: numeric("after", { precision: 15, scale: 3, mode: "number" }),
+  },
+  (t) => [
+    index("sales_plan_changes_saved_at_idx").on(t.savedAt),
+    check("sales_plan_changes_monday", sql`extract(isodow from ${t.weekStart}) = 1`),
+    check("sales_plan_changes_some", sql`${t.before} is not null or ${t.after} is not null`),
+  ],
+);
