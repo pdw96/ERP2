@@ -56,6 +56,14 @@ describe("ModuleHome", () => {
     expect(screen.queryAllByRole("link")).toHaveLength(1);
   });
 
+  it("영업 — 「판매계획」만 링크이고, 나머지 메뉴는 조각 「영업」과 함께 준비 중", () => {
+    render(<ModuleHome href="/sales" />);
+    expect(screen.queryByText("준비 중입니다.")).toBeNull();
+    expect(screen.getByRole("link", { name: /판매계획/ })).toHaveAttribute("href", "/sales/plans");
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.getByText("수주").parentElement).toHaveTextContent("준비 중 · 조각 「영업」");
+  });
+
   it("생산 — 「BOM 등록」 · 「BOM 조회」 · 「공정 등록」 · 「작업장 등록」 · 「라우팅」이 링크이고 메뉴 「BOM」은 없다(ADR 0026 의 6)", () => {
     render(<ModuleHome href="/production" />);
     const group = within(screen.getByRole("region", { name: "생산 기준정보" }));

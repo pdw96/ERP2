@@ -52,7 +52,7 @@ export const AREAS: readonly Area[] = [
           { label: "출하", slice: "영업" },
           { label: "매출", slice: "영업" },
           { label: "반품", slice: "영업" },
-          { label: "판매계획", slice: "MPS" },
+          { label: "판매계획", slice: "MPS", href: "/sales/plans" },
         ],
       },
     ],
