@@ -241,6 +241,7 @@ export function RoutingForm({ sheet, processes }: { sheet: RoutingSheet; process
                     key={s.uid}
                     index={index}
                     last={index === steps.length - 1}
+                    locked={pending}
                     step={s}
                     processOptions={processOptions(s)}
                     centerOptions={centerOptions(s)}
@@ -258,7 +259,7 @@ export function RoutingForm({ sheet, processes }: { sheet: RoutingSheet; process
             <button
               type="button"
               onClick={add}
-              disabled={steps.length >= ROUTING_MAX_STEPS}
+              disabled={pending || steps.length >= ROUTING_MAX_STEPS}
               className="rounded border border-machine bg-white px-4 py-2 font-semibold hover:bg-floor disabled:opacity-60"
             >
               공정 줄 더하기
@@ -380,6 +381,7 @@ export function RoutingForm({ sheet, processes }: { sheet: RoutingSheet; process
 function StepRow({
   index,
   last,
+  locked,
   step,
   processOptions,
   centerOptions,
@@ -391,6 +393,8 @@ function StepRow({
 }: {
   index: number;
   last: boolean;
+  /** 저장 중 — 돌아올 까닭이 보낸 차례에 붙으니 줄의 차례를 바꾸지 못하게 한다. */
+  locked: boolean;
   step: Step;
   processOptions: Choice[];
   centerOptions: Choice[];
@@ -505,7 +509,7 @@ function StepRow({
           <button
             type="button"
             onClick={() => onMove(-1)}
-            disabled={index === 0}
+            disabled={locked || index === 0}
             aria-label={`${seq} 줄 위로`}
             className={button}
           >
@@ -514,13 +518,13 @@ function StepRow({
           <button
             type="button"
             onClick={() => onMove(1)}
-            disabled={last}
+            disabled={locked || last}
             aria-label={`${seq} 줄 아래로`}
             className={button}
           >
             아래로
           </button>
-          <button type="button" onClick={onRemove} aria-label={`${seq} 줄 지우기`} className={button}>
+          <button type="button" onClick={onRemove} disabled={locked} aria-label={`${seq} 줄 지우기`} className={button}>
             지우기
           </button>
         </td>

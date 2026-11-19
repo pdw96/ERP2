@@ -288,6 +288,18 @@ describe("거절 · 지우기", () => {
     expect(screen.getByLabelText("10 줄 개당 시간")).toHaveValue("2.400");
   });
 
+  it("저장하는 동안에는 줄을 옮기거나 지우거나 더하지 못한다 — 돌아온 까닭이 다른 줄에 붙지 않게", async () => {
+    let finish!: (v: null) => void;
+    h.save.mockReturnValue(new Promise<null>((resolve) => (finish = resolve)));
+    render(<RoutingForm sheet={sheet} processes={processes} />);
+    await save();
+    for (const name of ["10 줄 아래로", "20 줄 위로", "10 줄 지우기", "20 줄 지우기", "공정 줄 더하기"])
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    await act(async () => finish(null));
+    expect(screen.getByRole("button", { name: "10 줄 아래로" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "공정 줄 더하기" })).toBeEnabled();
+  });
+
   it("「라우팅 지우기」는 한 번 더 묻고, 그렇다 하면 그때의 버전으로 지운다 — 새 라우팅에는 없다", async () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
     const { unmount } = render(<RoutingForm sheet={sheet} processes={processes} />);

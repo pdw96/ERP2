@@ -1,4 +1,4 @@
-import { codeOf, ITEM_CODE } from "./bom-input";
+import { BOM_MAX_LINES, codeOf, ITEM_CODE } from "./bom-input";
 import { PROCESS_CODE } from "./process-input";
 import { WORK_CENTER_CODE } from "./work-center-input";
 
@@ -30,6 +30,13 @@ export type RoutingErrors = {
 /** 한 라우팅의 공정 줄 상한. */
 export const ROUTING_MAX_STEPS = 50;
 export const ROUTING_NOTE_MAX = 200;
+/** 한 라우팅에 붙이는 투입 자재의 상한 — BOM 한 장의 줄 상한과 같다(붙일 자재는 BOM 의 자품목이라 보통 이것을 넘지 못한다). */
+export const ROUTING_MAX_MATERIALS = BOM_MAX_LINES;
+/**
+ * 화면이 보내는 자재 줄의 차례 상한 — 화면은 BOM 의 자품목(많아야 BOM 줄 상한) 모두와, 이미 붙어 있던 BOM 밖의 자재(붙인 자재 상한 안)를 보낸다.
+ * 붙인 자재를 ROUTING_MAX_MATERIALS 로 막으니 이 둘의 합을 넘지 않는다. 공정 줄의 차례 상한과는 따로다.
+ */
+export const ROUTING_MATERIAL_ROWS = BOM_MAX_LINES + ROUTING_MAX_MATERIALS;
 /** 준비시간의 상한(분). */
 export const SETUP_MAX_MIN = 1440;
 /** 개당 작업시간의 상한(밀리초) — 3,600 초. */
@@ -173,12 +180,18 @@ export function parseRouting(values: RoutingValues): RoutingParseResult {
     else if (!wrongRows.has(target)) errors.materials[index] = "투입 공정을 다시 고르세요";
   });
 
+  if (!formError && materials.length > ROUTING_MAX_MATERIALS)
+    formError = `투입 자재는 ${ROUTING_MAX_MATERIALS}개까지 붙입니다`;
+
   if (formError || errors.item || Object.keys(errors.steps).length || Object.keys(errors.materials).length)
     return { ok: false, errors, formError };
   return { ok: true, value: { itemCode, version: t(values.version), steps, materials } };
 }
 
-/** 화면이 보낸 칸을 모은다 — 머리 칸과 `steps.<차례>.<칸>` · `materials.<차례>.item|step`. 차례는 상한의 두 배까지만 읽는다. */
+/**
+ * 화면이 보낸 칸을 모은다 — 머리 칸과 `steps.<차례>.<칸>` · `materials.<차례>.item|step`. 공정 줄의 차례는 줄 상한의 두 배까지,
+ * 자재 줄의 차례는 ROUTING_MATERIAL_ROWS 앞까지만 읽는다.
+ */
 export function routingValues(form: FormData): RoutingValues {
   const values: RoutingValues = { steps: [], materials: [] };
   for (const f of ["item", "version"] as const) {
@@ -191,12 +204,13 @@ export function routingValues(form: FormData): RoutingValues {
     const m = /^(steps|materials)\.([0-9]{1,3})\.([a-zA-Z]+)$/.exec(key);
     if (!m || typeof v !== "string") continue;
     const index = Number(m[2]);
-    if (index > ROUTING_MAX_STEPS * 2) continue;
     if (m[1] === "steps") {
+      if (index > ROUTING_MAX_STEPS * 2) continue;
       if (!stepKeys.includes(m[3])) continue;
       while (values.steps.length <= index) values.steps.push({});
       values.steps[index][m[3] as RoutingStepField | "origSeq"] = v;
     } else {
+      if (index >= ROUTING_MATERIAL_ROWS) continue;
       if (!materialKeys.includes(m[3])) continue;
       while (values.materials.length <= index) values.materials.push({});
       values.materials[index][m[3] as "item" | "step"] = v;

@@ -3,6 +3,9 @@ import {
   formatRunMs,
   parseRouting,
   parseRunSec,
+  ROUTING_MATERIAL_ROWS,
+  ROUTING_MAX_MATERIALS,
+  ROUTING_MAX_STEPS,
   routingValues,
   seqOf,
   type RoutingStepValues,
@@ -223,6 +226,14 @@ describe("투입 자재", () => {
     expect(v.materials).toEqual([{ index: 1, itemCode: "RM-0003", stepPos: 0 }]);
   });
 
+  it("붙인 자재는 200개까지 — 넘으면 저장하지 않는다(붙이지 않은 자재는 세지 않는다)", () => {
+    expect(ROUTING_MAX_MATERIALS).toBe(200);
+    const mats = (n: number, stepText: string) =>
+      Array.from({ length: n }, (_, i) => ({ item: `RM-${String(i + 1).padStart(4, "0")}`, step: stepText }));
+    expect(pass(base({ materials: [...mats(200, "0"), { item: "SM-0001", step: "" }] })).materials).toHaveLength(200);
+    expect(fail(base({ materials: mats(201, "0") })).formError).toBe("투입 자재는 200개까지 붙입니다");
+  });
+
   it("자재 코드의 꼴이 틀리면 목록에서 고르게 한다", () => {
     const r = fail(base({ materials: [{ item: "XX", step: "0" }] }));
     expect(r.errors.materials[0]).toBe("목록에서 자재를 고르세요");
@@ -249,6 +260,22 @@ describe("routingValues", () => {
     expect(v.version).toBe("2");
     expect(v.steps).toEqual([{ process: "DA" }, { workCenter: "WB-1", origSeq: "20" }]);
     expect(v.materials).toEqual([{ item: "RM-0003", step: "1" }]);
+  });
+
+  it("자재 줄은 공정 줄과 따로 — 차례 101 ~ 399 도 읽고 400 부터 버린다(BOM 자품목 200 + 이미 붙은 BOM 밖 자재 200)", () => {
+    expect(ROUTING_MATERIAL_ROWS).toBe(400);
+    const form = new FormData();
+    form.set("steps.0.process", "DA");
+    form.set(`steps.${ROUTING_MAX_STEPS * 2 + 1}.process`, "WB");
+    form.set("materials.101.item", "RM-0101");
+    form.set("materials.101.step", "0");
+    form.set("materials.399.item", "RM-0399");
+    form.set("materials.400.item", "RM-0400");
+    const v = routingValues(form);
+    expect(v.steps).toEqual([{ process: "DA" }]);
+    expect(v.materials).toHaveLength(400);
+    expect(v.materials[101]).toEqual({ item: "RM-0101", step: "0" });
+    expect(v.materials[399]).toEqual({ item: "RM-0399" });
   });
 
   it("아무것도 없으면 빈 목록", () => {
