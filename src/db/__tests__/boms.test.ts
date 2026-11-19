@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, eq, sql, type SQL } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   BOM_LINE_LIMIT,
@@ -393,6 +393,56 @@ describe("버전 — 남이 저장한 BOM 을 덮지 않는다", () => {
     expect((await listBoms(db)).map((b) => b.code)).not.toContain("FG-0002");
     expect(await deleteBom(db, "FG-0002", v.version!)).toEqual({ ok: false, notFound: true });
     expect((await db.select().from(bomLines)).length).toBe(10);
+  });
+});
+
+describe("고친 이력의 일시 — 잠금을 쥔 뒤의 한 시각", () => {
+  it("한 저장 · 지우기의 줄 모두가 같은 일시를 쓰고, 잠금을 기다린 저장이 앞선 저장보다 이르게 남지 않는다", async () => {
+    const rowsOf = async <T>(q: SQL) => ((await db.execute(q)) as unknown as { rows: T[] }).rows;
+    // 시험의 DB(PGlite)는 연결이 하나라 잠금을 실제로 기다리지 못한다 — 트랜잭션을 연 뒤 잠금 앞에서 쉬는 DB 로 기다린 모양을 만들고,
+    // 쉰 뒤의 시각을 적어 둔다. 칸의 기본값(now())은 트랜잭션을 연 시각이라 그보다 이르다.
+    let waited = "";
+    const queued = {
+      transaction: (fn: (tx: Db) => Promise<unknown>) =>
+        db.transaction(async (tx) => {
+          await tx.execute(sql`select pg_sleep(0.05)`);
+          const result = (await tx.execute(sql`select clock_timestamp()::text as at`)) as unknown as {
+            rows: { at: string }[];
+          };
+          waited = result.rows[0].at;
+          return fn(tx);
+        }),
+    } as unknown as Db;
+    /** 지난번 뒤에 남은 이력 줄 — 일시가 몇 가지인가, 모두 기다린 뒤인가. */
+    let seen = 0;
+    const stamps = async () => {
+      const [r] = await rowsOf<{ rows: number; stamps: number; late: boolean }>(
+        sql`select count(*)::int as rows, count(distinct saved_at)::int as stamps,
+                   bool_and(saved_at >= ${waited}::timestamptz) as late
+              from bom_changes where id > ${seen}`,
+      );
+      const [{ last }] = await rowsOf<{ last: number }>(sql`select coalesce(max(id), 0)::int as last from bom_changes`);
+      seen = last;
+      return r;
+    };
+    // 샘플이 남긴 이력은 건너뛴다.
+    [{ last: seen }] = await rowsOf<{ last: number }>(sql`select coalesce(max(id), 0)::int as last from bom_changes`);
+
+    // 고치기 — 기준수량과 한 줄의 소요량을 바꾸고 마지막 줄을 뺀다(이력 줄 셋 이상).
+    const values = await valuesOf("SF-0002");
+    values.baseQty = "500";
+    values.lines[0].qty = "2";
+    values.lines.pop();
+    expect((await saveBom(queued, values)).ok).toBe(true);
+    const saved = await stamps();
+    expect(saved.rows).toBeGreaterThanOrEqual(3);
+    expect(saved).toMatchObject({ stamps: 1, late: true });
+
+    const v = await valuesOf("SF-0002");
+    expect(await deleteBom(queued, "SF-0002", v.version!)).toEqual({ ok: true, code: "SF-0002" });
+    const deleted = await stamps();
+    expect(deleted.rows).toBe(1 + v.lines.length);
+    expect(deleted).toMatchObject({ stamps: 1, late: true });
   });
 });
 
