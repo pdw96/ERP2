@@ -93,6 +93,8 @@ describe("판매계획 표의 제약", () => {
   });
 });
 
+const STALE_CONFIRM = "다른 사람이 먼저 바꿨습니다 — 화면을 새로 열어 다시 확정하세요";
+const STALE_UNCONFIRM = "다른 사람이 먼저 바꿨습니다 — 화면을 새로 열어 다시 확정 취소하세요";
 const TW = "2026-11-16"; // 이번 주
 const W1 = "2026-11-23";
 const W2 = "2026-11-30";
@@ -522,13 +524,13 @@ describe("판매계획 — 확정 · 확정 취소", () => {
     expect(await confirm([seen("BP-0004", "FG-0001", W2, "1000"), seen("BP-0004", "FG-0001", W1, "2500")])).toEqual({
       ok: false,
       errors: {},
-      formError: STALE,
+      formError: STALE_CONFIRM,
     });
     expect(await confirmedOf("BP-0004", "FG-0001", W1)).toBe(false);
     expect(await confirmedOf("BP-0004", "FG-0001", W2)).toBe(false);
     expect(await changeCount()).toBe(changes);
     // 없는 칸 · 쉼표 · 끝 0 이 다른 같은 수량.
-    expect(await confirm([seen("BP-0005", "FG-0001", W1, "3000")])).toMatchObject({ formError: STALE });
+    expect(await confirm([seen("BP-0005", "FG-0001", W1, "3000")])).toMatchObject({ formError: STALE_CONFIRM });
     expect(await confirm([seen("BP-0004", "FG-0001", W1, "3,000.0")])).toEqual({ ok: true, changed: 1 });
   });
 
@@ -539,12 +541,12 @@ describe("판매계획 — 확정 · 확정 취소", () => {
     expect(await confirm([seen("BP-0004", "FG-0001", W2, "1000"), seen("BP-0004", "FG-0001", W1, "3000")])).toEqual({
       ok: false,
       errors: {},
-      formError: STALE,
+      formError: STALE_CONFIRM,
     });
     expect(await unconfirm([seen("BP-0004", "FG-0001", W1, "3000"), seen("BP-0004", "FG-0001", W2, "1000")])).toEqual({
       ok: false,
       errors: {},
-      formError: STALE,
+      formError: STALE_UNCONFIRM,
     });
     expect(await confirmedOf("BP-0004", "FG-0001", W1)).toBe(true);
     expect(await confirmedOf("BP-0004", "FG-0001", W2)).toBe(false);
@@ -558,7 +560,7 @@ describe("판매계획 — 확정 · 확정 취소", () => {
       confirm([seen("BP-0004", "FG-0001", W1, "3000")]),
     ]);
     expect(two.filter((r) => r.ok)).toHaveLength(1);
-    expect(two.find((r) => !r.ok)).toEqual({ ok: false, errors: {}, formError: STALE });
+    expect(two.find((r) => !r.ok)).toEqual({ ok: false, errors: {}, formError: STALE_CONFIRM });
 
     const mixed = await Promise.all([
       confirm([seen("BP-0004", "FG-0001", W2, "1000")]),
@@ -663,6 +665,19 @@ describe("판매계획 — 확정 · 확정 취소", () => {
     expect(sheet.unconfirmed).toBe(2);
     expect((await open({ customer: "BP-0004" })).unconfirmed).toBe(1);
     expect((await open({}, addWeeks(TW, 13))).unconfirmed).toBe(1);
+  });
+
+  it("미확정 칸 수는 고칠 수 있는 주의 칸만 센다 — 지난 주의 미확정 칸은 세지 않는다", async () => {
+    const [p] = await db.select({ id: partners.id }).from(partners).where(eq(partners.code, "BP-0004"));
+    const [i] = await db.select({ id: items.id }).from(items).where(eq(items.code, "FG-0001"));
+    await db.insert(salesPlans).values({ partnerId: p.id, itemId: i.id, weekStart: "2026-11-09", qty: 1000 });
+    await save([cell("BP-0004", "FG-0001", W1, "", "3000")]);
+
+    // 지난 주(11/09)가 든 쪽 — 그 칸은 보이지만 확정할 수 없으니 미확정 수에 들지 않는다.
+    const sheet = await open({}, addWeeks(TW, -13));
+    expect(sheet.rows[0].cells["2026-11-09"]).toEqual(open1("1000"));
+    expect(sheet.unconfirmed).toBe(0);
+    expect((await open()).unconfirmed).toBe(1);
   });
 
   it("빈 확정은 아무것도 쓰지 않고, 꼴이 틀린 요청 · 같은 칸 둘 · 2,000칸 넘음은 formError", async () => {

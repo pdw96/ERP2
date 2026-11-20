@@ -10,7 +10,7 @@ import {
   type SalesPlanCellInput,
   type SalesPlanConfirmInput,
 } from "@/lib/sales-plan-input";
-import { addWeeks, EDIT_WEEKS, isMonday, mondayOf, pageWeeks } from "@/lib/weeks";
+import { addWeeks, EDIT_WEEKS, isEditableWeek, isMonday, mondayOf, pageWeeks } from "@/lib/weeks";
 import { first, limitMessage, REGISTER_LOCK, STALE, touched, type Params } from "./master-shared";
 import { items, partners, salesPlanChanges, salesPlans, unitSpecs } from "./schema";
 import type { Db } from "./types";
@@ -237,7 +237,8 @@ export async function openSalesPlan(
           const row = cellsOf.get(k) ?? {};
           row[c.week] = { qty: canonText(c.qty), confirmed: c.confirmed };
           cellsOf.set(k, row);
-          if (!c.confirmed) unconfirmed++;
+          // 지난 주의 미확정 칸은 확정할 수 없다 — 「확정해야 합계에 듭니다」 안내에는 고칠 수 있는 주의 칸만 센다.
+          if (!c.confirmed && isEditableWeek(c.week, thisWeek)) unconfirmed++;
         }
         for (const p of pairs) {
           rows.push({
@@ -597,7 +598,10 @@ async function setConfirmed(
       const now = current(t);
       return now !== undefined && now.confirmed !== confirming && now.qty === seenQty(t.input.qty);
     };
-    if (!targets.every(fresh)) return formFail(STALE);
+    if (!targets.every(fresh))
+      return formFail(
+        `다른 사람이 먼저 바꿨습니다 — 화면을 새로 열어 다시 ${confirming ? "확정하" : "확정 취소하"}세요`,
+      );
     // 「MPS」 착공: 확정 취소는 MPS 가 확정한 주의 칸을 막는다 — 그 검사가 여기에 든다.
 
     const [{ changesNow }] = await tx.select({ changesNow: count() }).from(salesPlanChanges);

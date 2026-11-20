@@ -8,6 +8,10 @@ describe("planNotice", () => {
     expect(planNotice({ saved: "0" })).toBe("바뀐 칸이 없습니다");
     expect(planNotice({ saved: "1200" })).toBe("1,200칸을 저장했습니다");
   });
+  it("confirmed · unconfirmed — 0 이면 할 칸이 없다는 안내", () => {
+    expect(planNotice({ confirmed: "0" })).toBe("확정할 칸이 없습니다");
+    expect(planNotice({ unconfirmed: "0" })).toBe("확정을 취소할 칸이 없습니다");
+  });
   it("confirmed · unconfirmed", () => {
     expect(planNotice({ confirmed: "3" })).toBe("3칸을 확정했습니다");
     expect(planNotice({ unconfirmed: "2000" })).toBe("2,000칸의 확정을 취소했습니다");

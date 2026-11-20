@@ -15,8 +15,9 @@ export function planNotice(params: Params): string | undefined {
   const saved = countOf(params.saved);
   if (saved !== undefined) return saved === 0 ? "바뀐 칸이 없습니다" : `${n(saved)}칸을 저장했습니다`;
   const confirmed = countOf(params.confirmed);
-  if (confirmed !== undefined) return `${n(confirmed)}칸을 확정했습니다`;
+  if (confirmed !== undefined) return confirmed === 0 ? "확정할 칸이 없습니다" : `${n(confirmed)}칸을 확정했습니다`;
   const unconfirmed = countOf(params.unconfirmed);
-  if (unconfirmed !== undefined) return `${n(unconfirmed)}칸의 확정을 취소했습니다`;
+  if (unconfirmed !== undefined)
+    return unconfirmed === 0 ? "확정을 취소할 칸이 없습니다" : `${n(unconfirmed)}칸의 확정을 취소했습니다`;
   return undefined;
 }
