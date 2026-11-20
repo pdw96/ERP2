@@ -22,7 +22,7 @@ export const cellKey = (customer: string, item: string, week: string): string =>
 /** 쉼표를 뺀 수량 글자의 부호 · 정수 · 소수 — parseQty(정수 아홉 자리까지)가 읽지 못하는 긴 정수를 가리려고 쓴다. */
 const LONG_QTY = /^([+-]?)([0-9]+)(?:\.([0-9]{1,3}))?$/;
 
-const OVER_LIMIT = "수량은 99,999,999 까지 적을 수 있습니다.";
+export const OVER_LIMIT = "수량은 99,999,999 까지 적을 수 있습니다.";
 
 /**
  * 수량 글자를 읽는다. 빈 칸 · 0(「0.0」 꼴 포함 — 단위 자릿수와 상관없이)은 「그 칸을 지움」(qty null). 0 보다 크고 99,999,999 이하,

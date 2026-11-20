@@ -1,5 +1,5 @@
 import { sql, type SQL } from "drizzle-orm";
-import { formatMilli } from "@/lib/move-input";
+import { formatMilli, type Milli } from "@/lib/move-input";
 import {
   PAGE_SIZE,
   type ItemStockQuery,
@@ -159,6 +159,25 @@ export async function listItemStock(db: Db, q: ItemStockQuery): Promise<Page<Ite
       short: fmt(r.short),
     })),
   };
+}
+
+// ── 품목마다 가용재고(메뉴 「MPS」의 처음 재고) ───────────────────────────────
+
+/** 품목마다 지금 가용재고(천분의 일 단위) — stockBucket 이 AVAILABLE 인 잔액의 합. 잔액이 없는 품목은 맵에 없다(0). */
+export async function availableByItem(db: Db, itemIds: number[]): Promise<Map<number, Milli>> {
+  if (!itemIds.length) return new Map();
+  const rows = rowsOf<{ item_id: number; available: string }>(
+    await db.execute(sql`
+      select b.item_id, sum(b.qty)::text as available
+      from stock_balances b
+      join warehouses w on w.id = b.warehouse_id
+      where ${bucket} = 'AVAILABLE' and b.item_id in (${sql.join(
+        itemIds.map((id) => sql`${id}::integer`),
+        sql`, `,
+      )})
+      group by b.item_id`),
+  );
+  return new Map(rows.map((r) => [Number(r.item_id), milliOf(r.available)] as const));
 }
 
 // ── 창고별 · LOT별 재고(조각 「재고 현황」 PR B) ───────────────────────────────

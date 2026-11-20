@@ -929,3 +929,55 @@ export const salesPlanChanges = pgTable(
     check("sales_plan_changes_some", sql`${t.before} is not null or ${t.after} is not null`),
   ],
 );
+
+// ── MPS(메뉴 「MPS」) ──────────────────────────────────────────────────────────
+
+/**
+ * 고정한 MPS 칸 — 완제품 × 주(그 주 월요일) 하나에 고정 수량 하나(0 포함). 없으면 그 주는 시스템 안이다.
+ * 품목이 완제품인지 · 수량이 품목 단위의 소수 자릿수 이하인지는 서버가 본다.
+ */
+export const mpsFixed = pgTable(
+  "mps_fixed",
+  {
+    id: id(),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => items.id),
+    weekStart: date("week_start", { mode: "string" }).notNull(),
+    qty: numeric("qty", { precision: 15, scale: 3, mode: "number" }).notNull(),
+    /** 고정한 일시. */
+    fixedAt: timestamp("fixed_at", { withTimezone: true }).notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    unique("mps_fixed_cell_unique").on(t.itemId, t.weekStart),
+    check("mps_fixed_monday", sql`extract(isodow from ${t.weekStart}) = 1`),
+    check("mps_fixed_qty_range", sql`${t.qty} >= 0 and ${t.qty} <= 99999999`),
+  ],
+);
+
+/**
+ * MPS 고친 이력 — 칸 하나를 바꿀 때마다 한 줄. 전이 비면 새로 고정, 후가 비면 고정을 풂.
+ * 고정 칸을 가리키지 않아 푼 칸의 이력도 남는다. 이력은 화면에서 고치거나 지우지 못한다.
+ */
+export const mpsChanges = pgTable(
+  "mps_changes",
+  {
+    id: id(),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => items.id),
+    weekStart: date("week_start", { mode: "string" }).notNull(),
+    savedAt: timestamp("saved_at", { withTimezone: true }).notNull().defaultNow(),
+    before: numeric("before", { precision: 15, scale: 3, mode: "number" }),
+    after: numeric("after", { precision: 15, scale: 3, mode: "number" }),
+    /** 이력의 종류 — EDIT 고침 · CONFIRM 확정 · UNCONFIRM 확정 취소. */
+    kind: text("kind").notNull(),
+  },
+  (t) => [
+    index("mps_changes_saved_at_idx").on(t.savedAt),
+    check("mps_changes_kind", sql`${t.kind} in ('EDIT', 'CONFIRM', 'UNCONFIRM')`),
+    check("mps_changes_monday", sql`extract(isodow from ${t.weekStart}) = 1`),
+    check("mps_changes_some", sql`${t.before} is not null or ${t.after} is not null`),
+  ],
+);

@@ -12,6 +12,7 @@ import {
   SAMPLE_NUMBER_RULES,
   SAMPLE_PARTNERS,
   SAMPLE_PROCESSES,
+  SAMPLE_MPS_FIXED,
   SAMPLE_SALES_PLANS,
   SAMPLE_UNIT_SPECS,
   SAMPLE_WAREHOUSES,
@@ -34,6 +35,8 @@ import {
   routingMaterials,
   routings,
   routingSteps,
+  mpsChanges,
+  mpsFixed,
   salesPlanChanges,
   salesPlans,
   stockBalances,
@@ -106,6 +109,15 @@ async function snapshot() {
       delete rest.savedAt;
       return rest;
     }),
+    mpsFixed: strip(await db.select().from(mpsFixed).orderBy(asc(mpsFixed.id))).map((row) => {
+      const { fixedAt, ...rest } = row; // 고정 일시는 되돌림 시각이라 견주지 않는다
+      return { ...rest, fixed: fixedAt != null };
+    }),
+    mpsChanges: (await db.select().from(mpsChanges).orderBy(asc(mpsChanges.id))).map((row) => {
+      const rest: Partial<typeof row> = { ...row };
+      delete rest.savedAt;
+      return rest;
+    }),
     routingChanges: (await db.select().from(routingChanges).orderBy(asc(routingChanges.id))).map((row) => {
       const rest: Partial<typeof row> = { ...row };
       delete rest.savedAt;
@@ -158,6 +170,12 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
     await db.execute(
       sql`insert into sales_plan_changes (partner_id, item_id, week_start, before, after) values (1, 1, '2026-11-02', 1, 2)`,
     );
+    // MPS — 고정 칸 하나를 고치고 하나를 풀고, 고친 이력을 더한다(되돌림이 비우고 샘플 고정을 다시 넣는다).
+    await db.execute(sql`update mps_fixed set qty = 777 where id = 1`);
+    await db.execute(sql`delete from mps_fixed where id = 2`);
+    await db.execute(
+      sql`insert into mps_changes (item_id, week_start, before, after, kind) values (1, '2026-11-02', 1, 2, 'EDIT')`,
+    );
     await db.execute(sql`update routing_steps set note = '방문자 비고' where seq = 10`);
     await db.execute(sql`delete from routing_materials where item_id = (select id from items where code = 'RM-0002')`);
     await db.execute(sql`delete from routings where item_id = (select id from items where code = 'FG-0002')`);
@@ -190,7 +208,11 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
     expect(clean.routingChanges.length).toBeGreaterThan(0);
     expect(clean.salesPlans.length).toBe(SAMPLE_SALES_PLANS.reduce((n, p) => n + p.weeks.length, 0));
     expect(clean.salesPlanChanges).toHaveLength(0);
+    expect(clean.mpsFixed).toHaveLength(SAMPLE_MPS_FIXED.length);
+    expect(clean.mpsChanges).toHaveLength(0);
     expect(counts).toEqual({
+      mps_changes: clean.mpsChanges.length,
+      mps_fixed: clean.mpsFixed.length,
       sales_plan_changes: clean.salesPlanChanges.length,
       sales_plans: clean.salesPlans.length,
       routing_changes: clean.routingChanges.length,
@@ -321,7 +343,7 @@ describe("코드 번호 — 같은 머리의 가장 큰 번호 + 1", () => {
     expect(await nextCode(db, "CS")).toBe("CS-0003");
     await db.execute(
       sql.raw(
-        `truncate table "sales_plan_changes", "sales_plans", "routing_changes", "routing_materials", "routing_steps", "routings", "bom_changes", "bom_lines", "boms", "stock_count_lines", "stock_balances", "stock_move_lines", "items"`,
+        `truncate table "mps_changes", "mps_fixed", "sales_plan_changes", "sales_plans", "routing_changes", "routing_materials", "routing_steps", "routings", "bom_changes", "bom_lines", "boms", "stock_count_lines", "stock_balances", "stock_move_lines", "items"`,
       ),
     );
     expect(await nextCode(db, "RM")).toBe("RM-0001");
