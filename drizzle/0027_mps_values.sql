@@ -8,8 +8,8 @@ INSERT INTO "mps_fixed" ("item_id", "week_start", "qty", "fixed_at")
 SELECT i."id", (date_trunc('week', now() AT TIME ZONE 'Asia/Seoul'))::date + v.week_offset * 7, v.qty, now()
 FROM (
   VALUES
-    ('FG-0001', 0, 1000),
-    ('FG-0001', 1, 1000)
+    ('FG-0001', 0, 7000),
+    ('FG-0001', 1, 9000)
 ) AS v(item_code, week_offset, qty)
 JOIN "items" i ON i."code" = v.item_code AND i."item_type" = 'FG' AND i."active"
 WHERE EXISTS (SELECT 1 FROM "code_groups")

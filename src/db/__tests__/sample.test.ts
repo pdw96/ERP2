@@ -1,6 +1,7 @@
 // @vitest-environment node
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { openMps } from "@/db/mps";
 import { resetToSample } from "@/db/reset";
 import {
   SAMPLE_CODE_GROUPS,
@@ -327,5 +328,18 @@ describe("샘플 MPS 고정 칸(메뉴 「MPS」)", () => {
     );
     expect(await db.select().from(mpsFixed)).toHaveLength(SAMPLE_MPS_FIXED.length);
     expect(await db.select().from(mpsChanges)).toHaveLength(0);
+  });
+
+  it("샘플 값은 그날의 안이다 — 열면 그 주가 고정으로 보이고, 고정을 지우고 열면 그 주의 안이 샘플 값과 같다(0 이 아니다)", async () => {
+    const fixedRow = (await openMps(db, { from: "" }, TODAY)).rows.find((r) => r.item.code === "FG-0001")!;
+    for (const f of SAMPLE_MPS_FIXED)
+      expect(fixedRow.cells[addWeeks(mondayOf(TODAY), f.offset)]).toMatchObject({ mps: f.qty, fixed: true });
+
+    await db.execute(sql`truncate table mps_fixed`); // 이 묶음의 마지막 시험이다
+    const row = (await openMps(db, { from: "" }, TODAY)).rows.find((r) => r.item.code === "FG-0001")!;
+    for (const f of SAMPLE_MPS_FIXED) {
+      expect(Number(f.qty)).toBeGreaterThan(0);
+      expect(row.cells[addWeeks(mondayOf(TODAY), f.offset)]).toMatchObject({ mps: f.qty, fixed: false });
+    }
   });
 });

@@ -48,7 +48,7 @@ export async function lockSalesPlans(tx: Db): Promise<void> {
 // ── 수량의 글자 ─────────────────────────────────────────
 
 /** 천분의 일 단위의 수량을 정규 글자로 — 쉼표 없음, 끝 0 · 소수점 없음(1500 → 「1.5」, 3000000 → 「3000」). */
-function canon(qty: Milli): string {
+export function canon(qty: Milli): string {
   const frac = String(qty % THOUSAND)
     .padStart(3, "0")
     .replace(/0+$/, "");
@@ -56,7 +56,7 @@ function canon(qty: Milli): string {
 }
 
 /** DB 의 numeric 글자(「3000.000」)를 정규 글자로. 합계는 아홉 자리를 넘을 수 있어 수로 바꾸지 않고 글자로 다룬다. */
-function canonText(text: string): string {
+export function canonText(text: string): string {
   return text.includes(".") ? text.replace(/0+$/, "").replace(/\.$/, "") : text;
 }
 
