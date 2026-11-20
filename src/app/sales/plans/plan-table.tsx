@@ -63,26 +63,9 @@ export function PlanTable({
             <th scope="col" className={`${nameCol} ${headCell} ${headLine} z-30 py-2`}>
               고객 · 품목
             </th>
-            {weeks.map((w) => {
-              const now = w === thisWeek;
-              return (
-                <th
-                  key={w}
-                  scope="col"
-                  className={`${headCell} z-20 min-w-28 px-1.5 py-2 text-right align-bottom whitespace-nowrap ${
-                    now ? "shadow-[inset_0_-4px_0_var(--color-safety)]" : headLine
-                  } ${w < thisWeek ? "text-muted" : ""}`}
-                >
-                  {now && (
-                    <span className="mb-0.5 inline-block rounded-sm bg-safety px-1 text-xs font-semibold text-ink">
-                      이번 주
-                    </span>
-                  )}
-                  <span className="block font-semibold">{weekLabel(w, thisWeek)}</span>
-                  <span className="block text-xs font-normal text-muted tabular-nums">{weekRange(w)}</span>
-                </th>
-              );
-            })}
+            {weeks.map((w) => (
+              <WeekHead key={w} week={w} thisWeek={thisWeek} />
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -176,6 +159,25 @@ export function PlanTable({
   );
 }
 
+/** 주 머리 한 칸 — 「이번 주」 표시 · 「47주」 · 「11/16~11/22」, 위에 붙는다. 판매계획 두 메뉴와 메뉴 「MPS」가 같이 쓴다. */
+export function WeekHead({ week, thisWeek }: { week: string; thisWeek: string }) {
+  const now = week === thisWeek;
+  return (
+    <th
+      scope="col"
+      className={`sticky top-0 z-20 min-w-28 bg-floor px-1.5 py-2 text-right align-bottom whitespace-nowrap ${
+        now ? "shadow-[inset_0_-4px_0_var(--color-safety)]" : "shadow-[inset_0_-2px_0_var(--color-machine)]"
+      } ${week < thisWeek ? "text-muted" : ""}`}
+    >
+      {now && (
+        <span className="mb-0.5 inline-block rounded-sm bg-safety px-1 text-xs font-semibold text-ink">이번 주</span>
+      )}
+      <span className="block font-semibold">{weekLabel(week, thisWeek)}</span>
+      <span className="block text-xs font-normal text-muted tabular-nums">{weekRange(week)}</span>
+    </th>
+  );
+}
+
 /** 저장 · 확정 · 확정 취소가 거절됐을 때 표 위의 알림 — 칸마다의 까닭은 칸 아래에 붙는다. */
 export function PlanFailure({
   verb,
@@ -197,11 +199,11 @@ export function PlanFailure({
   );
 }
 
-/** 「확정」 표시 — 칸 안쪽 왼쪽, 가운데 높이(칸 윗 테두리에 걸치지 않는다). */
-export function FixedChip() {
+/** 「확정」 표시 — 칸 안쪽 왼쪽, 가운데 높이(칸 윗 테두리에 걸치지 않는다). 메뉴 「MPS」는 「고정」으로 쓴다. */
+export function FixedChip({ label = "확정" }: { label?: string }) {
   return (
     <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 rounded-sm bg-machine px-0.5 text-[0.625rem] leading-tight text-white">
-      확정
+      {label}
     </span>
   );
 }
