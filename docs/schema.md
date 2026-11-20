@@ -34,6 +34,8 @@
 | `routing_changes` | 라우팅 고친 이력 | 라우팅을 저장 · 지울 때마다 생긴 일 하나가 한 줄 — 품목 · 일시 · 구분(라우팅 등록 `ROUTING_ADD` · 지움 `ROUTING_DEL` · 공정 더함 `STEP_ADD` · 뺌 `STEP_DEL` · 고침 `STEP_EDIT` · 자재 붙임 `MAT_ADD` · 옮김 `MAT_MOVE` · 뗌 `MAT_DEL`) · 순번 · 자재 품목(자재 구분에만) · 바뀐 칸의 전 · 후(JSON). 라우팅 머리를 가리키지 않아 지운 라우팅의 이력도 남는다. 고치거나 지우지 않는다 | 라우팅 |
 | `sales_plans` | 판매계획 | 고객(거래처) × 완제품 × 주(그 주 월요일)마다 계획 수량 하나 — 0 보다 크고 99,999,999 이하. 수량 0 인 칸은 두지 않는다. `confirmed_at` 이 비면 미확정, 있으면 확정한 일시 | 판매계획 |
 | `sales_plan_changes` | 판매계획 고친 이력 | 칸 하나를 고칠 때마다 한 줄 — 고객 · 품목 · 주 · 일시 · 전 · 후(전이 비면 새로 정함, 후가 비면 지움)에 종류 `kind`(EDIT 고침 · CONFIRM 확정 · UNCONFIRM 확정 취소 — 확정 줄의 전 · 후는 그때 수량). 판매계획 칸을 가리키지 않아 지운 칸의 이력도 남는다. 고치거나 지우지 않는다 | 판매계획 |
+| `mps_fixed` | MPS 고정 칸 | 완제품 × 주(그 주 월요일)마다 고정 수량 하나 — 0 이상 99,999,999 이하(0 도 고정한 수량이다). 줄이 없는 주는 시스템 안이다. `fixed_at` 은 고정한 일시 | MPS |
+| `mps_changes` | MPS 고친 이력 | 칸 하나를 바꿀 때마다 한 줄 — 품목 · 주 · 일시 · 전 · 후(전이 비면 새로 고정, 후가 비면 고정을 풂)에 종류 `kind`(EDIT 고침 · CONFIRM 확정 · UNCONFIRM 확정 취소). 고정 칸을 가리키지 않아 푼 칸의 이력도 남는다. 고치거나 지우지 않는다 | MPS |
 
 ### DB 가 막는 것
 
@@ -83,6 +85,8 @@
   (`routing_changes_material_kinds`). 라우팅 · 이력에 든 품목은 지울 수 없다(참조).
 - **판매계획**(메뉴 「판매계획」) — 한 칸은 (고객, 품목, 주)마다 하나이고(`sales_plans_cell_unique`) 주는 월요일이며(`sales_plans_monday`) 수량은 0 보다 크고 99,999,999 이하다(`sales_plans_qty_range`).
   고친 이력도 주는 월요일이고(`sales_plan_changes_monday`) 전 · 후 가운데 하나는 값이 있다(`sales_plan_changes_some`). 이력의 종류는 EDIT · CONFIRM · UNCONFIRM 가운데 하나다(`sales_plan_changes_kind`). 계획 · 이력에 든 고객 · 품목은 지울 수 없다(참조).
+- **MPS**(메뉴 「MPS」) — 한 칸은 (품목, 주)마다 하나이고(`mps_fixed_cell_unique`) 주는 월요일이며(`mps_fixed_monday`) 수량은 0 이상 99,999,999 이하다(`mps_fixed_qty_range`).
+  고친 이력도 주는 월요일이고(`mps_changes_monday`) 전 · 후 가운데 하나는 값이 있다(`mps_changes_some`). 이력의 종류는 EDIT · CONFIRM · UNCONFIRM 가운데 하나다(`mps_changes_kind`). 고정 칸 · 이력에 든 품목은 지울 수 없다(참조).
 
 DB 가 막지 않고 서버가 막는 것(조각 「기준정보」 PR C · D · E) — 수량의 소수 넷째 자리(DB 는 `numeric(12,3)` 이라 거절하지 않고 셋째 자리로 반올림한다 — 재고 수량은 `numeric(14,3)`, ADR 0018) · 수량의 상한, 코드 · 품목 유형을 등록 뒤 바꾸지 않음, 「사용 안 함」 단위를
 새 품목에 쓰지 않음, 「사용 안 함」 분류를 새 품목에 쓰지 않음(PR H), 「사용 안 함」 국가를 새 거래처에 쓰지 않음, 시스템 코드 묶음을 바꾸지 않음, 국가 `KR` 을 「사용 안 함」으로 바꾸지

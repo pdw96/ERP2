@@ -8,6 +8,8 @@ import {
   defectTypeProcesses,
   defectTypes,
   items,
+  mpsChanges,
+  mpsFixed,
   partners,
   processes,
   warehouses,
@@ -37,7 +39,7 @@ const item = (over: Partial<typeof items.$inferInsert> = {}) => ({
 });
 
 describe("테이블", () => {
-  it("스키마의 테이블은 스물여섯이다 — 기준정보 다섯과 공정 · 작업장 · 불량 유형 · 불량 유형의 발생 공정 · 단위 사양 · 번호 규칙 · 번호 규칙의 일련 · 수불 전표 · 수불 줄 · 잔액 · 실사 · 실사 줄 · BOM 머리 · BOM 줄 · BOM 고친 이력 · 라우팅 머리 · 공정 줄 · 투입 자재 · 고친 이력 · 판매계획 · 판매계획 고친 이력", () => {
+  it("스키마의 테이블은 스물여덟이다 — 기준정보 다섯과 공정 · 작업장 · 불량 유형 · 불량 유형의 발생 공정 · 단위 사양 · 번호 규칙 · 번호 규칙의 일련 · 수불 전표 · 수불 줄 · 잔액 · 실사 · 실사 줄 · BOM 머리 · BOM 줄 · BOM 고친 이력 · 라우팅 머리 · 공정 줄 · 투입 자재 · 고친 이력 · 판매계획 · 판매계획 고친 이력 · MPS 고정 칸 · MPS 고친 이력", () => {
     const names = Object.values(schema).filter(isTable).map(getTableName).sort();
     expect(names).toEqual([
       "bom_changes",
@@ -48,6 +50,8 @@ describe("테이블", () => {
       "defect_type_processes",
       "defect_types",
       "items",
+      "mps_changes",
+      "mps_fixed",
       "number_rule_seqs",
       "number_rules",
       "partners",
@@ -394,5 +398,46 @@ describe("공통코드", () => {
   ])("%s → 거절", async (_name, over, constraint) => {
     const values = { groupCode: "UNIT", code: "BOX", name: "상자", ...over };
     expect(await rejection(db.insert(codes).values(values))).toMatchObject({ constraint });
+  });
+});
+
+describe("MPS 고정 칸 · 고친 이력", () => {
+  const ids = async () => ({ itemId: (await db.select().from(items).where(eq(items.code, "FG-0001")))[0].id });
+  const cell = async (over: Partial<typeof mpsFixed.$inferInsert> = {}) => ({
+    ...(await ids()),
+    weekStart: "2027-03-01",
+    qty: 1000,
+    fixedAt: new Date(),
+    ...over,
+  });
+
+  it("월요일이 아닌 주는 거절한다", async () => {
+    const r = await rejection(db.insert(mpsFixed).values(await cell({ weekStart: "2027-03-02" })));
+    expect(r.constraint).toBe("mps_fixed_monday");
+  });
+
+  it("수량 −1 은 거절하고, 0 은 들어간다", async () => {
+    const r = await rejection(db.insert(mpsFixed).values(await cell({ qty: -1 })));
+    expect(r.constraint).toBe("mps_fixed_qty_range");
+    const [row] = await db
+      .insert(mpsFixed)
+      .values(await cell({ qty: 0 }))
+      .returning();
+    expect(row.qty).toBe(0);
+  });
+
+  it("같은 품목 · 주는 둘 두지 못한다", async () => {
+    await db.insert(mpsFixed).values(await cell());
+    const r = await rejection(db.insert(mpsFixed).values(await cell()));
+    expect(r.constraint).toBe("mps_fixed_cell_unique");
+  });
+
+  it("이력의 종류는 EDIT · CONFIRM · UNCONFIRM 이고, 전 · 후가 모두 비면 거절한다", async () => {
+    const base = { ...(await ids()), weekStart: "2027-03-01", after: 5, kind: "EDIT" };
+    const bad = await rejection(db.insert(mpsChanges).values({ ...base, kind: "X" }));
+    expect(bad.constraint).toBe("mps_changes_kind");
+    const none = await rejection(db.insert(mpsChanges).values({ ...base, after: null }));
+    expect(none.constraint).toBe("mps_changes_some");
+    await db.insert(mpsChanges).values(base);
   });
 });
