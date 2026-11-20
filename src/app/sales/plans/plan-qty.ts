@@ -15,7 +15,8 @@ export const shownQty = (canon: string): string => formatMilli(milliOf(canon));
 
 /**
  * 넣은 글자의 수량 — 빈 칸 · 0 은 null(지움), 서버가 거절할 글자(읽지 못함 · 음수 · 상한 넘음 · 단위 자릿수 넘음)는 undefined
- * (품목 합계에 넣지 않고, 저장에는 보내 서버의 까닭을 받는다). 서버와 같은 parseSalesPlanQty 로 읽는다.
+ * (불러온 값과 늘 달라 고친 칸이 되고, 저장에 보내 서버의 까닭을 받는다). 표가 고친 칸을 가를 때 쓴다 — 서버와 같은
+ * parseSalesPlanQty 로 읽어, 「3,000」 · 「3000」처럼 같은 수량은 고친 칸이 아니다.
  */
 export function typedQty(text: string, decimals: number): Milli | null | undefined {
   const parsed = parseSalesPlanQty(text, decimals);

@@ -3,24 +3,34 @@
 import Form from "next/form";
 import Link from "next/link";
 import { startTransition, useActionState, useState, type FormEvent, type MouseEvent } from "react";
-import type { PlanCustomer, PlanItem, SalesPlanSheet } from "@/db/sales-plans";
-import { formatMilli, ZERO, type Milli } from "@/lib/move-input";
-import { cellKey, type SalesPlanCellInput } from "@/lib/sales-plan-input";
+import type { PlanCustomer, PlanItem, SalesPlanCell, SalesPlanSheet } from "@/db/sales-plans";
+import { cellKey, type SalesPlanCellInput, type SalesPlanConfirmInput } from "@/lib/sales-plan-input";
 import { isEditableWeek, pageStarts, PAGE_WEEKS, weekLabel, weekRange } from "@/lib/weeks";
-import { saveSalesPlanAction, type SalesPlanActionState } from "./actions";
+import {
+  confirmSalesPlanAction,
+  saveSalesPlanAction,
+  unconfirmSalesPlanAction,
+  type SalesPlanActionState,
+} from "./actions";
 import { milliOf, shownQty, typedQty } from "./plan-qty";
 
 // 판매계획 표(메뉴 「판매계획」) — 줄은 고객 × 완제품, 칸은 13주. 고친 칸만 [저장]으로 보내고(전 = 불러온 값, 후 = 넣은 글자 그대로),
-// 검사는 서버가 하며 화면은 틀린 칸 아래에 까닭을 보인다(값은 화면이 쥐고 있어 그대로 남는다). 지난 주 칸은 잠긴다.
-// 품목 합계는 전체 고객의 합(서버) + 화면에서 고친 칸의 차이 — 넣는 대로 바뀐다. 쪽을 넘기거나 거르면 고친 칸이 사라지니 먼저 묻는다.
-// 휴대폰 폭에서는 표를 옆으로 밀고, 줄 머리(고객 · 품목)는 왼쪽에 붙어 있다.
+// 검사는 서버가 하며 화면은 틀린 칸 아래에 까닭을 보인다(값은 화면이 쥐고 있어 그대로 남는다). 지난 주 칸은 잠긴다(disabled).
+// 저장한 칸은 미확정(노란 바탕)이다. 줄 앞 체크박스로 고른 줄의 고칠 수 있는 주의 칸을 [확정] · [확정 취소]하고(보내는 수량은 불러온 값),
+// 확정 칸은 읽기 전용에 「확정」 표시다. 저장하지 않은 칸이 있으면 확정 · 확정 취소는 꺼진다 — 먼저 저장해야 한다.
+// 품목 합계는 서버가 준 확정 칸만의 합 그대로다(넣는 대로 바뀌지 않는다). 쪽을 넘기거나 거르면 고친 칸이 사라지니 먼저 묻는다.
+// 표는 화면 안에서 세로 · 가로로 밀고(머리는 위에, 체크박스 · 고객 · 품목은 왼쪽에 붙는다), 페이지는 옆으로 밀리지 않는다.
 
 type Back = { from: string; customer: string; item: string };
-type Row = { customer: PlanCustomer; item: PlanItem; cells: Record<string, string>; added?: boolean };
-/** 고친 칸 하나 — diff 는 품목 합계에 더할 차이(서버가 거절할 글자는 0). */
-type Change = { input: SalesPlanCellInput; item: PlanItem; week: string; diff: Milli };
+type Row = { customer: PlanCustomer; item: PlanItem; cells: Record<string, SalesPlanCell>; added?: boolean };
+type Kind = "save" | "confirm" | "unconfirm";
+type Request =
+  { kind: "save"; cells: SalesPlanCellInput[] } | { kind: "confirm" | "unconfirm"; cells: SalesPlanConfirmInput[] };
+/** 마지막으로 부른 동작과 그 결과 — 거절이면 까닭을 보인다(서면 주소가 바뀌어 화면이 새로 열린다). */
+type Outcome = { kind: Kind; result: SalesPlanActionState } | null;
 
 const LEAVE = "저장하지 않은 칸이 있습니다 — 넘기면 사라집니다";
+const VERB: Record<Kind, string> = { save: "저장", confirm: "확정", unconfirm: "확정 취소" };
 const pairOf = (customer: string, item: string) => `${customer}|${item}`;
 const byCode = <T extends { code: string }>(a: T, b: T) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
 const domId = (key: string) => `plan-err-${key.replaceAll("|", "-")}`;
@@ -52,71 +62,75 @@ export function SalesPlanGrid({
   options: { customers: PlanCustomer[]; items: PlanItem[] };
   back: Back;
 }) {
-  const [state, dispatch, pending] = useActionState<SalesPlanActionState, SalesPlanCellInput[]>(
-    (_prev, cells) => saveSalesPlanAction(cells, back),
-    null,
-  );
+  const [outcome, dispatch, pending] = useActionState<Outcome, Request>(async (_prev, request) => {
+    const result =
+      request.kind === "save"
+        ? await saveSalesPlanAction(request.cells, back)
+        : request.kind === "confirm"
+          ? await confirmSalesPlanAction(request.cells, back)
+          : await unconfirmSalesPlanAction(request.cells, back);
+    return { kind: request.kind, result };
+  }, null);
   /** 고친 칸의 글자(열쇠 = cellKey) — 손대지 않은 칸은 없다. */
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [added, setAdded] = useState<Row[]>([]);
+  /** 고른 줄(열쇠 = 고객|품목) — 불러온 줄만 고른다. */
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  /** 지금 보내고 있는 동작 — 그 단추에 「… 중」. */
+  const [doing, setDoing] = useState<Kind>("save");
   const [pickCustomer, setPickCustomer] = useState("");
   const [pickItem, setPickItem] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [seen, setSeen] = useState(state);
-  if (state !== seen) {
-    setSeen(state);
-    if (state && !state.ok) {
-      setErrors(state.errors);
-      setFormError(state.formError ?? null);
+  const [seen, setSeen] = useState(outcome);
+  if (outcome !== seen) {
+    setSeen(outcome);
+    if (outcome?.result && !outcome.result.ok) {
+      setErrors(outcome.result.errors);
+      setFormError(outcome.result.formError ?? null);
     }
   }
 
   const { thisWeek, weeks } = sheet;
-  // 칸은 수량만 본다(확정 표시는 아직 화면에 없다).
-  const loadedRows: Row[] = sheet.rows.map((r) => ({
-    ...r,
-    cells: Object.fromEntries(Object.entries(r.cells).map(([w, c]) => [w, c.qty] as const)),
-  }));
+  const loadedRows: Row[] = sheet.rows;
   const rows: Row[] = [...loadedRows, ...added];
   const pairs = new Set(rows.map((r) => pairOf(r.customer.code, r.item.code)));
 
-  // 고친 칸 — 고칠 수 있는 주에서 불러온 값과 수량이 다른 것(읽지 못하는 글자도 보내 서버의 까닭을 받는다).
-  const changes: Change[] = [];
+  // 고친 칸 — 고칠 수 있는 주의 확정되지 않은 칸에서 불러온 값과 수량이 다른 것(읽지 못하는 글자도 보내 서버의 까닭을 받는다).
+  const changes: SalesPlanCellInput[] = [];
   for (const r of rows)
     for (const week of weeks) {
       const key = cellKey(r.customer.code, r.item.code, week);
       const text = edits[key];
-      if (text === undefined || !isEditableWeek(week, thisWeek)) continue;
       const loaded = r.cells[week];
-      const before = loaded === undefined ? null : milliOf(loaded);
-      const after = typedQty(text, r.item.decimals);
-      if (after === before) continue;
-      changes.push({
-        input: { customer: r.customer.code, item: r.item.code, week, before: loaded ?? "", after: text },
-        item: r.item,
+      if (text === undefined || !isEditableWeek(week, thisWeek) || loaded?.confirmed) continue;
+      const before = loaded === undefined ? null : milliOf(loaded.qty);
+      if (typedQty(text, r.item.decimals) === before) continue;
+      changes.push({ customer: r.customer.code, item: r.item.code, week, before: loaded?.qty ?? "", after: text });
+    }
+  const changed = new Set(changes.map((c) => cellKey(c.customer, c.item, c.week)));
+  const unsaved = changes.length > 0;
+
+  // 고른 줄의 칸 — 보이는 13주 가운데 고칠 수 있는 주만. 미확정 칸은 [확정]에, 확정 칸은 [확정 취소]에 간다(수량은 불러온 값).
+  const chosen = loadedRows.filter((r) => selected.has(pairOf(r.customer.code, r.item.code)));
+  const toConfirm: SalesPlanConfirmInput[] = [];
+  const toUnconfirm: SalesPlanConfirmInput[] = [];
+  for (const r of chosen)
+    for (const week of weeks) {
+      const loaded = r.cells[week];
+      if (!loaded || !isEditableWeek(week, thisWeek)) continue;
+      (loaded.confirmed ? toUnconfirm : toConfirm).push({
+        customer: r.customer.code,
+        item: r.item.code,
         week,
-        diff: after === undefined ? ZERO : (after ?? ZERO) - (before ?? ZERO),
+        qty: loaded.qty,
       });
     }
-  const changed = new Set(changes.map((c) => cellKey(c.input.customer, c.input.item, c.week)));
+  const allChosen = loadedRows.length > 0 && chosen.length === loadedRows.length;
+  const someChosen = chosen.length > 0 && !allChosen;
 
-  // 품목 합계 — 서버의 합 + 고친 칸의 차이. 합계에 없던 품목(새 줄)은 차이가 있을 때만 줄이 생긴다.
-  const totals = new Map<string, { item: PlanItem; cells: Map<string, Milli>; moved: Set<string> }>();
-  for (const t of sheet.totals)
-    totals.set(t.item.code, {
-      item: t.item,
-      cells: new Map(Object.entries(t.cells).map(([w, q]) => [w, milliOf(q)] as const)),
-      moved: new Set(),
-    });
-  for (const c of changes) {
-    if (c.diff === ZERO) continue;
-    const t = totals.get(c.item.code) ?? { item: c.item, cells: new Map(), moved: new Set() };
-    t.cells.set(c.week, (t.cells.get(c.week) ?? ZERO) + c.diff);
-    t.moved.add(c.week);
-    totals.set(c.item.code, t);
-  }
-  const totalRows = [...totals.values()].sort((a, b) => byCode(a.item, b.item));
+  // 품목 합계 — 서버가 준 확정 칸만의 합 그대로.
+  const totalRows = sheet.totals;
 
   // 쪽 — 이번 주에서 13주씩, 앞 · 뒤 쪽이 있을 때만 링크.
   const starts = pageStarts(thisWeek);
@@ -127,7 +141,7 @@ export function SalesPlanGrid({
 
   /** 고친 칸이 있으면 떠나기 전에 묻는다 — 「취소」면 머문다. */
   const guard = (event: MouseEvent | FormEvent) => {
-    if (changes.length > 0 && !window.confirm(LEAVE)) event.preventDefault();
+    if (unsaved && !window.confirm(LEAVE)) event.preventDefault();
   };
 
   // 새 줄의 후보 — 「사용」 매출처 · 「사용」 완제품 가운데 화면에 없는 쌍. 고를 품목이 남지 않은 고객은 뺀다.
@@ -164,16 +178,35 @@ export function SalesPlanGrid({
     setEdits(drop);
     setErrors(drop);
   };
-  const save = () => {
-    if (!changes.length) return;
-    startTransition(() => dispatch(changes.map((c) => c.input)));
+  const toggleRow = (pair: string) =>
+    setSelected((s) => {
+      const next = new Set(s);
+      if (!next.delete(pair)) next.add(pair);
+      return next;
+    });
+  const toggleAll = () =>
+    setSelected(allChosen ? new Set() : new Set(loadedRows.map((r) => pairOf(r.customer.code, r.item.code))));
+  const send = (request: Request) => {
+    if (!request.cells.length) return;
+    setDoing(request.kind);
+    startTransition(() => dispatch(request));
   };
+  const canConfirm = !pending && !unsaved && toConfirm.length > 0;
+  const canUnconfirm = !pending && !unsaved && toUnconfirm.length > 0;
+  const busy = (kind: Kind) => (pending && doing === kind ? `${VERB[kind]} 중…` : VERB[kind]);
 
   const wrong = Object.keys(errors).length;
+  const failed = VERB[outcome?.kind ?? "save"];
   // 거르기 후보 — DB 에 칸이 있는 모든 고객 · 품목(거르기와 상관없이) ∪ 새 줄 후보. 한쪽을 걸러도 다른 쪽 후보가 줄지 않는다.
   const filterCustomers = choices([sheet.planned.customers, options.customers], back.customer);
   const filterItems = choices([sheet.planned.items, options.items], back.item);
   const field = "w-full min-w-0 rounded border border-rule bg-white px-3 py-2 text-base";
+  // 왼쪽에 붙는 두 칸 — 체크박스(2.5rem) · 고객 · 품목. 위에 붙는 머리는 아래 줄에 선을 그림자로 긋는다(붙은 칸에는 테두리가 따라오지 않는다).
+  const pickCol = "sticky left-0 w-10 min-w-10 px-2";
+  const nameCol = "sticky left-10 w-40 min-w-40 px-2 sm:w-60 sm:min-w-60";
+  const headCell = "sticky top-0 bg-floor";
+  const headLine = "shadow-[inset_0_-2px_0_var(--color-machine)]";
+  const columns = weeks.length + 2;
 
   return (
     <>
@@ -254,7 +287,9 @@ export function SalesPlanGrid({
 
       {(formError || wrong > 0) && (
         <div role="alert" className="mt-4 max-w-3xl border-l-4 border-red-700 bg-white px-5 py-4">
-          <p className="font-semibold">저장하지 않았습니다 — 칸이 하나라도 틀리면 아무것도 저장되지 않습니다.</p>
+          <p className="font-semibold">
+            {failed}하지 않았습니다 — 칸이 하나라도 틀리면 아무것도 {failed}되지 않습니다.
+          </p>
           {formError && <p className="mt-1 text-sm">{formError}</p>}
           {wrong > 0 && <p className="mt-1 text-sm">틀린 칸 {wrong}개 — 칸 아래의 까닭을 보고 고치세요.</p>}
         </div>
@@ -263,21 +298,38 @@ export function SalesPlanGrid({
       <fieldset disabled={pending} className="mt-4 min-w-0">
         <legend className="sr-only">판매계획 칸</legend>
         <p className="text-sm text-muted">
-          칸에 그 주의 수량을 넣고 [저장]을 누르세요. 빈 칸 · 0 은 그 칸을 지웁니다. 지난 주(회색)는 고치지 못합니다.
+          칸에 그 주의 수량을 넣고 [저장]을 누르세요. 빈 칸 · 0 은 그 칸을 지웁니다. 저장한 칸은 미확정(노란 칸)이라 MPS
+          수요에 들지 않습니다 — 줄 앞을 골라 [확정]하세요. 「확정」 칸은 [확정 취소]한 뒤 고칩니다. 지난 주(회색)는
+          고치지 못합니다.
         </p>
         <div
-          className="relative mt-2 overflow-x-auto border border-rule bg-white"
+          className="relative mt-2 max-h-[60vh] overflow-auto border border-rule bg-white"
           tabIndex={0}
           role="region"
           aria-label="판매계획 표"
         >
-          <table className="border-collapse text-left text-sm">
+          <table className="border-separate border-spacing-0 text-left text-sm">
             <caption className="sr-only">
               판매계획 — 줄은 고객 · 품목, 칸은 {weekLabel(weeks[0], thisWeek)}부터 {PAGE_WEEKS}주
             </caption>
-            <thead className="border-b-2 border-machine bg-floor">
+            <thead>
               <tr>
-                <th scope="col" className="sticky left-0 z-10 w-40 min-w-40 bg-floor px-2 py-2 sm:w-60 sm:min-w-60">
+                <th scope="col" className={`${pickCol} ${headCell} ${headLine} z-30 py-2`}>
+                  <label className="flex flex-col items-center gap-0.5 text-xs font-normal">
+                    <input
+                      type="checkbox"
+                      checked={allChosen}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someChosen;
+                      }}
+                      onChange={toggleAll}
+                      disabled={loadedRows.length === 0}
+                      className="size-4"
+                    />
+                    전체
+                  </label>
+                </th>
+                <th scope="col" className={`${nameCol} ${headCell} ${headLine} z-30 py-2`}>
                   고객 · 품목
                 </th>
                 {weeks.map((w) => {
@@ -286,8 +338,8 @@ export function SalesPlanGrid({
                     <th
                       key={w}
                       scope="col"
-                      className={`min-w-28 px-1.5 py-2 text-right align-bottom whitespace-nowrap ${
-                        now ? "bg-safety/25" : ""
+                      className={`${headCell} z-20 min-w-28 px-1.5 py-2 text-right align-bottom whitespace-nowrap ${
+                        now ? "shadow-[inset_0_-4px_0_var(--color-safety)]" : headLine
                       } ${w < thisWeek ? "text-muted" : ""}`}
                     >
                       {now && (
@@ -305,7 +357,7 @@ export function SalesPlanGrid({
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={weeks.length + 1} className="px-5 py-6 text-muted">
+                  <td colSpan={columns} className="px-5 py-6 text-muted">
                     <span className="sticky left-5">
                       {sheet.filtered
                         ? "거른 범위에 판매계획이 없습니다"
@@ -315,13 +367,23 @@ export function SalesPlanGrid({
                 </tr>
               )}
               {rows.map((r) => {
+                const pair = pairOf(r.customer.code, r.item.code);
                 const name = `${r.customer.code} ${r.item.code}`;
+                const line = "border-b border-rule";
                 return (
-                  <tr key={pairOf(r.customer.code, r.item.code)} className="border-b border-rule align-top">
-                    <th
-                      scope="row"
-                      className="sticky left-0 z-10 w-40 min-w-40 bg-white px-2 py-1.5 font-normal sm:w-60 sm:min-w-60"
-                    >
+                  <tr key={pair} className="align-top">
+                    <td className={`${pickCol} ${line} z-10 bg-white py-2 text-center`}>
+                      <input
+                        type="checkbox"
+                        checked={!r.added && selected.has(pair)}
+                        onChange={() => toggleRow(pair)}
+                        disabled={r.added}
+                        title={r.added ? "저장한 뒤 고를 수 있습니다" : undefined}
+                        aria-label={`${name} 줄 고르기`}
+                        className="size-4"
+                      />
+                    </td>
+                    <th scope="row" className={`${nameCol} ${line} z-10 bg-white py-1.5 font-normal`}>
                       <span className="block wrap-anywhere">
                         {r.customer.name}
                         <span className="font-mono text-xs text-muted">({r.customer.code})</span>
@@ -350,30 +412,43 @@ export function SalesPlanGrid({
                     {weeks.map((w) => {
                       const key = cellKey(r.customer.code, r.item.code, w);
                       const loaded = r.cells[w];
-                      const text = edits[key] ?? (loaded === undefined ? "" : shownQty(loaded));
+                      const text = edits[key] ?? (loaded === undefined ? "" : shownQty(loaded.qty));
                       const editable = isEditableWeek(w, thisWeek);
+                      const fixed = loaded?.confirmed === true;
+                      const open = loaded?.confirmed === false;
                       const error = errors[key];
                       return (
-                        <td key={w} className={`p-1 ${w === thisWeek ? "bg-safety/10" : ""}`}>
+                        <td key={w} className={`relative p-1 ${line} ${w === thisWeek ? "bg-safety/10" : ""}`}>
                           <input
                             inputMode="decimal"
                             autoComplete="off"
                             value={text}
                             disabled={!editable}
+                            readOnly={editable && fixed}
                             onChange={(e) => setCell(key, e.target.value)}
                             aria-label={`${name} ${weekLabel(w, thisWeek)} 수량`}
                             aria-invalid={error ? true : undefined}
                             aria-describedby={error ? domId(key) : undefined}
                             className={`w-full min-w-24 rounded-sm border px-1.5 py-1 text-right tabular-nums ${
-                              !editable
-                                ? "border-transparent bg-floor text-muted"
-                                : error
-                                  ? "border-red-700 bg-white"
-                                  : changed.has(key)
-                                    ? "border-machine bg-safety/25 font-semibold"
-                                    : "border-rule bg-white"
+                              error
+                                ? "border-red-700 bg-white"
+                                : !editable
+                                  ? `border-transparent text-muted ${open ? "bg-yellow-100" : "bg-floor"}`
+                                  : fixed
+                                    ? "border-rule bg-white text-muted"
+                                    : changed.has(key)
+                                      ? "border-machine bg-safety/25 font-semibold"
+                                      : open
+                                        ? "border-rule bg-yellow-100"
+                                        : "border-rule bg-white"
                             }`}
                           />
+                          {fixed && (
+                            <span className="pointer-events-none absolute top-0 left-1.5 rounded-sm bg-machine px-0.5 text-[0.625rem] leading-tight text-white">
+                              확정
+                            </span>
+                          )}
+                          {open && <span className="sr-only">미확정</span>}
                           {error && (
                             <p id={domId(key)} className="mt-0.5 max-w-28 text-xs font-semibold text-red-700">
                               {error}
@@ -386,11 +461,20 @@ export function SalesPlanGrid({
                 );
               })}
             </tbody>
-            <tbody className="border-t-2 border-machine">
+            <tbody>
               <tr>
-                <th scope="colgroup" colSpan={weeks.length + 1} className="bg-floor px-2 py-2 text-left">
+                <th
+                  scope="colgroup"
+                  colSpan={columns}
+                  className="border-t-2 border-machine bg-floor px-2 py-2 text-left"
+                >
                   <span className="sticky left-2 inline-block">
-                    품목 합계(전체 고객 — MPS 가 받는 수요)
+                    품목 합계(확정 — MPS 가 받는 수요)
+                    {sheet.unconfirmed > 0 && (
+                      <span className="block text-xs font-normal text-muted">
+                        미확정 {sheet.unconfirmed.toLocaleString("ko-KR")}칸은 확정해야 합계에 듭니다
+                      </span>
+                    )}
                     {sheet.filtered && (
                       <span className="block text-xs font-normal text-muted">
                         거른 줄만 보이지만 합계는 전체 고객입니다
@@ -401,31 +485,32 @@ export function SalesPlanGrid({
               </tr>
               {totalRows.length === 0 && (
                 <tr>
-                  <td colSpan={weeks.length + 1} className="px-5 py-4 text-muted">
-                    <span className="sticky left-5">이 {PAGE_WEEKS}주에 판매계획이 없습니다</span>
+                  <td colSpan={columns} className="px-5 py-4 text-muted">
+                    <span className="sticky left-5">이 {PAGE_WEEKS}주에 확정한 판매계획이 없습니다</span>
                   </td>
                 </tr>
               )}
               {totalRows.map((t) => (
-                <tr key={t.item.code} className="border-b border-rule">
+                <tr key={t.item.code}>
                   <th
                     scope="row"
-                    className="sticky left-0 z-10 w-40 min-w-40 bg-white px-2 py-1.5 font-normal sm:w-60 sm:min-w-60"
+                    colSpan={2}
+                    className="sticky left-0 z-10 border-b border-rule bg-white px-2 py-1.5 font-normal"
                   >
                     <span className="font-mono">{t.item.code}</span> {t.item.name}{" "}
                     <span className="text-muted">· {t.item.unit}</span>
                   </th>
                   {weeks.map((w) => {
-                    const qty = t.cells.get(w) ?? ZERO;
+                    const qty = t.cells[w];
                     return (
                       <td
                         key={w}
                         data-testid={`total-${t.item.code}-${w}`}
-                        className={`px-2.5 py-1.5 text-right font-semibold tabular-nums ${
-                          t.moved.has(w) ? "bg-safety/25" : w === thisWeek ? "bg-safety/10" : ""
+                        className={`border-b border-rule px-2.5 py-1.5 text-right font-semibold tabular-nums ${
+                          w === thisWeek ? "bg-safety/10" : ""
                         }`}
                       >
-                        {qty === ZERO ? "" : formatMilli(qty)}
+                        {qty === undefined ? "" : shownQty(qty)}
                       </td>
                     );
                   })}
@@ -435,7 +520,41 @@ export function SalesPlanGrid({
           </table>
         </div>
 
-        <div className="mt-4 grid gap-3 border-y border-rule bg-white px-4 py-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <button
+            type="button"
+            onClick={() => send({ kind: "save", cells: changes })}
+            disabled={pending || !unsaved}
+            className="rounded bg-machine px-6 py-2.5 font-semibold text-white hover:bg-machine-deep disabled:opacity-60"
+          >
+            {busy("save")}
+          </button>
+          <button
+            type="button"
+            onClick={() => send({ kind: "confirm", cells: toConfirm })}
+            disabled={!canConfirm}
+            className="rounded border border-machine bg-white px-5 py-2.5 font-semibold hover:bg-floor disabled:opacity-60"
+          >
+            {busy("confirm")}
+          </button>
+          <button
+            type="button"
+            onClick={() => send({ kind: "unconfirm", cells: toUnconfirm })}
+            disabled={!canUnconfirm}
+            className="rounded border border-machine bg-white px-5 py-2.5 font-semibold hover:bg-floor disabled:opacity-60"
+          >
+            {busy("unconfirm")}
+          </button>
+          <span data-testid="plan-selection" className="text-sm tabular-nums">
+            선택 {chosen.length.toLocaleString("ko-KR")}줄 · 미확정 {toConfirm.length.toLocaleString("ko-KR")}칸
+          </span>
+          <span role="status" className="text-sm text-muted">
+            {unsaved ? `고친 칸 ${changes.length.toLocaleString("ko-KR")}개` : "고친 칸이 없습니다"}
+          </span>
+          {unsaved && <span className="text-sm font-semibold text-red-700">먼저 저장하세요</span>}
+        </div>
+
+        <div className="mt-6 grid gap-3 border-y border-rule bg-white px-4 py-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
           <p className="text-sm font-semibold sm:col-span-full">줄 더하기 — 「사용」 매출처 × 「사용」 완제품</p>
           <label className="grid gap-1 text-sm">
             <span>고객</span>
@@ -490,20 +609,6 @@ export function SalesPlanGrid({
           <p className="text-sm text-muted sm:col-span-full">더한 줄은 칸에 수량을 넣고 저장해야 남습니다.</p>
         </div>
       </fieldset>
-
-      <div className="mt-6 flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={save}
-          disabled={pending || changes.length === 0}
-          className="rounded bg-machine px-6 py-2.5 font-semibold text-white hover:bg-machine-deep disabled:opacity-60"
-        >
-          {pending ? "저장 중…" : "저장"}
-        </button>
-        <span role="status" className="text-sm text-muted">
-          {changes.length > 0 ? `고친 칸 ${changes.length.toLocaleString("ko-KR")}개` : "고친 칸이 없습니다"}
-        </span>
-      </div>
     </>
   );
 }

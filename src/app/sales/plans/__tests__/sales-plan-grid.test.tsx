@@ -6,12 +6,17 @@ import { cellKey } from "@/lib/sales-plan-input";
 import { pageWeeks } from "@/lib/weeks";
 import { SalesPlanGrid } from "../sales-plan-grid";
 
-// 판매계획 화면의 표(메뉴 「판매계획」) — 고객 × 완제품 × 주의 칸을 고치고 「저장」으로 바뀐 칸만 보낸다. 저장은 서버 동작이라 흉내 낸다 —
-// 지난 주 칸이 잠기는지, 품목 합계가 입력하는 대로 바뀌는지, 보내는 칸(before · after), 거절의 까닭이 그 칸에 붙는지를 본다.
+// 판매계획 화면의 표(메뉴 「판매계획」) — 고객 × 완제품 × 주의 칸을 고치고 「저장」으로 바뀐 칸만 보내고, 고른 줄의 칸을 [확정] · [확정 취소]한다.
+// 저장 · 확정 · 확정 취소는 서버 동작이라 흉내 낸다 — 지난 주 칸이 잠기는지, 확정 칸이 읽기 전용인지, 품목 합계가 확정값 그대로인지,
+// 보내는 칸(before · after · qty), 거절의 까닭이 그 칸에 붙는지를 본다.
 // 이번 주는 2026-11-16(47주). 시험의 쪽은 지난 주 하나(11/09)를 넣으려고 2026-11-09 부터 13주다.
 
-const h = vi.hoisted(() => ({ save: vi.fn(), go: vi.fn() }));
-vi.mock("../actions", () => ({ saveSalesPlanAction: h.save }));
+const h = vi.hoisted(() => ({ save: vi.fn(), confirm: vi.fn(), unconfirm: vi.fn(), go: vi.fn() }));
+vi.mock("../actions", () => ({
+  saveSalesPlanAction: h.save,
+  confirmSalesPlanAction: h.confirm,
+  unconfirmSalesPlanAction: h.unconfirm,
+}));
 // 링크를 누르면 화면의 onClick 뒤에 기본 동작이 막히지 않았을 때만 넘어간 것으로 센다.
 vi.mock("next/link", () => ({
   default: ({ href, onClick, ...props }: ComponentProps<"a"> & { href: string }) => (
@@ -61,22 +66,23 @@ const fg1 = item({});
 const fg2 = item({ code: "FG-0002", name: "완제품 나", active: false });
 const fg3 = item({ code: "FG-0003", name: "완제품 다" });
 
-/** 확정 칸 — 합계에 든 값과 맞게 모두 확정이다. */
+/** 확정 칸 · 미확정 칸 — 품목 합계는 확정 칸만의 합이다. */
 const fixed = (qty: string) => ({ qty, confirmed: true });
+const open = (qty: string) => ({ qty, confirmed: false });
 
 const sheet: SalesPlanSheet = {
   thisWeek: THIS,
   weeks: pageWeeks(PAST),
   rows: [
-    { customer: laon, item: fg1, cells: { [PAST]: fixed("1000"), [THIS]: fixed("3000"), [NEXT]: fixed("2500") } },
-    { customer: maru, item: fg1, cells: { [THIS]: fixed("1500") } },
-    { customer: north, item: fg2, cells: { [THIS]: fixed("700") } },
+    { customer: laon, item: fg1, cells: { [PAST]: fixed("1000"), [THIS]: open("3000"), [NEXT]: fixed("2500") } },
+    { customer: maru, item: fg1, cells: { [THIS]: fixed("1500"), [NEXT]: open("600") } },
+    { customer: north, item: fg2, cells: { [PAST]: open("400"), [THIS]: fixed("700") } },
   ],
   totals: [
-    { item: fg1, cells: { [PAST]: "1000", [THIS]: "4500", [NEXT]: "2500" } },
+    { item: fg1, cells: { [PAST]: "1000", [THIS]: "1500", [NEXT]: "2500" } },
     { item: fg2, cells: { [THIS]: "700" } },
   ],
-  unconfirmed: 0,
+  unconfirmed: 3,
   filtered: false,
   planned: { customers: [laon, maru, north], items: [fg1, fg2] },
 };
@@ -90,8 +96,13 @@ const optionTexts = (select: HTMLElement) =>
     .getAllByRole("option")
     .map((o) => o.textContent);
 
+const pick = (c: string, i: string) => screen.getByRole("checkbox", { name: `${c} ${i} 줄 고르기` });
+const tally = () => screen.getByTestId("plan-selection");
+
 beforeEach(() => {
   h.save.mockReset().mockResolvedValue(null);
+  h.confirm.mockReset().mockResolvedValue(null);
+  h.unconfirm.mockReset().mockResolvedValue(null);
   h.go.mockReset();
 });
 afterEach(() => vi.restoreAllMocks());
@@ -122,25 +133,23 @@ describe("판매계획 표", () => {
     expect(cell("BP-0004", "FG-0001", "47주").closest("tr")).not.toHaveTextContent(/매출처 아님|사용 안 함/);
   });
 
-  it("칸에 4000 을 넣으면 [저장]이 켜지고 그 품목 합계 칸이 차이만큼 바뀐다", () => {
+  it("칸에 4000 을 넣으면 [저장]이 켜지지만 품목 합계(확정값)는 그대로다", () => {
     render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
     const save = screen.getByRole("button", { name: "저장" });
     expect(save).toBeDisabled();
-    expect(total("FG-0001", THIS)).toHaveTextContent("4,500");
+    expect(total("FG-0001", THIS)).toHaveTextContent("1,500");
     fireEvent.change(cell("BP-0004", "FG-0001", "47주"), { target: { value: "4000" } });
     expect(save).toBeEnabled();
-    expect(total("FG-0001", THIS)).toHaveTextContent("5,500");
+    expect(total("FG-0001", THIS)).toHaveTextContent("1,500");
     expect(total("FG-0002", THIS)).toHaveTextContent("700");
     // 같은 값으로 되돌리면 바뀐 칸이 없다.
     fireEvent.change(cell("BP-0004", "FG-0001", "47주"), { target: { value: "3,000" } });
     expect(save).toBeDisabled();
-    expect(total("FG-0001", THIS)).toHaveTextContent("4,500");
   });
 
-  it("음수(-5)는 합계를 바꾸지 않지만 저장에는 보낸다 — 까닭은 서버가 돌려준다", async () => {
+  it("음수(-5)도 저장에는 보낸다 — 까닭은 서버가 돌려준다", async () => {
     render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
     fireEvent.change(cell("BP-0004", "FG-0001", "47주"), { target: { value: "-5" } });
-    expect(total("FG-0001", THIS)).toHaveTextContent("4,500");
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "저장" })));
     await waitFor(() => expect(h.save).toHaveBeenCalled());
     expect(h.save.mock.calls[0][0]).toEqual([
@@ -148,31 +157,29 @@ describe("판매계획 표", () => {
     ]);
   });
 
-  it("상한을 넘는 수(999,999,999 · 1,000,000,000)는 합계를 바꾸지 않지만 저장에는 보낸다", async () => {
+  it("상한을 넘는 수(999,999,999 · 1,000,000,000)도 저장에는 보낸다", async () => {
     render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
     fireEvent.change(cell("BP-0004", "FG-0001", "47주"), { target: { value: "999,999,999" } });
-    expect(total("FG-0001", THIS)).toHaveTextContent("4,500");
-    fireEvent.change(cell("BP-0004", "FG-0001", "48주"), { target: { value: "1,000,000,000" } });
-    expect(total("FG-0001", NEXT)).toHaveTextContent("2,500");
+    fireEvent.change(cell("BP-0005", "FG-0001", "48주"), { target: { value: "1,000,000,000" } });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "저장" })));
     await waitFor(() => expect(h.save).toHaveBeenCalled());
     expect(h.save.mock.calls[0][0]).toEqual([
       { customer: "BP-0004", item: "FG-0001", week: THIS, before: "3000", after: "999,999,999" },
-      { customer: "BP-0004", item: "FG-0001", week: NEXT, before: "2500", after: "1,000,000,000" },
+      { customer: "BP-0005", item: "FG-0001", week: NEXT, before: "600", after: "1,000,000,000" },
     ]);
   });
 
   it("정수 단위 품목의 빈 칸에 「0.0」을 넣으면 바뀐 칸이 아니다 — 서버도 지움으로 읽는다", () => {
     render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
-    fireEvent.change(cell("BP-0005", "FG-0001", "48주"), { target: { value: "0.0" } });
+    fireEvent.change(cell("BP-0005", "FG-0001", "49주"), { target: { value: "0.0" } });
     expect(screen.getByRole("button", { name: "저장" })).toBeDisabled();
   });
 
-  it("칸을 비우면 그 수량만큼 합계가 줄고, 숫자가 아닌 글자는 합계를 바꾸지 않는다", () => {
+  it("칸을 비우거나 숫자가 아닌 글자를 넣어도 품목 합계는 그대로이고, [저장]은 켜진다", () => {
     render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
-    fireEvent.change(cell("BP-0005", "FG-0001", "47주"), { target: { value: "" } });
-    expect(total("FG-0001", THIS)).toHaveTextContent("3,000");
-    fireEvent.change(cell("BP-0004", "FG-0001", "48주"), { target: { value: "많이" } });
+    fireEvent.change(cell("BP-0004", "FG-0001", "47주"), { target: { value: "" } });
+    fireEvent.change(cell("BP-0005", "FG-0001", "48주"), { target: { value: "많이" } });
+    expect(total("FG-0001", THIS)).toHaveTextContent("1,500");
     expect(total("FG-0001", NEXT)).toHaveTextContent("2,500");
     expect(screen.getByRole("button", { name: "저장" })).toBeEnabled();
   });
@@ -261,7 +268,8 @@ describe("줄 더하기", () => {
     expect(optionTexts(screen.getByLabelText("새 줄 품목")).slice(1)).toEqual([]);
 
     fireEvent.change(added, { target: { value: "1,200" } });
-    expect(total("FG-0003", THIS)).toHaveTextContent("1,200");
+    // 품목 합계는 확정값만 — 새 줄의 칸은 저장 · 확정해야 든다.
+    expect(screen.queryByTestId(`total-FG-0003-${THIS}`)).toBeNull();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "저장" })));
     await waitFor(() => expect(h.save).toHaveBeenCalled());
     expect(h.save.mock.calls[0][0]).toEqual([
@@ -356,5 +364,134 @@ describe("쪽 넘기기 · 거르기", () => {
   it("거른 화면이면 합계가 전체 고객이라고 알린다", () => {
     render(<SalesPlanGrid sheet={{ ...fromThis, filtered: true }} options={options} back={backThis} />);
     expect(screen.getByText("거른 줄만 보이지만 합계는 전체 고객입니다")).toBeInTheDocument();
+  });
+});
+
+describe("확정 · 확정 취소", () => {
+  it("확정 칸은 읽기 전용(지난 주의 잠김과 다르다)이고 「확정」 표시가 붙는다", () => {
+    render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
+    const fixedCell = cell("BP-0005", "FG-0001", "47주");
+    expect(fixedCell).toHaveAttribute("readOnly");
+    expect(fixedCell).toBeEnabled();
+    expect(within(fixedCell.closest("td")!).getByText("확정")).toBeInTheDocument();
+    // 미확정 칸 · 빈 칸은 고칠 수 있고 「확정」 표시가 없다.
+    const openCell = cell("BP-0004", "FG-0001", "47주");
+    expect(openCell).not.toHaveAttribute("readOnly");
+    expect(within(openCell.closest("td")!).queryByText("확정")).toBeNull();
+    expect(cell("BP-0005", "FG-0001", "49주")).not.toHaveAttribute("readOnly");
+    // 지난 주의 확정 칸은 잠긴다(disabled).
+    expect(cell("BP-0004", "FG-0001", "46주")).toBeDisabled();
+  });
+
+  it("미확정으로 저장된 칸은 노란 바탕이다 — 확정 칸 · 빈 칸은 아니다", () => {
+    render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
+    expect(cell("BP-0004", "FG-0001", "47주")).toHaveClass("bg-yellow-100");
+    expect(cell("BP-0005", "FG-0001", "48주")).toHaveClass("bg-yellow-100");
+    expect(cell("BP-0005", "FG-0001", "47주")).not.toHaveClass("bg-yellow-100");
+    expect(cell("BP-0005", "FG-0001", "49주")).not.toHaveClass("bg-yellow-100");
+  });
+
+  it("[저장] [확정] [확정 취소]는 표 아래에 있고, 고른 줄이 없으면 확정 · 확정 취소가 꺼져 있다", () => {
+    render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
+    const table = screen.getByRole("region", { name: "판매계획 표" });
+    for (const name of ["저장", "확정", "확정 취소"]) {
+      const button = screen.getByRole("button", { name });
+      expect(table.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(button.compareDocumentPosition(screen.getByRole("button", { name: "줄 더하기" }))).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    }
+    expect(screen.getByRole("button", { name: "확정" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "확정 취소" })).toBeDisabled();
+    expect(tally()).toHaveTextContent("선택 0줄 · 미확정 0칸");
+  });
+
+  it("[확정]은 고른 줄의 고칠 수 있는 주의 미확정 칸만(불러온 수량) 보낸다 — 지난 주 · 확정 칸 · 고르지 않은 줄은 빠진다", async () => {
+    render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
+    fireEvent.click(pick("BP-0004", "FG-0001"));
+    fireEvent.click(pick("BP-0007", "FG-0002"));
+    expect(tally()).toHaveTextContent("선택 2줄 · 미확정 1칸");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "확정" })));
+    await waitFor(() => expect(h.confirm).toHaveBeenCalled());
+    expect(h.confirm).toHaveBeenCalledWith([{ customer: "BP-0004", item: "FG-0001", week: THIS, qty: "3000" }], back);
+    expect(h.unconfirm).not.toHaveBeenCalled();
+    expect(h.save).not.toHaveBeenCalled();
+  });
+
+  it("[확정 취소]는 고른 줄의 고칠 수 있는 주의 확정 칸만 보낸다", async () => {
+    render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
+    fireEvent.click(pick("BP-0004", "FG-0001"));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "확정 취소" })));
+    await waitFor(() => expect(h.unconfirm).toHaveBeenCalled());
+    expect(h.unconfirm).toHaveBeenCalledWith([{ customer: "BP-0004", item: "FG-0001", week: NEXT, qty: "2500" }], back);
+    expect(h.confirm).not.toHaveBeenCalled();
+  });
+
+  it("미확정 칸이 없는 줄만 고르면 [확정]은 꺼지고 [확정 취소]만 켜진다", () => {
+    const onlyFixed: SalesPlanSheet = {
+      ...sheet,
+      rows: [{ customer: maru, item: fg1, cells: { [THIS]: fixed("1500") } }],
+    };
+    render(<SalesPlanGrid sheet={onlyFixed} options={options} back={back} />);
+    fireEvent.click(pick("BP-0005", "FG-0001"));
+    expect(screen.getByRole("button", { name: "확정" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "확정 취소" })).toBeEnabled();
+  });
+
+  it("저장하지 않은 칸이 있으면 확정 · 확정 취소가 꺼지고 「먼저 저장하세요」", () => {
+    render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
+    fireEvent.click(pick("BP-0004", "FG-0001"));
+    expect(screen.getByRole("button", { name: "확정" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "확정 취소" })).toBeEnabled();
+    expect(screen.queryByText("먼저 저장하세요")).toBeNull();
+    fireEvent.change(cell("BP-0005", "FG-0001", "48주"), { target: { value: "700" } });
+    expect(screen.getByRole("button", { name: "확정" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "확정 취소" })).toBeDisabled();
+    expect(screen.getByText("먼저 저장하세요")).toBeInTheDocument();
+  });
+
+  it("「전체」는 보이는 줄을 모두 고르고, 일부만 고르면 반쯤 표시 — 새 줄은 고르지 못한다", () => {
+    render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
+    fireEvent.change(screen.getByLabelText("새 줄 고객"), { target: { value: "BP-0005" } });
+    fireEvent.change(screen.getByLabelText("새 줄 품목"), { target: { value: "FG-0003" } });
+    fireEvent.click(screen.getByRole("button", { name: "줄 더하기" }));
+    expect(pick("BP-0005", "FG-0003")).toBeDisabled();
+
+    const all = screen.getByRole("checkbox", { name: "전체" }) as HTMLInputElement;
+    fireEvent.click(all);
+    expect(pick("BP-0004", "FG-0001")).toBeChecked();
+    expect(pick("BP-0005", "FG-0001")).toBeChecked();
+    expect(pick("BP-0007", "FG-0002")).toBeChecked();
+    expect(pick("BP-0005", "FG-0003")).not.toBeChecked();
+    expect(all).toBeChecked();
+    expect(tally()).toHaveTextContent("선택 3줄 · 미확정 2칸");
+
+    fireEvent.click(pick("BP-0005", "FG-0001"));
+    expect(all).not.toBeChecked();
+    expect(all.indeterminate).toBe(true);
+    fireEvent.click(all);
+    expect(all).toBeChecked();
+    expect(all.indeterminate).toBe(false);
+    fireEvent.click(all);
+    expect(pick("BP-0004", "FG-0001")).not.toBeChecked();
+    expect(tally()).toHaveTextContent("선택 0줄 · 미확정 0칸");
+  });
+
+  it("확정이 거절되면 「확정하지 않았습니다」와 까닭을 보인다", async () => {
+    h.confirm.mockResolvedValue({ ok: false, errors: {}, formError: "다른 사람이 먼저 고쳤습니다" });
+    render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
+    fireEvent.click(pick("BP-0004", "FG-0001"));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "확정" })));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("확정하지 않았습니다"));
+    expect(screen.getByRole("alert")).toHaveTextContent("다른 사람이 먼저 고쳤습니다");
+  });
+
+  it("품목 합계는 확정값이라고 밝히고, 미확정 칸 수를 알린다 — 0 이면 숨긴다", () => {
+    const { unmount } = render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
+    expect(screen.getByText("품목 합계(확정 — MPS 가 받는 수요)")).toBeInTheDocument();
+    expect(screen.getByText("미확정 3칸은 확정해야 합계에 듭니다")).toBeInTheDocument();
+    unmount();
+    render(<SalesPlanGrid sheet={{ ...sheet, unconfirmed: 0 }} options={options} back={back} />);
+    expect(screen.queryByText(/확정해야 합계에 듭니다/)).toBeNull();
   });
 });

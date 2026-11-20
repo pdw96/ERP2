@@ -2,10 +2,12 @@ import { SALES_PLAN_HISTORY_SHOWN, type SalesPlanChangeRow } from "@/db/sales-pl
 import { weekLabel } from "@/lib/weeks";
 import { shownQty } from "./plan-qty";
 
-// 판매계획의 고친 이력(메뉴 「판매계획」) — 최근 저장부터, 바뀐 칸마다 한 줄. 범위는 위의 거르기와 같다(고객 · 품목, 모든 주).
+// 판매계획의 고친 이력(메뉴 「판매계획」) — 최근 것부터, 저장 · 확정 · 확정 취소한 칸마다 한 줄. 범위는 위의 거르기와 같다(고객 · 품목, 모든 주).
+// 확정 · 확정 취소 줄은 수량이 바뀌지 않아(전 = 후) 그때 수량 하나만 보인다.
 // 누가 고쳤는지는 아직 남지 않는다 — 로그인이 생긴 뒤(BOM · 라우팅과 같다). 읽기만 한다.
 
 const shown = (qty: string | null) => (qty === null ? "—" : shownQty(qty));
+const KIND: Record<SalesPlanChangeRow["kind"], string> = { EDIT: "고침", CONFIRM: "확정", UNCONFIRM: "확정 취소" };
 
 export function SalesPlanHistory({
   rows,
@@ -23,8 +25,8 @@ export function SalesPlanHistory({
         고친 이력
       </h2>
       <p className="text-sm text-muted">
-        저장할 때마다 바뀐 칸이 한 줄씩 남습니다(최근 것부터). 위의 거르기와 같은 범위이고, 일시는 한국 시각입니다. 누가
-        고쳤는지는 로그인이 생긴 뒤 남깁니다.
+        저장할 때마다 바뀐 칸이, 확정 · 확정 취소할 때마다 그 칸이 한 줄씩 남습니다(최근 것부터). 위의 거르기와 같은
+        범위이고, 일시는 한국 시각입니다. 누가 고쳤는지는 로그인이 생긴 뒤 남깁니다.
       </p>
       {total > SALES_PLAN_HISTORY_SHOWN && (
         <p className="mt-1 text-sm">
@@ -42,8 +44,10 @@ export function SalesPlanHistory({
           role="region"
           aria-label="고친 이력 표"
         >
-          <table className="w-full min-w-[44rem] border-collapse text-left text-sm">
-            <caption className="sr-only">판매계획 고친 이력 — 일시 · 고객 · 품목 · 주 · 전 · 후</caption>
+          <table className="w-full min-w-[50rem] border-collapse text-left text-sm">
+            <caption className="sr-only">
+              판매계획 고친 이력 — 일시 · 고객 · 품목 · 주 · 구분 · 전 · 후(확정 · 확정 취소는 그때 수량 하나)
+            </caption>
             <thead className="border-b-2 border-machine">
               <tr>
                 <th scope="col" className="w-36 px-2 py-2">
@@ -57,6 +61,9 @@ export function SalesPlanHistory({
                 </th>
                 <th scope="col" className="w-24 px-2 py-2">
                   주
+                </th>
+                <th scope="col" className="w-24 px-2 py-2">
+                  구분
                 </th>
                 <th scope="col" className="w-28 px-2 py-2 text-right">
                   전
@@ -77,8 +84,19 @@ export function SalesPlanHistory({
                     <span className="font-mono">{r.item.code}</span> {r.item.name}
                   </td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{weekLabel(r.week, thisWeek)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{shown(r.before)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{shown(r.after)}</td>
+                  <td className={`px-2 py-1.5 whitespace-nowrap ${r.kind === "EDIT" ? "" : "font-semibold"}`}>
+                    {KIND[r.kind]}
+                  </td>
+                  {r.kind === "EDIT" ? (
+                    <>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{shown(r.before)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{shown(r.after)}</td>
+                    </>
+                  ) : (
+                    <td colSpan={2} className="px-2 py-1.5 text-right tabular-nums">
+                      {shown(r.after)}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
