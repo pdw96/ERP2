@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { ITEM_CODE } from "@/lib/bom-input";
 import { planMps, type MpsCalcWeek } from "@/lib/mps-calc";
+import { OVER_LIMIT } from "@/lib/sales-plan-input";
 import { MPS_SAVE_MAX_CELLS, mpsCellKey, parseMpsQty, type MpsCellInput, type MpsConfirmInput } from "@/lib/mps-input";
 import type { Milli } from "@/lib/move-input";
 import { addWeeks, EDIT_WEEKS, isMonday, mondayOf, pageWeeks } from "@/lib/weeks";
@@ -308,9 +309,11 @@ async function checkCells(
   db: Db,
   cells: readonly MpsCellInput[],
   thisWeek: string,
-): Promise<{ errors: Record<string, string>; checked: CheckedCell[] }> {
+): Promise<{ errors: Record<string, string>; checked: CheckedCell[]; stale: boolean }> {
   const { errors, found } = await checkTargets(db, cells, thisWeek);
   const checked: CheckedCell[] = [];
+  // 화면이 본 수량(before)은 사용자가 친 글자가 아니다 — 읽지 못하면 틀린 입력이 아니라 낡은 화면(STALE)이다.
+  let stale = false;
   for (const f of found) {
     const after = parseMpsQty(f.input.after, f.item.decimals);
     if (!after.ok) {
@@ -319,7 +322,7 @@ async function checkCells(
     }
     const before = parseMpsQty(f.input.before, f.item.decimals);
     if (!before.ok) {
-      errors[f.key] = before.message;
+      stale = true;
       continue;
     }
     checked.push({
@@ -328,7 +331,7 @@ async function checkCells(
       after: after.qty === null ? null : canon(after.qty),
     });
   }
-  return { errors, checked };
+  return { errors, checked, stale };
 }
 
 type CellIds = { item: { id: number }; week: string };
@@ -373,6 +376,7 @@ export async function saveMps(db: Db, cells: MpsCellInput[], today: string): Pro
   const thisWeek = mondayOf(today);
   const pre = await checkCells(db, cells, thisWeek);
   if (Object.keys(pre.errors).length) return { ok: false, errors: pre.errors };
+  if (pre.stale) return formFail(STALE);
   const changing = pre.checked.filter((c) => c.before !== c.after).map((c) => c.input);
   if (!changing.length) return { ok: true, changed: 0 };
 
@@ -382,6 +386,7 @@ export async function saveMps(db: Db, cells: MpsCellInput[], today: string): Pro
     // 잠금을 쥔 뒤 다시 대어 본다 — 앞에서 본 뒤 품목의 구분 · 단위 · 단위 자릿수가 바뀌었을 수 있다.
     const again = await checkCells(tx, changing, thisWeek);
     if (Object.keys(again.errors).length) return { ok: false, errors: again.errors };
+    if (again.stale) return formFail(STALE);
     const changed = again.checked;
 
     // 화면을 연 뒤 남이 고정 · 고침 · 풀기를 한 칸이 하나라도 있으면 아무것도 쓰지 않는다.
@@ -445,7 +450,9 @@ async function checkSeen(
   for (const f of found) {
     const parsed = parseMpsQty(f.input.qty, f.item.decimals);
     const seen = parsed.ok && parsed.qty !== null ? parsed.qty : null;
-    if (confirming && (seen === null || seen <= ZERO)) errors[f.key] = NO_PROPOSAL;
+    // 상한을 넘는 수량은 읽은 오류를 그 칸에 — 「확정할 안이 없습니다」는 0 · 빈 칸 · 읽지 못한 글자에만 쓴다.
+    if (confirming && !parsed.ok && parsed.message === OVER_LIMIT) errors[f.key] = parsed.message;
+    else if (confirming && (seen === null || seen <= ZERO)) errors[f.key] = NO_PROPOSAL;
     else targets.push({ ...f, seen: seen === null ? null : canon(seen) });
   }
   return { errors, targets };

@@ -335,11 +335,15 @@ describe("샘플 MPS 고정 칸(메뉴 「MPS」)", () => {
     for (const f of SAMPLE_MPS_FIXED)
       expect(fixedRow.cells[addWeeks(mondayOf(TODAY), f.offset)]).toMatchObject({ mps: f.qty, fixed: true });
 
-    await db.execute(sql`truncate table mps_fixed`); // 이 묶음의 마지막 시험이다
-    const row = (await openMps(db, { from: "" }, TODAY)).rows.find((r) => r.item.code === "FG-0001")!;
-    for (const f of SAMPLE_MPS_FIXED) {
-      expect(Number(f.qty)).toBeGreaterThan(0);
-      expect(row.cells[addWeeks(mondayOf(TODAY), f.offset)]).toMatchObject({ mps: f.qty, fixed: false });
+    try {
+      await db.execute(sql`truncate table mps_fixed`);
+      const row = (await openMps(db, { from: "" }, TODAY)).rows.find((r) => r.item.code === "FG-0001")!;
+      for (const f of SAMPLE_MPS_FIXED) {
+        expect(Number(f.qty)).toBeGreaterThan(0);
+        expect(row.cells[addWeeks(mondayOf(TODAY), f.offset)]).toMatchObject({ mps: f.qty, fixed: false });
+      }
+    } finally {
+      await resetToSample(db, TODAY); // 다음 시험을 위해 샘플 고정 칸을 되돌린다
     }
   });
 });

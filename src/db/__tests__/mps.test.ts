@@ -332,6 +332,13 @@ describe("MPS — 확정 · 확정 취소", () => {
     expect(rows.map((r) => [r.kind, r.before, r.after])).toEqual([["CONFIRM", null, proposal]]);
   });
 
+  it("화면이 본 수량(before)을 읽지 못하면 STALE — 칸 메시지가 아니고 아무것도 쓰지 않는다", async () => {
+    // 「1.5」 는 EA(소수 0자리)에서 읽히지 않지만, 사용자가 친 글자가 아니라 화면이 본 값이니 틀린 입력이 아니라 낡은 화면이다.
+    const before = await fixedCells();
+    expect(await save([cell("FG-0001", w(2), "1.5", "300")])).toEqual({ ok: false, errors: {}, formError: STALE });
+    expect(await fixedCells()).toEqual(before);
+  });
+
   it("이미 고정된 칸을 확정하면 STALE — 아무것도 바뀌지 않는다", async () => {
     await ok(save([cell("FG-0001", w(1), "", "300")]));
     expect(await confirm([seen("FG-0001", w(0), "1000"), seen("FG-0001", w(1), "1000")])).toEqual({
@@ -354,6 +361,16 @@ describe("MPS — 확정 · 확정 취소", () => {
       },
     });
     expect(await fixedCells()).toEqual([]);
+  });
+
+  it("본 안이 상한(99,999,999)을 넘으면 그 칸에 읽기 오류를 돌려준다 — 「확정할 안이 없습니다」가 아니다", async () => {
+    expect(await confirm([seen("FG-0001", w(0), "100,000,000"), seen("FG-0001", w(1), "99999999.5")])).toEqual({
+      ok: false,
+      errors: {
+        [mpsCellKey("FG-0001", w(0))]: "수량은 99,999,999 까지 적을 수 있습니다.",
+        [mpsCellKey("FG-0001", w(1))]: "수량은 99,999,999 까지 적을 수 있습니다.",
+      },
+    });
   });
 
   it("확정 취소는 본 고정 수량과 같아야 한다 — 풀면 다음 열기에서 그 주는 안으로 돌아온다", async () => {

@@ -15,6 +15,7 @@ import {
 } from "./master-shared";
 import { codeGroups, codes, unitSpecs } from "./schema";
 import { bomQuantitiesFit, lockBom } from "./boms";
+import { mpsQuantitiesFit } from "./mps";
 import { lockSalesPlans, salesPlanQuantitiesFit } from "./sales-plans";
 import { lockStock, unitQuantitiesFit } from "./stock";
 import type { Db } from "./types";
@@ -233,6 +234,9 @@ export async function updateCode(
         // 판매계획의 수량도 그 단위의 자릿수를 지킨다 — BOM 다음에 판매계획의 잠금을 쥐고 본다.
         await lockSalesPlans(tx);
         if (!(await salesPlanQuantitiesFit(tx, current.code, decimals.value.decimals)))
+          throw new DecimalsMisfit(decimals.value.decimals);
+        // MPS 가 고정한 수량도 그 단위의 자릿수를 지킨다 — 같은 판매계획 잠금 안에서 본다.
+        if (!(await mpsQuantitiesFit(tx, current.code, decimals.value.decimals)))
           throw new DecimalsMisfit(decimals.value.decimals);
       }
       const done = await tx
