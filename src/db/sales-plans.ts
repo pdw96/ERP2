@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNotNull, sql, type SQL } from "drizzle-orm";
 import { ITEM_CODE } from "@/lib/bom-input";
 import { THOUSAND, type Milli } from "@/lib/move-input";
 import {
@@ -8,16 +8,19 @@ import {
   parseSalesPlanQty,
   SALES_PLAN_SAVE_MAX_CELLS,
   type SalesPlanCellInput,
+  type SalesPlanConfirmInput,
 } from "@/lib/sales-plan-input";
 import { addWeeks, EDIT_WEEKS, isMonday, mondayOf, pageWeeks } from "@/lib/weeks";
 import { first, limitMessage, REGISTER_LOCK, STALE, touched, type Params } from "./master-shared";
 import { items, partners, salesPlanChanges, salesPlans, unitSpecs } from "./schema";
 import type { Db } from "./types";
 
-// 판매계획의 열기 · 저장 · 고친 이력 · 품목 합계(메뉴 「판매계획」). 화면(src/app/sales/plans/)과 MPS 는 이 함수만 부른다.
+// 판매계획의 열기 · 저장 · 확정 · 확정 취소 · 고친 이력 · 품목 합계(메뉴 「판매계획」). 화면(src/app/sales/plans/)과 MPS 는 이 함수만 부른다.
 // - 칸 하나 = 고객 × 완제품 × 주(월요일). 수량이 있는 칸만 DB 에 있다 — 빈 칸 · 0 은 그 칸을 지운다.
+// - 저장한 칸은 미확정이다. [확정]한 칸만 MPS 수요 · 품목 합계에 들고, 확정 칸은 저장으로 고치지 못한다([확정 취소]로 미확정에 되돌린 뒤 고친다).
 // - 저장은 화면이 보낸 바뀐 칸만 한 트랜잭션에서 바꾼다. 칸마다 화면을 연 때의 값(before)을 지금 값과 견줘, 하나라도 다르면 아무것도 쓰지 않는다.
-// - 저장은 판매계획의 잠금(REGISTER_LOCK.salesPlans)을 쥐고 돈다 — 칸 전체 · 고친 이력의 상한을 세고 넣는 사이에 남이 끼지 못한다.
+//   확정 · 확정 취소도 칸마다 화면이 본 수량 · 상태를 지금과 견줘, 하나라도 다르면 아무것도 바꾸지 않는다.
+// - 저장 · 확정 · 확정 취소는 판매계획의 잠금(REGISTER_LOCK.salesPlans)을 쥐고 돈다 — 칸 전체 · 고친 이력의 상한을 세고 넣는 사이에 남이 끼지 못한다.
 
 /** 판매계획 칸 전체의 등록 상한 — 매일 밤 되돌림이 샘플로 되돌린다. */
 export const SALES_PLAN_CELL_LIMIT = 20000;
@@ -35,6 +38,7 @@ const PAST_WEEK = "지난 주는 고치지 못합니다";
 const FAR_WEEK = "51주 뒤까지만 넣습니다";
 const NEW_ROW_CUSTOMER = "「사용 안 함」이거나 매출처가 아닌 거래처라 새 줄을 넣지 못합니다";
 const NEW_ROW_ITEM = "「사용 안 함」 품목이라 새 줄을 넣지 못합니다";
+const CONFIRMED = "확정된 칸입니다 — 확정 취소한 뒤 고치세요";
 
 /** 판매계획을 고치는 저장이 쥐는 잠금 — 트랜잭션이 끝나면 저절로 풀린다. */
 export async function lockSalesPlans(tx: Db): Promise<void> {
@@ -57,6 +61,8 @@ function canonText(text: string): string {
 }
 
 const qtyText = (col: typeof salesPlans.qty) => sql<string>`${col}::text`;
+/** 칸이 확정인가 — confirmed_at 이 있으면 확정. */
+const confirmedCol = sql<boolean>`(${salesPlans.confirmedAt} is not null)`;
 
 // ── 고객 · 품목 ─────────────────────────────────────────
 
@@ -144,14 +150,19 @@ const filterWhere = (filter: SalesPlanFilter): SQL | undefined =>
 
 // ── 열기 ─────────────────────────────────────────────
 
-/** 칸 값은 정규 글자(「3000」 · 「1.5」), 열쇠는 주(월요일). */
-export type SalesPlanRow = { customer: PlanCustomer; item: PlanItem; cells: Record<string, string> };
+/** 칸 하나 — 수량은 정규 글자(「3000」 · 「1.5」), confirmed 는 확정인가. */
+export type SalesPlanCell = { qty: string; confirmed: boolean };
+/** 칸의 열쇠는 주(월요일). */
+export type SalesPlanRow = { customer: PlanCustomer; item: PlanItem; cells: Record<string, SalesPlanCell> };
+/** 품목 합계 — 확정 칸만의 합, 정규 글자. */
 export type SalesPlanTotal = { item: PlanItem; cells: Record<string, string> };
 export type SalesPlanSheet = {
   thisWeek: string;
   weeks: string[];
   rows: SalesPlanRow[];
   totals: SalesPlanTotal[];
+  /** 그 13주 · 거르기 범위의 미확정 칸 수 — 품목 합계 아래 「미확정 n칸」. */
+  unconfirmed: number;
   /** 거르기가 걸렸는가 — 줄은 거른 것만, 합계는 전체 고객. */
   filtered: boolean;
   /**
@@ -165,7 +176,7 @@ const byCode = <T extends { code: string }>(a: T, b: T) => (a.code < b.code ? -1
 
 /**
  * 판매계획 한 쪽(13주) — 줄은 DB 에 칸이 하나라도 있는(어느 주든) 고객 × 품목 가운데 거르기를 따른 것, 고객 코드 · 품목 코드 차례.
- * 칸은 그 13주 것만. 품목 합계는 거르기와 상관없이 모든 고객의 합이고, 그 13주에 계획이 있는 품목만 품목 코드 차례로.
+ * 칸은 그 13주 것만. 품목 합계는 거르기와 상관없이 모든 고객의 확정 칸의 합이고, 그 13주에 확정 칸이 있는 품목만 품목 코드 차례로.
  * from 이 월요일이 아니면 이번 주부터 연다.
  * 모든 읽기를 읽기 전용 REPEATABLE READ 트랜잭션 하나에서 한다 — 줄 · 칸 · 합계가 한 스냅숏에서 나와, 그 사이 끝난 저장이 합계에만 드는 일이 없다.
  */
@@ -206,6 +217,7 @@ export async function openSalesPlan(
       );
 
       const rows: SalesPlanRow[] = [];
+      let unconfirmed = 0;
       if (pairs.length) {
         const cells = await tx
           .select({
@@ -213,17 +225,19 @@ export async function openSalesPlan(
             itemId: salesPlans.itemId,
             week: salesPlans.weekStart,
             qty: qtyText(salesPlans.qty),
+            confirmed: confirmedCol,
           })
           .from(salesPlans)
           .innerJoin(partners, eq(partners.id, salesPlans.partnerId))
           .innerJoin(items, eq(items.id, salesPlans.itemId))
           .where(and(filterWhere(filter), sql`${salesPlans.weekStart} between ${from}::date and ${to}::date`));
-        const cellsOf = new Map<string, Record<string, string>>();
+        const cellsOf = new Map<string, Record<string, SalesPlanCell>>();
         for (const c of cells) {
           const k = `${c.partnerId}|${c.itemId}`;
           const row = cellsOf.get(k) ?? {};
-          row[c.week] = canonText(c.qty);
+          row[c.week] = { qty: canonText(c.qty), confirmed: c.confirmed };
           cellsOf.set(k, row);
+          if (!c.confirmed) unconfirmed++;
         }
         for (const p of pairs) {
           rows.push({
@@ -249,6 +263,7 @@ export async function openSalesPlan(
         weeks,
         rows,
         totals,
+        unconfirmed,
         filtered: !!(filter.customer || filter.item),
         planned: {
           customers: [...customerById.values()].sort(byCode).map(customerOf),
@@ -261,7 +276,8 @@ export async function openSalesPlan(
 }
 
 /**
- * 품목 합계 — 품목 × 주의 수량 합(모든 고객, fromWeek · toWeek 두 끝 포함), 품목 코드 · 주 차례. 수량은 정규 글자. MPS 가 수요로 읽는다.
+ * 품목 합계 — 품목 × 주의 확정 칸 수량 합(모든 고객, fromWeek · toWeek 두 끝 포함), 품목 코드 · 주 차례. 수량은 정규 글자. MPS 가 수요로 읽는다.
+ * 미확정 칸은 들지 않는다 — 미확정만 있는 품목 · 주는 나오지 않는다.
  */
 export async function salesPlanDemand(
   db: Db,
@@ -276,7 +292,12 @@ export async function salesPlanDemand(
     })
     .from(salesPlans)
     .innerJoin(items, eq(items.id, salesPlans.itemId))
-    .where(sql`${salesPlans.weekStart} between ${fromWeek}::date and ${toWeek}::date`)
+    .where(
+      and(
+        isNotNull(salesPlans.confirmedAt),
+        sql`${salesPlans.weekStart} between ${fromWeek}::date and ${toWeek}::date`,
+      ),
+    )
     .groupBy(items.code, salesPlans.weekStart)
     .orderBy(asc(items.code), asc(salesPlans.weekStart));
   return rows.map((r) => ({ item: r.item, week: r.week, qty: canonText(r.qty) }));
@@ -294,26 +315,24 @@ const isCellInput = (v: unknown): v is SalesPlanCellInput =>
   v !== null &&
   CELL_FIELDS.every((f) => typeof (v as Record<string, unknown>)[f] === "string");
 
+/** 칸을 가리키는 것 — 고객 · 품목 코드와 주. */
+type CellTarget = { customer: string; item: string; week: string };
+
+/** 고객 · 품목 · 주를 대어 본 칸 하나. */
+type FoundCell<T extends CellTarget> = { key: string; input: T; customer: CustomerRow; item: ItemRow; week: string };
+
 /** 대어 본 칸 하나 — before · after 는 정규 글자, 없음은 null. */
-type CheckedCell = {
-  key: string;
-  input: SalesPlanCellInput;
-  customer: CustomerRow;
-  item: ItemRow;
-  week: string;
-  before: string | null;
-  after: string | null;
-};
+type CheckedCell = FoundCell<SalesPlanCellInput> & { before: string | null; after: string | null };
 
 /**
- * 칸마다 고객 · 품목 · 주 · 수량을 DB 에 대어 본다. 칸의 오류는 하나만(고객 → 품목 → 주 → 고친 값 → 연 때의 값 차례).
- * 저장의 앞(바뀐 칸 가리기)과 잠금을 쥔 뒤(그 사이 품목 · 단위가 바뀌었을 수 있다) 두 번 부른다.
+ * 칸마다 고객 · 품목 · 주를 DB 에 대어 본다. 칸의 오류는 하나만(고객 → 품목 → 주 차례). 수량은 보지 않는다.
+ * 저장 · 확정 · 확정 취소가 함께 쓴다 — 지난 주 · 51주 넘는 주의 칸은 수량도 상태도 바꾸지 못한다.
  */
-async function checkCells(
+async function checkTargets<T extends CellTarget>(
   db: Db,
-  cells: readonly SalesPlanCellInput[],
+  cells: readonly T[],
   thisWeek: string,
-): Promise<{ errors: Record<string, string>; checked: CheckedCell[] }> {
+): Promise<{ errors: Record<string, string>; found: FoundCell<T>[] }> {
   const customerCodes = [...new Set(cells.map((c) => c.customer).filter((c) => CUSTOMER_CODE.test(c)))];
   const itemCodes = [...new Set(cells.map((c) => c.item).filter((c) => ITEM_CODE.test(c)))];
   const customerByCode = new Map(
@@ -328,51 +347,46 @@ async function checkCells(
   const lastWeek = addWeeks(thisWeek, EDIT_WEEKS - 1);
 
   const errors: Record<string, string> = {};
-  const checked: CheckedCell[] = [];
+  const found: FoundCell<T>[] = [];
   for (const c of cells) {
     const key = cellKey(c.customer, c.item, c.week);
     const customer = CUSTOMER_CODE.test(c.customer) ? customerByCode.get(c.customer) : undefined;
     const item = ITEM_CODE.test(c.item) ? itemByCode.get(c.item) : undefined;
-    if (!customer) {
-      errors[key] = NO_CUSTOMER;
-      continue;
-    }
-    if (!item) {
-      errors[key] = NO_ITEM;
-      continue;
-    }
-    if (item.itemType !== "FG") {
-      errors[key] = NOT_FG;
-      continue;
-    }
-    if (!isMonday(c.week)) {
-      errors[key] = NOT_MONDAY;
-      continue;
-    }
-    if (c.week < thisWeek) {
-      errors[key] = PAST_WEEK;
-      continue;
-    }
-    if (c.week > lastWeek) {
-      errors[key] = FAR_WEEK;
-      continue;
-    }
-    const after = parseSalesPlanQty(c.after, item.decimals);
+    if (!customer) errors[key] = NO_CUSTOMER;
+    else if (!item) errors[key] = NO_ITEM;
+    else if (item.itemType !== "FG") errors[key] = NOT_FG;
+    else if (!isMonday(c.week)) errors[key] = NOT_MONDAY;
+    else if (c.week < thisWeek) errors[key] = PAST_WEEK;
+    else if (c.week > lastWeek) errors[key] = FAR_WEEK;
+    else found.push({ key, input: c, customer, item, week: c.week });
+  }
+  return { errors, found };
+}
+
+/**
+ * 칸마다 고객 · 품목 · 주 · 수량을 DB 에 대어 본다. 칸의 오류는 하나만(고객 → 품목 → 주 → 고친 값 → 연 때의 값 차례).
+ * 저장의 앞(바뀐 칸 가리기)과 잠금을 쥔 뒤(그 사이 품목 · 단위가 바뀌었을 수 있다) 두 번 부른다.
+ */
+async function checkCells(
+  db: Db,
+  cells: readonly SalesPlanCellInput[],
+  thisWeek: string,
+): Promise<{ errors: Record<string, string>; checked: CheckedCell[] }> {
+  const { errors, found } = await checkTargets(db, cells, thisWeek);
+  const checked: CheckedCell[] = [];
+  for (const f of found) {
+    const after = parseSalesPlanQty(f.input.after, f.item.decimals);
     if (!after.ok) {
-      errors[key] = after.message;
+      errors[f.key] = after.message;
       continue;
     }
-    const before = parseSalesPlanQty(c.before, item.decimals);
+    const before = parseSalesPlanQty(f.input.before, f.item.decimals);
     if (!before.ok) {
-      errors[key] = before.message;
+      errors[f.key] = before.message;
       continue;
     }
     checked.push({
-      key,
-      input: c,
-      customer,
-      item,
-      week: c.week,
+      ...f,
       before: before.qty === null ? null : canon(before.qty),
       after: after.qty === null ? null : canon(after.qty),
     });
@@ -385,13 +399,45 @@ function rowsOf<T>(result: unknown): T[] {
   return (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
 }
 
-const cellTuple = (c: CheckedCell) => sql`(${c.customer.id}::integer, ${c.item.id}::integer, ${c.week}::date)`;
-const inCells = (cells: readonly CheckedCell[]) =>
+type CellIds = { customer: { id: number }; item: { id: number }; week: string };
+const cellTuple = (c: CellIds) => sql`(${c.customer.id}::integer, ${c.item.id}::integer, ${c.week}::date)`;
+const inCells = (cells: readonly CellIds[]) =>
   sql`(${salesPlans.partnerId}, ${salesPlans.itemId}, ${salesPlans.weekStart}) in (${sql.join(cells.map(cellTuple), sql`, `)})`;
 
+/** 그 칸들의 지금 수량(정규 글자) · 확정인가 — DB 에 없는 칸은 undefined. */
+async function readCells(db: Db, cells: readonly CellIds[]): Promise<(c: CellIds) => SalesPlanCell | undefined> {
+  const rows = await db
+    .select({
+      partnerId: salesPlans.partnerId,
+      itemId: salesPlans.itemId,
+      week: salesPlans.weekStart,
+      qty: qtyText(salesPlans.qty),
+      confirmed: confirmedCol,
+    })
+    .from(salesPlans)
+    .where(inCells(cells));
+  const byIds = new Map(
+    rows.map(
+      (r) => [`${r.partnerId}|${r.itemId}|${r.week}`, { qty: canonText(r.qty), confirmed: r.confirmed }] as const,
+    ),
+  );
+  return (c) => byIds.get(`${c.customer.id}|${c.item.id}|${c.week}`);
+}
+
+/** 확정 칸마다 그 칸에 「확정된 칸입니다」. */
+function confirmedErrors(
+  cells: readonly CheckedCell[],
+  current: (c: CellIds) => SalesPlanCell | undefined,
+): Record<string, string> {
+  const errors: Record<string, string> = {};
+  for (const c of cells) if (current(c)?.confirmed) errors[c.key] = CONFIRMED;
+  return errors;
+}
+
 /**
- * 판매계획의 저장 — 화면이 보낸 바뀐 칸들. 꼴 → 칸마다 대어 보기 → 바뀐 것만 남김 → (잠금) 지금 값과 견줌 → 새 줄의 고객 · 품목 → 상한 차례로 보고,
- * 하나라도 틀리면 아무것도 쓰지 않는다. 바뀐 것이 없으면 잠금도 쥐지 않고 아무것도 쓰지 않는다.
+ * 판매계획의 저장 — 화면이 보낸 바뀐 칸들. 꼴 → 칸마다 대어 보기 → 바뀐 것만 남김 → 확정 칸 → (잠금) 다시 대어 보기 → 확정 칸 → 지금 값과 견줌
+ * → 새 줄의 고객 · 품목 → 상한 차례로 보고, 하나라도 틀리면 아무것도 쓰지 않는다. 바뀐 것이 없으면 잠금도 쥐지 않고 아무것도 쓰지 않는다.
+ * 새로 넣거나 고친 칸은 미확정이고, 고친 이력의 종류는 EDIT 이다.
  * 쓰기는 지움 · 새로 · 고침을 한 트랜잭션에서, 고친 이력은 바뀐 칸마다 한 줄 — 일시는 잠금을 쥔 뒤 읽은 한 시각이다
  * (칸의 기본값 now() 는 트랜잭션을 연 시각이라, 잠금을 기다린 저장이 먼저 끝난 저장보다 이른 일시로 남는다 — BOM 과 같은 까닭).
  * changed 는 바꾼 칸 수(= 남긴 이력 줄 수)다. today 는 한국 시각의 오늘(YYYY-MM-DD).
@@ -408,8 +454,11 @@ export async function saveSalesPlan(db: Db, cells: SalesPlanCellInput[], today: 
   const thisWeek = mondayOf(today);
   const pre = await checkCells(db, cells, thisWeek);
   if (Object.keys(pre.errors).length) return { ok: false, errors: pre.errors };
-  const changing = pre.checked.filter((c) => c.before !== c.after).map((c) => c.input);
-  if (!changing.length) return { ok: true, changed: 0 };
+  const changingChecked = pre.checked.filter((c) => c.before !== c.after);
+  if (!changingChecked.length) return { ok: true, changed: 0 };
+  const preConfirmed = confirmedErrors(changingChecked, await readCells(db, changingChecked));
+  if (Object.keys(preConfirmed).length) return { ok: false, errors: preConfirmed };
+  const changing = changingChecked.map((c) => c.input);
 
   return db.transaction(async (tx): Promise<SalesPlanSaveResult> => {
     await lockSalesPlans(tx);
@@ -419,19 +468,13 @@ export async function saveSalesPlan(db: Db, cells: SalesPlanCellInput[], today: 
     if (Object.keys(again.errors).length) return { ok: false, errors: again.errors };
     const changed = again.checked;
 
+    // 확정 칸은 잠금 뒤 다시 본다 — 앞에서 본 뒤 남이 확정했을 수 있다.
+    const current = await readCells(tx, changed);
+    const confirmed = confirmedErrors(changed, current);
+    if (Object.keys(confirmed).length) return { ok: false, errors: confirmed };
+
     // 지금 값과 견준다 — 화면을 연 뒤 남이 고친 칸이 하나라도 있으면 아무것도 쓰지 않는다.
-    const now = await tx
-      .select({
-        partnerId: salesPlans.partnerId,
-        itemId: salesPlans.itemId,
-        week: salesPlans.weekStart,
-        qty: qtyText(salesPlans.qty),
-      })
-      .from(salesPlans)
-      .where(inCells(changed));
-    const nowOf = new Map(now.map((r) => [`${r.partnerId}|${r.itemId}|${r.week}`, canonText(r.qty)] as const));
-    const current = (c: CheckedCell) => nowOf.get(`${c.customer.id}|${c.item.id}|${c.week}`) ?? null;
-    if (changed.some((c) => current(c) !== c.before)) return formFail(STALE);
+    if (changed.some((c) => (current(c)?.qty ?? null) !== c.before)) return formFail(STALE);
 
     // 새 줄(DB 에 칸이 하나도 없는 고객 × 품목)은 「사용」 매출처 · 「사용」 품목만.
     const partnerIds = [...new Set(changed.map((c) => c.customer.id))];
@@ -477,7 +520,7 @@ export async function saveSalesPlan(db: Db, cells: SalesPlanCellInput[], today: 
         (c) => sql`(${c.customer.id}::integer, ${c.item.id}::integer, ${c.week}::date, ${c.after}::numeric)`,
       );
       await tx.execute(sql`
-        update ${salesPlans} set qty = v.qty, updated_at = ${touched()}
+        update ${salesPlans} set qty = v.qty, confirmed_at = null, updated_at = ${touched()}
         from (values ${sql.join(values, sql`, `)}) as v(partner_id, item_id, week_start, qty)
         where ${salesPlans.partnerId} = v.partner_id and ${salesPlans.itemId} = v.item_id
           and ${salesPlans.weekStart} = v.week_start`);
@@ -490,10 +533,115 @@ export async function saveSalesPlan(db: Db, cells: SalesPlanCellInput[], today: 
         savedAt: sql`${at}::timestamptz`,
         before: c.before === null ? null : sql`${c.before}::numeric`,
         after: c.after === null ? null : sql`${c.after}::numeric`,
+        kind: "EDIT",
       })),
     );
     return { ok: true, changed: changed.length };
   });
+}
+
+// ── 확정 · 확정 취소 ───────────────────────────────────────
+
+const CONFIRM_FIELDS = ["customer", "item", "week", "qty"] as const;
+
+const isConfirmInput = (v: unknown): v is SalesPlanConfirmInput =>
+  typeof v === "object" &&
+  v !== null &&
+  CONFIRM_FIELDS.every((f) => typeof (v as Record<string, unknown>)[f] === "string");
+
+/** 화면이 본 수량의 정규 글자 — 읽지 못하거나 비면 null(어느 칸의 지금 수량과도 같지 않다). */
+function seenQty(text: string): string | null {
+  const parsed = parseSalesPlanQty(text, 3);
+  return parsed.ok && parsed.qty !== null ? canon(parsed.qty) : null;
+}
+
+/**
+ * 확정 · 확정 취소 — 꼴 → 같은 칸 둘 → 2,000칸 → 칸마다 고객 · 품목 · 주(고칠 수 있는 주) → (잠금) 다시 대어 보기
+ * → 칸마다 지금 있고 · 화면이 본 수량과 같고 · 상태가 바꿀 쪽이 아닌지(아니면 STALE) → 고친 이력의 상한 차례로 보고, 하나라도 틀리면 아무것도 바꾸지 않는다.
+ * 쓰기는 confirmed_at 을 잠금 뒤 읽은 한 시각(확정) · null(확정 취소)로, 고친 이력은 칸마다 한 줄(전 = 후 = 그때 수량).
+ */
+async function setConfirmed(
+  db: Db,
+  cells: SalesPlanConfirmInput[],
+  today: string,
+  kind: "CONFIRM" | "UNCONFIRM",
+): Promise<SalesPlanSaveResult> {
+  const formFail = (formError: string): SalesPlanSaveResult => ({ ok: false, errors: {}, formError });
+  const confirming = kind === "CONFIRM";
+  const verb = confirming ? "확정" : "확정 취소";
+
+  if (!Array.isArray(cells) || !cells.every(isConfirmInput)) return formFail(FORM);
+  const keys = new Set(cells.map((c) => cellKey(c.customer, c.item, c.week)));
+  if (keys.size !== cells.length) return formFail(FORM);
+  if (cells.length > SALES_PLAN_SAVE_MAX_CELLS)
+    return formFail(
+      `한 번에 ${SALES_PLAN_SAVE_MAX_CELLS.toLocaleString("ko-KR")}칸까지 ${verb}합니다 — 나눠 ${verb}하세요`,
+    );
+  if (!cells.length) return { ok: true, changed: 0 };
+
+  const thisWeek = mondayOf(today);
+  const pre = await checkTargets(db, cells, thisWeek);
+  if (Object.keys(pre.errors).length) return { ok: false, errors: pre.errors };
+
+  return db.transaction(async (tx): Promise<SalesPlanSaveResult> => {
+    await lockSalesPlans(tx);
+
+    const again = await checkTargets(tx, cells, thisWeek);
+    if (Object.keys(again.errors).length) return { ok: false, errors: again.errors };
+    const targets = again.found;
+
+    // 화면을 연 뒤 남이 고치거나 지우거나 확정 · 확정 취소한 칸이 하나라도 있으면 아무것도 바꾸지 않는다.
+    const current = await readCells(tx, targets);
+    const fresh = (t: FoundCell<SalesPlanConfirmInput>) => {
+      const now = current(t);
+      return now !== undefined && now.confirmed !== confirming && now.qty === seenQty(t.input.qty);
+    };
+    if (!targets.every(fresh)) return formFail(STALE);
+    // 「MPS」 착공: 확정 취소는 MPS 가 확정한 주의 칸을 막는다 — 그 검사가 여기에 든다.
+
+    const [{ changesNow }] = await tx.select({ changesNow: count() }).from(salesPlanChanges);
+    if (changesNow + targets.length > SALES_PLAN_CHANGE_LIMIT)
+      return formFail(limitMessage("판매계획 고친 이력", SALES_PLAN_CHANGE_LIMIT));
+
+    const [{ at }] = rowsOf<{ at: string }>(await tx.execute(sql`select clock_timestamp()::text as at`));
+    await tx
+      .update(salesPlans)
+      .set({ confirmedAt: confirming ? sql`${at}::timestamptz` : null, updatedAt: touched() })
+      .where(inCells(targets));
+    await tx.insert(salesPlanChanges).values(
+      targets.map((t) => {
+        const qty = sql`${current(t)!.qty}::numeric`;
+        return {
+          partnerId: t.customer.id,
+          itemId: t.item.id,
+          weekStart: t.week,
+          savedAt: sql`${at}::timestamptz`,
+          before: qty,
+          after: qty,
+          kind,
+        };
+      }),
+    );
+    return { ok: true, changed: targets.length };
+  });
+}
+
+/** 확정 — 미확정 칸을 확정한다(MPS 가 수요로 읽고, 저장으로 고치지 못한다). changed 는 확정한 칸 수. today 는 한국 시각의 오늘. */
+export async function confirmSalesPlan(
+  db: Db,
+  cells: SalesPlanConfirmInput[],
+  today: string,
+): Promise<SalesPlanSaveResult> {
+  return setConfirmed(db, cells, today, "CONFIRM");
+}
+
+/** 확정 취소 — 확정 칸을 미확정에 되돌린다(MPS 수요에서 빠지고, 다시 저장으로 고친다). changed 는 확정 취소한 칸 수. */
+export async function unconfirmSalesPlan(
+  db: Db,
+  cells: SalesPlanConfirmInput[],
+  today: string,
+): Promise<SalesPlanSaveResult> {
+  return setConfirmed(db, cells, today, "UNCONFIRM");
 }
 
 // ── 고친 이력 ───────────────────────────────────────────
@@ -501,10 +649,12 @@ export async function saveSalesPlan(db: Db, cells: SalesPlanCellInput[], today: 
 export type SalesPlanChangeRow = {
   /** 한국 시각의 일시(YYYY-MM-DD HH:mm). */
   savedAt: string;
+  /** EDIT 수량을 고침 · CONFIRM 확정 · UNCONFIRM 확정 취소. */
+  kind: "EDIT" | "CONFIRM" | "UNCONFIRM";
   customer: { code: string; name: string };
   item: { code: string; name: string };
   week: string;
-  /** 정규 글자, 없음(새로 넣음 · 지움)은 null. */
+  /** 정규 글자, 없음(새로 넣음 · 지움)은 null. 확정 · 확정 취소 줄은 전 = 후 = 그때 수량. */
   before: string | null;
   after: string | null;
 };
@@ -524,6 +674,7 @@ export async function salesPlanHistory(
   const rows = await db
     .select({
       savedAt: sql<string>`to_char(${salesPlanChanges.savedAt} at time zone 'Asia/Seoul', 'YYYY-MM-DD HH24:MI')`,
+      kind: sql<SalesPlanChangeRow["kind"]>`${salesPlanChanges.kind}`,
       customerCode: partners.code,
       customerName: partners.name,
       itemCode: items.code,
@@ -542,6 +693,7 @@ export async function salesPlanHistory(
     total,
     rows: rows.map((r) => ({
       savedAt: r.savedAt,
+      kind: r.kind,
       customer: { code: r.customerCode, name: r.customerName },
       item: { code: r.itemCode, name: r.itemName },
       week: r.week,

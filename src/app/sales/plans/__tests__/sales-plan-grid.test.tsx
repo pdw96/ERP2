@@ -61,18 +61,22 @@ const fg1 = item({});
 const fg2 = item({ code: "FG-0002", name: "완제품 나", active: false });
 const fg3 = item({ code: "FG-0003", name: "완제품 다" });
 
+/** 확정 칸 — 합계에 든 값과 맞게 모두 확정이다. */
+const fixed = (qty: string) => ({ qty, confirmed: true });
+
 const sheet: SalesPlanSheet = {
   thisWeek: THIS,
   weeks: pageWeeks(PAST),
   rows: [
-    { customer: laon, item: fg1, cells: { [PAST]: "1000", [THIS]: "3000", [NEXT]: "2500" } },
-    { customer: maru, item: fg1, cells: { [THIS]: "1500" } },
-    { customer: north, item: fg2, cells: { [THIS]: "700" } },
+    { customer: laon, item: fg1, cells: { [PAST]: fixed("1000"), [THIS]: fixed("3000"), [NEXT]: fixed("2500") } },
+    { customer: maru, item: fg1, cells: { [THIS]: fixed("1500") } },
+    { customer: north, item: fg2, cells: { [THIS]: fixed("700") } },
   ],
   totals: [
     { item: fg1, cells: { [PAST]: "1000", [THIS]: "4500", [NEXT]: "2500" } },
     { item: fg2, cells: { [THIS]: "700" } },
   ],
+  unconfirmed: 0,
   filtered: false,
   planned: { customers: [laon, maru, north], items: [fg1, fg2] },
 };

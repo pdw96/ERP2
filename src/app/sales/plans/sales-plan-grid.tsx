@@ -73,7 +73,12 @@ export function SalesPlanGrid({
   }
 
   const { thisWeek, weeks } = sheet;
-  const rows: Row[] = [...sheet.rows, ...added];
+  // 칸은 수량만 본다(확정 표시는 아직 화면에 없다).
+  const loadedRows: Row[] = sheet.rows.map((r) => ({
+    ...r,
+    cells: Object.fromEntries(Object.entries(r.cells).map(([w, c]) => [w, c.qty] as const)),
+  }));
+  const rows: Row[] = [...loadedRows, ...added];
   const pairs = new Set(rows.map((r) => pairOf(r.customer.code, r.item.code)));
 
   // 고친 칸 — 고칠 수 있는 주에서 불러온 값과 수량이 다른 것(읽지 못하는 글자도 보내 서버의 까닭을 받는다).

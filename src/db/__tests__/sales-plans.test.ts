@@ -1,11 +1,12 @@
 // @vitest-environment node
-import { count, eq, inArray, sql } from "drizzle-orm";
+import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getUnitSpec, updateCode } from "@/db/codes";
 import { createItem, loadItemsForSheet, saveItemRows, updateItem } from "@/db/items";
 import { limitMessage, STALE } from "@/db/master-shared";
 import { resetToSample } from "@/db/reset";
 import {
+  confirmSalesPlan,
   itemsInSalesPlans,
   openSalesPlan,
   parseSalesPlanFilter,
@@ -19,10 +20,11 @@ import {
   type SalesPlanFilter,
   type SalesPlanSaveResult,
   type SalesPlanSheet,
+  unconfirmSalesPlan,
 } from "@/db/sales-plans";
 import { items, partners, salesPlanChanges, salesPlans } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { cellKey, type SalesPlanCellInput } from "@/lib/sales-plan-input";
+import { cellKey, type SalesPlanCellInput, type SalesPlanConfirmInput } from "@/lib/sales-plan-input";
 import { CODE_KEY, ROW_ERROR } from "@/lib/sheet";
 import { addWeeks } from "@/lib/weeks";
 import { migratedDb, rejection } from "./pglite";
@@ -107,6 +109,27 @@ async function save(cells: SalesPlanCellInput[]): Promise<SalesPlanSaveResult> {
   return saveSalesPlan(db, cells, TODAY);
 }
 
+/** 화면이 본 칸 하나 — 확정 · 확정 취소에 보낸다. */
+const seen = (customer: string, item: string, week: string, qty: string): SalesPlanConfirmInput => ({
+  customer,
+  item,
+  week,
+  qty,
+});
+
+async function confirm(cells: SalesPlanConfirmInput[]): Promise<SalesPlanSaveResult> {
+  return confirmSalesPlan(db, cells, TODAY);
+}
+
+async function unconfirm(cells: SalesPlanConfirmInput[]): Promise<SalesPlanSaveResult> {
+  return unconfirmSalesPlan(db, cells, TODAY);
+}
+
+/** 미확정 칸의 꼴. */
+const open1 = (qty: string) => ({ qty, confirmed: false });
+/** 확정 칸의 꼴. */
+const fixed = (qty: string) => ({ qty, confirmed: true });
+
 async function open(filter: SalesPlanFilter = {}, from = TW): Promise<SalesPlanSheet> {
   return openSalesPlan(db, { from, filter }, TODAY);
 }
@@ -133,7 +156,7 @@ describe("판매계획 열기 · 저장 · 고친 이력", () => {
     expect(sheet.rows).toHaveLength(1);
     expect(sheet.rows[0].customer).toMatchObject({ code: "BP-0004", active: true, isCustomer: true });
     expect(sheet.rows[0].item).toMatchObject({ code: "FG-0001", unit: "EA", decimals: 0, active: true });
-    expect(sheet.rows[0].cells).toEqual({ [W1]: "3000" });
+    expect(sheet.rows[0].cells).toEqual({ [W1]: open1("3000") });
 
     const history = await salesPlanHistory(db, {});
     expect(history.total).toBe(1);
@@ -150,7 +173,7 @@ describe("판매계획 열기 · 저장 · 고친 이력", () => {
   it("고치면 「3000 → 4000」, 비우면 칸과 줄이 사라지고 「4000 → 없음」", async () => {
     await save([cell("BP-0004", "FG-0001", W1, "", "3000")]);
     expect(await save([cell("BP-0004", "FG-0001", W1, "3000", "4000")])).toEqual({ ok: true, changed: 1 });
-    expect((await open()).rows[0].cells[W1]).toBe("4000");
+    expect((await open()).rows[0].cells[W1]).toEqual(open1("4000"));
     expect((await salesPlanHistory(db, {})).rows[0]).toMatchObject({ before: "3000", after: "4000" });
 
     expect(await save([cell("BP-0004", "FG-0001", W1, "4,000", "")])).toEqual({ ok: true, changed: 1 });
@@ -201,7 +224,7 @@ describe("판매계획 열기 · 저장 · 고친 이력", () => {
       { ok: true, changed: 1 },
     ]);
     const sheet = await open();
-    expect(sheet.rows.map((r) => [r.customer.code, r.cells[W2]])).toEqual([
+    expect(sheet.rows.map((r) => [r.customer.code, r.cells[W2]?.qty])).toEqual([
       ["BP-0004", "1000"],
       ["BP-0005", "1500"],
     ]);
@@ -334,8 +357,9 @@ describe("판매계획 저장 — 화면을 거치지 않은 요청", () => {
 });
 
 describe("판매계획 — 품목 합계 · 거르기 · 고친 이력의 범위", () => {
-  it("품목 합계는 모든 고객의 합이고 거르기와 상관없다", async () => {
+  it("품목 합계는 모든 고객의 확정 칸의 합이고 거르기와 상관없다", async () => {
     await save([cell("BP-0004", "FG-0001", W1, "", "3000"), cell("BP-0005", "FG-0001", W1, "", "2000")]);
+    await confirm([seen("BP-0004", "FG-0001", W1, "3000"), seen("BP-0005", "FG-0001", W1, "2000")]);
     expect(await salesPlanDemand(db, TW, addWeeks(TW, 12))).toEqual([{ item: "FG-0001", week: W1, qty: "5000" }]);
     // 두 끝을 포함한다.
     expect(await salesPlanDemand(db, W1, W1)).toEqual([{ item: "FG-0001", week: W1, qty: "5000" }]);
@@ -356,6 +380,7 @@ describe("판매계획 — 품목 합계 · 거르기 · 고친 이력의 범위
       cell("BP-0004", "FG-0002", late, "", "500"),
       cell("BP-0004", "FG-0001", W2, "", "1,000"),
     ]);
+    await confirm([seen("BP-0004", "FG-0002", late, "500"), seen("BP-0004", "FG-0001", W2, "1000")]);
     const sheet = await open();
     expect(sheet.rows.map((r) => `${r.customer.code}/${r.item.code}`)).toEqual([
       "BP-0004/FG-0001",
@@ -363,13 +388,13 @@ describe("판매계획 — 품목 합계 · 거르기 · 고친 이력의 범위
       "BP-0007/FG-0001",
     ]);
     expect(sheet.rows[1].cells).toEqual({});
-    expect(sheet.rows[0].cells).toEqual({ [W2]: "1000" });
+    expect(sheet.rows[0].cells).toEqual({ [W2]: fixed("1000") });
     // 합계는 그 13주에 계획이 있는 품목만.
     expect(sheet.totals.map((t) => t.item.code)).toEqual(["FG-0001"]);
 
     const next = await open({}, addWeeks(TW, 13));
     expect(next.weeks[0]).toBe(addWeeks(TW, 13));
-    expect(next.rows[1].cells).toEqual({ [late]: "500" });
+    expect(next.rows[1].cells).toEqual({ [late]: fixed("500") });
     expect(next.totals.map((t) => t.item.code)).toEqual(["FG-0002"]);
 
     expect((await open({ item: "FG-0002" })).rows.map((r) => r.item.code)).toEqual(["FG-0002"]);
@@ -399,12 +424,13 @@ describe("판매계획 — 품목 합계 · 거르기 · 고친 이력의 범위
 
   it("열기는 한 스냅숏(읽기 전용 REPEATABLE READ 트랜잭션)에서 줄 · 합계를 읽는다", async () => {
     await save([cell("BP-0004", "FG-0001", W1, "", "3000"), cell("BP-0005", "FG-0001", W1, "", "2000")]);
+    await confirm([seen("BP-0004", "FG-0001", W1, "3000"), seen("BP-0005", "FG-0001", W1, "2000")]);
     const spy = vi.spyOn(db, "transaction");
     try {
       const sheet = await open({ customer: "BP-0004" });
       expect(spy).toHaveBeenCalledTimes(1);
       expect(spy.mock.calls[0][1]).toEqual({ isolationLevel: "repeatable read", accessMode: "read only" });
-      expect(sheet.rows.map((r) => [r.customer.code, r.cells])).toEqual([["BP-0004", { [W1]: "3000" }]]);
+      expect(sheet.rows.map((r) => [r.customer.code, r.cells])).toEqual([["BP-0004", { [W1]: fixed("3000") }]]);
       expect(sheet.totals.map((t) => [t.item.code, t.cells])).toEqual([["FG-0001", { [W1]: "5000" }]]);
     } finally {
       spy.mockRestore();
@@ -416,6 +442,7 @@ describe("판매계획 — 품목 합계 · 거르기 · 고친 이력의 범위
     expect(sheet.rows).toEqual([]);
     expect(sheet.totals).toEqual([]);
     expect(sheet.planned).toEqual({ customers: [], items: [] });
+    expect(sheet.unconfirmed).toBe(0);
   });
 
   it("고친 이력은 거르기를 따른다", async () => {
@@ -443,6 +470,235 @@ describe("판매계획 — 품목 합계 · 거르기 · 고친 이력의 범위
     expect(customers.map((c) => c.code)).toEqual(["BP-0004", "BP-0005"]);
     expect(customers.every((c) => c.active && c.isCustomer)).toBe(true);
     expect(fg.map((i) => i.code)).toEqual(["FG-0001", "FG-0002"]);
+  });
+});
+
+describe("판매계획 — 확정 · 확정 취소", () => {
+  const CONFIRMED = "확정된 칸입니다 — 확정 취소한 뒤 고치세요";
+
+  async function confirmedOf(customer: string, item: string, week: string): Promise<boolean | undefined> {
+    const rows = await db
+      .select({ at: salesPlans.confirmedAt })
+      .from(salesPlans)
+      .innerJoin(partners, eq(partners.id, salesPlans.partnerId))
+      .innerJoin(items, eq(items.id, salesPlans.itemId))
+      .where(and(eq(partners.code, customer), eq(items.code, item), eq(salesPlans.weekStart, week)));
+    return rows.length ? rows[0].at !== null : undefined;
+  }
+
+  it("확정 칸은 저장으로 고치거나 지우지 못하고 아무것도 쓰지 않는다", async () => {
+    await save([cell("BP-0004", "FG-0001", W1, "", "3000")]);
+    expect(await confirm([seen("BP-0004", "FG-0001", W1, "3000")])).toEqual({ ok: true, changed: 1 });
+    const changes = await changeCount();
+
+    const key = cellKey("BP-0004", "FG-0001", W1);
+    for (const after of ["4000", ""]) {
+      expect(
+        await save([cell("BP-0004", "FG-0001", W2, "", "1000"), cell("BP-0004", "FG-0001", W1, "3000", after)]),
+      ).toEqual({ ok: false, errors: { [key]: CONFIRMED } });
+    }
+    expect(await storedCount()).toBe(1);
+    expect(await changeCount()).toBe(changes);
+    expect((await open()).rows[0].cells[W1]).toEqual(fixed("3000"));
+  });
+
+  it("확정 칸만 수요(salesPlanDemand)에 든다 — 미확정만 있는 품목 · 주는 나오지 않는다", async () => {
+    await save([
+      cell("BP-0004", "FG-0001", W1, "", "3000"),
+      cell("BP-0005", "FG-0001", W1, "", "2000"),
+      cell("BP-0004", "FG-0001", W2, "", "1000"),
+      cell("BP-0004", "FG-0002", W1, "", "700"),
+    ]);
+    expect(await salesPlanDemand(db, TW, addWeeks(TW, 12))).toEqual([]);
+
+    expect(await confirm([seen("BP-0004", "FG-0001", W1, "3000")])).toEqual({ ok: true, changed: 1 });
+    expect(await salesPlanDemand(db, TW, addWeeks(TW, 12))).toEqual([{ item: "FG-0001", week: W1, qty: "3000" }]);
+    expect((await open()).totals.map((t) => [t.item.code, t.cells])).toEqual([["FG-0001", { [W1]: "3000" }]]);
+  });
+
+  it("화면이 본 수량이 지금과 다르면(남이 고친 칸) STALE 이고 같은 확정의 다른 칸도 확정하지 않는다", async () => {
+    await save([cell("BP-0004", "FG-0001", W1, "", "3000"), cell("BP-0004", "FG-0001", W2, "", "1000")]);
+    const changes = await changeCount();
+    expect(await confirm([seen("BP-0004", "FG-0001", W2, "1000"), seen("BP-0004", "FG-0001", W1, "2500")])).toEqual({
+      ok: false,
+      errors: {},
+      formError: STALE,
+    });
+    expect(await confirmedOf("BP-0004", "FG-0001", W1)).toBe(false);
+    expect(await confirmedOf("BP-0004", "FG-0001", W2)).toBe(false);
+    expect(await changeCount()).toBe(changes);
+    // 없는 칸 · 쉼표 · 끝 0 이 다른 같은 수량.
+    expect(await confirm([seen("BP-0005", "FG-0001", W1, "3000")])).toMatchObject({ formError: STALE });
+    expect(await confirm([seen("BP-0004", "FG-0001", W1, "3,000.0")])).toEqual({ ok: true, changed: 1 });
+  });
+
+  it("이미 확정된 칸의 확정 · 미확정 칸의 확정 취소는 STALE", async () => {
+    await save([cell("BP-0004", "FG-0001", W1, "", "3000"), cell("BP-0004", "FG-0001", W2, "", "1000")]);
+    await confirm([seen("BP-0004", "FG-0001", W1, "3000")]);
+    const changes = await changeCount();
+    expect(await confirm([seen("BP-0004", "FG-0001", W2, "1000"), seen("BP-0004", "FG-0001", W1, "3000")])).toEqual({
+      ok: false,
+      errors: {},
+      formError: STALE,
+    });
+    expect(await unconfirm([seen("BP-0004", "FG-0001", W1, "3000"), seen("BP-0004", "FG-0001", W2, "1000")])).toEqual({
+      ok: false,
+      errors: {},
+      formError: STALE,
+    });
+    expect(await confirmedOf("BP-0004", "FG-0001", W1)).toBe(true);
+    expect(await confirmedOf("BP-0004", "FG-0001", W2)).toBe(false);
+    expect(await changeCount()).toBe(changes);
+  });
+
+  it("같은 칸을 둘이 함께 확정하면 하나만 서고, 확정과 저장이 겹치면 하나만 선다", async () => {
+    await save([cell("BP-0004", "FG-0001", W1, "", "3000"), cell("BP-0004", "FG-0001", W2, "", "1000")]);
+    const two = await Promise.all([
+      confirm([seen("BP-0004", "FG-0001", W1, "3000")]),
+      confirm([seen("BP-0004", "FG-0001", W1, "3000")]),
+    ]);
+    expect(two.filter((r) => r.ok)).toHaveLength(1);
+    expect(two.find((r) => !r.ok)).toEqual({ ok: false, errors: {}, formError: STALE });
+
+    const mixed = await Promise.all([
+      confirm([seen("BP-0004", "FG-0001", W2, "1000")]),
+      save([cell("BP-0004", "FG-0001", W2, "1000", "2000")]),
+    ]);
+    expect(mixed.filter((r) => r.ok)).toHaveLength(1);
+    const cellNow = (await open()).rows[0].cells[W2];
+    expect(cellNow).toEqual(mixed[0].ok ? fixed("1000") : open1("2000"));
+  });
+
+  it("지난 주 · 52주 넘는 주 · 월요일 아닌 주 · 반제품 · 없는 고객은 그 칸에 까닭을 보이고 아무것도 바꾸지 않는다", async () => {
+    const [p] = await db.select({ id: partners.id }).from(partners).where(eq(partners.code, "BP-0004"));
+    const [i] = await db.select({ id: items.id }).from(items).where(eq(items.code, "FG-0001"));
+    const past = "2026-11-09";
+    await db.insert(salesPlans).values({ partnerId: p.id, itemId: i.id, weekStart: past, qty: 1000 });
+    await save([cell("BP-0004", "FG-0001", W1, "", "3000")]);
+
+    const far = addWeeks(TW, 52);
+    for (const act of [confirm, unconfirm]) {
+      expect(
+        await act([
+          seen("BP-0004", "FG-0001", W1, "3000"),
+          seen("BP-0004", "FG-0001", past, "1000"),
+          seen("BP-0004", "FG-0001", far, "1000"),
+          seen("BP-0004", "FG-0001", "2026-11-17", "1000"),
+          seen("BP-0004", "SF-0001", W1, "1000"),
+          seen("BP-9999", "FG-0001", W1, "1000"),
+        ]),
+      ).toEqual({
+        ok: false,
+        errors: {
+          [cellKey("BP-0004", "FG-0001", past)]: "지난 주는 고치지 못합니다",
+          [cellKey("BP-0004", "FG-0001", far)]: "51주 뒤까지만 넣습니다",
+          [cellKey("BP-0004", "FG-0001", "2026-11-17")]: "월요일이 아닌 주입니다",
+          [cellKey("BP-0004", "SF-0001", W1)]: "판매계획은 완제품에만 있습니다",
+          [cellKey("BP-9999", "FG-0001", W1)]: "없는 고객입니다",
+        },
+      });
+    }
+    expect(await confirmedOf("BP-0004", "FG-0001", past)).toBe(false);
+    expect(await confirmedOf("BP-0004", "FG-0001", W1)).toBe(false);
+    expect(await changeCount()).toBe(1);
+  });
+
+  it("확정 취소하면 수요에서 빠지고 다시 저장할 수 있으며, 고친 칸은 미확정이다", async () => {
+    await save([cell("BP-0004", "FG-0001", W1, "", "3000")]);
+    await confirm([seen("BP-0004", "FG-0001", W1, "3000")]);
+    expect(await unconfirm([seen("BP-0004", "FG-0001", W1, "3,000")])).toEqual({ ok: true, changed: 1 });
+    expect(await salesPlanDemand(db, TW, addWeeks(TW, 12))).toEqual([]);
+    expect(await save([cell("BP-0004", "FG-0001", W1, "3000", "4000")])).toEqual({ ok: true, changed: 1 });
+    expect((await open()).rows[0].cells[W1]).toEqual(open1("4000"));
+    expect(await confirm([seen("BP-0004", "FG-0001", W1, "4000")])).toEqual({ ok: true, changed: 1 });
+    expect(await salesPlanDemand(db, W1, W1)).toEqual([{ item: "FG-0001", week: W1, qty: "4000" }]);
+  });
+
+  it("고친 이력의 종류는 EDIT · CONFIRM · UNCONFIRM — 확정 줄의 전 · 후는 그때 수량, 한 번의 확정은 같은 일시", async () => {
+    await save([cell("BP-0004", "FG-0001", W1, "", "3000"), cell("BP-0004", "FG-0001", W2, "", "1000")]);
+    expect(await confirm([seen("BP-0004", "FG-0001", W1, "3000"), seen("BP-0004", "FG-0001", W2, "1000")])).toEqual({
+      ok: true,
+      changed: 2,
+    });
+    expect(await unconfirm([seen("BP-0004", "FG-0001", W2, "1000")])).toEqual({ ok: true, changed: 1 });
+
+    const history = await salesPlanHistory(db, {});
+    expect(history.total).toBe(5);
+    expect(history.rows.map((r) => [r.kind, r.week, r.before, r.after])).toEqual([
+      ["UNCONFIRM", W2, "1000", "1000"],
+      ["CONFIRM", W2, "1000", "1000"],
+      ["CONFIRM", W1, "3000", "3000"],
+      ["EDIT", W2, null, "1000"],
+      ["EDIT", W1, null, "3000"],
+    ]);
+    const at = await db
+      .select({ at: sql<string>`${salesPlanChanges.savedAt}::text` })
+      .from(salesPlanChanges)
+      .where(eq(salesPlanChanges.kind, "CONFIRM"));
+    expect(new Set(at.map((r) => r.at)).size).toBe(1);
+  });
+
+  it("열기는 칸마다 확정인지 · 그 13주 · 거르기 범위의 미확정 칸 수를 보인다", async () => {
+    await save([
+      cell("BP-0004", "FG-0001", W1, "", "3000"),
+      cell("BP-0004", "FG-0001", W2, "", "1000"),
+      cell("BP-0005", "FG-0001", W1, "", "2000"),
+      cell("BP-0004", "FG-0001", addWeeks(TW, 13), "", "500"),
+    ]);
+    await confirm([seen("BP-0004", "FG-0001", W1, "3000")]);
+
+    const sheet = await open();
+    expect(sheet.rows.map((r) => [r.customer.code, r.cells])).toEqual([
+      ["BP-0004", { [W1]: fixed("3000"), [W2]: open1("1000") }],
+      ["BP-0005", { [W1]: open1("2000") }],
+    ]);
+    expect(sheet.unconfirmed).toBe(2);
+    expect((await open({ customer: "BP-0004" })).unconfirmed).toBe(1);
+    expect((await open({}, addWeeks(TW, 13))).unconfirmed).toBe(1);
+  });
+
+  it("빈 확정은 아무것도 쓰지 않고, 꼴이 틀린 요청 · 같은 칸 둘 · 2,000칸 넘음은 formError", async () => {
+    const FORM = "저장하지 못했습니다 — 화면을 새로 여세요";
+    expect(await confirm([])).toEqual({ ok: true, changed: 0 });
+    expect(await unconfirm([])).toEqual({ ok: true, changed: 0 });
+    expect(await confirmSalesPlan(db, "x" as never, TODAY)).toEqual({ ok: false, errors: {}, formError: FORM });
+    expect(await unconfirmSalesPlan(db, [{ customer: "BP-0004", item: "FG-0001", week: W1 }] as never, TODAY)).toEqual({
+      ok: false,
+      errors: {},
+      formError: FORM,
+    });
+    expect(await confirm([seen("BP-0004", "FG-0001", W1, "1"), seen("BP-0004", "FG-0001", W1, "2")])).toEqual({
+      ok: false,
+      errors: {},
+      formError: FORM,
+    });
+    const many = Array.from({ length: 2001 }, (_, i) => seen(`BP-${String(i).padStart(4, "0")}`, "FG-0001", W1, "1"));
+    expect(await confirm(many)).toEqual({
+      ok: false,
+      errors: {},
+      formError: "한 번에 2,000칸까지 확정합니다 — 나눠 확정하세요",
+    });
+    expect(await unconfirm(many)).toEqual({
+      ok: false,
+      errors: {},
+      formError: "한 번에 2,000칸까지 확정 취소합니다 — 나눠 확정 취소하세요",
+    });
+    expect(await changeCount()).toBe(0);
+  });
+
+  it("확정 · 확정 취소도 고친 이력의 상한(50,000)을 넘기지 않는다", async () => {
+    await save([cell("BP-0004", "FG-0001", W1, "", "3000")]);
+    const [p] = await db.select({ id: partners.id }).from(partners).where(eq(partners.code, "BP-0005"));
+    const [i] = await db.select({ id: items.id }).from(items).where(eq(items.code, "FG-0002"));
+    await db.execute(sql`
+      insert into sales_plan_changes (partner_id, item_id, week_start, after)
+      select ${p.id}, ${i.id}, date '2026-11-16', 1 from generate_series(1, ${SALES_PLAN_CHANGE_LIMIT - 1}) g`);
+    expect(await confirm([seen("BP-0004", "FG-0001", W1, "3000")])).toEqual({
+      ok: false,
+      errors: {},
+      formError: limitMessage("판매계획 고친 이력", SALES_PLAN_CHANGE_LIMIT),
+    });
+    expect(await confirmedOf("BP-0004", "FG-0001", W1)).toBe(false);
   });
 });
 
@@ -484,7 +740,8 @@ describe("판매계획 — 단위의 도우미", () => {
     await db.execute(sql`update sales_plans set qty = 1000.5`);
     expect(await salesPlanQuantitiesFit(db, "EA", 0)).toBe(false);
     // 소수는 끝 0 없이 읽는다.
-    expect((await open()).rows[0].cells).toEqual({ [W1]: "1000.5" });
+    expect((await open()).rows[0].cells).toEqual({ [W1]: open1("1000.5") });
+    await confirm([seen("BP-0004", "FG-0001", W1, "1,000.50")]);
     expect(await salesPlanDemand(db, W1, W1)).toEqual([{ item: "FG-0001", week: W1, qty: "1000.5" }]);
     expect(await salesPlanQuantitiesFit(db, "EA", 1)).toBe(true);
     expect(await salesPlanQuantitiesFit(db, "KG", 0)).toBe(true);
@@ -556,6 +813,6 @@ describe("단위 — 판매계획에 든 품목은 단위 · 자릿수를 바꾸
       .innerJoin(items, eq(items.id, salesPlans.itemId))
       .where(eq(items.code, fg));
     expect(Number(row.q)).toBe(2);
-    expect((await open({ item: fg }, W1)).rows[0].cells).toEqual({ [W1]: "2" });
+    expect((await open({ item: fg }, W1)).rows[0].cells).toEqual({ [W1]: open1("2") });
   });
 });

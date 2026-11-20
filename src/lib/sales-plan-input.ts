@@ -5,7 +5,10 @@ import { parseQty, THOUSAND, ZERO, type Milli } from "./move-input";
 /** 화면이 보낸 바뀐 칸 하나 — 모두 글자이고, 없음은 「」. before 는 화면을 연 때의 값, after 는 고친 값. */
 export type SalesPlanCellInput = { customer: string; item: string; week: string; before: string; after: string };
 
-/** 한 번 저장의 바뀐 칸 상한. */
+/** 확정 · 확정 취소에 보내는 칸 하나 — qty 는 화면이 본 수량(서버가 지금 수량과 견준다). */
+export type SalesPlanConfirmInput = { customer: string; item: string; week: string; qty: string };
+
+/** 한 번 저장 · 확정 · 확정 취소의 칸 상한. */
 export const SALES_PLAN_SAVE_MAX_CELLS = 2000;
 /** 한 칸 수량의 상한 — 99,999,999(천분의 일 단위). */
 export const SALES_PLAN_QTY_MAX: Milli = BigInt(99_999_999) * THOUSAND;

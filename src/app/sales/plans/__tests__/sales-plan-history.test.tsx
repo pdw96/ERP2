@@ -7,6 +7,7 @@ import { SalesPlanHistory } from "../sales-plan-history";
 
 const row = (over: Partial<SalesPlanChangeRow>): SalesPlanChangeRow => ({
   savedAt: "2026-11-19 10:05",
+  kind: "EDIT",
   customer: { code: "BP-0004", name: "(가상) 라온전자" },
   item: { code: "FG-0001", name: "완제품 가" },
   week: "2026-11-23",
