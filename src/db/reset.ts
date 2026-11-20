@@ -16,6 +16,7 @@ import {
   SAMPLE_PROCESSES,
   SAMPLE_ROUTINGS,
   SAMPLE_SALES_PLANS,
+  SAMPLE_SALES_PLAN_CONFIRMED_THROUGH,
   SAMPLE_UNIT_SPECS,
   SAMPLE_WAREHOUSES,
   SAMPLE_WORK_CENTERS,
@@ -312,6 +313,7 @@ async function insertSampleRoutings(tx: Db) {
  */
 async function insertSampleSalesPlans(tx: Db, today: string) {
   const thisWeek = mondayOf(today);
+  const confirmedAt = new Date();
   const customers = await tx
     .select({ code: partners.code, id: partners.id })
     .from(partners)
@@ -326,7 +328,13 @@ async function insertSampleSalesPlans(tx: Db, today: string) {
       const itemId = goods.find((g) => g.code === p.item)?.id;
       if (partnerId === undefined || itemId === undefined)
         throw new Error(`샘플 판매계획의 고객 · 품목이 없다: ${p.customer} × ${p.item}`);
-      return p.weeks.map((w) => ({ partnerId, itemId, weekStart: addWeeks(thisWeek, w.offset), qty: Number(w.qty) }));
+      return p.weeks.map((w) => ({
+        partnerId,
+        itemId,
+        weekStart: addWeeks(thisWeek, w.offset),
+        qty: Number(w.qty),
+        confirmedAt: w.offset <= SAMPLE_SALES_PLAN_CONFIRMED_THROUGH ? confirmedAt : null,
+      }));
     }),
   );
 }

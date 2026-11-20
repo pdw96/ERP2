@@ -8,6 +8,7 @@ import {
   SAMPLE_ITEMS,
   SAMPLE_PARTNERS,
   SAMPLE_SALES_PLANS,
+  SAMPLE_SALES_PLAN_CONFIRMED_THROUGH,
   SAMPLE_UNIT_SPECS,
   SAMPLE_WAREHOUSES,
 } from "@/db/sample";
@@ -242,6 +243,18 @@ describe("샘플 판매계획 — 메뉴 「판매계획」", () => {
     expect(rows.some((r) => r.weekStart === "2026-11-02")).toBe(true);
     expect(rows.every((r) => r.weekStart >= "2026-11-02")).toBe(true);
     expect(await db.select().from(salesPlanChanges)).toHaveLength(0);
+  });
+
+  it("확정 — 되돌림 뒤 offset 5 까지의 칸은 확정 일시가 있고 6 이상은 미확정이다", async () => {
+    expect(SAMPLE_SALES_PLAN_CONFIRMED_THROUGH).toBe(5);
+    const r = await handle.client.query<{ off: number; confirmed: boolean }>(
+      `select ((s.week_start - date '${mondayOf(TODAY)}') / 7)::int as off, s.confirmed_at is not null as confirmed
+         from sales_plans s`,
+    );
+    expect(r.rows.length).toBeGreaterThan(0);
+    for (const x of r.rows) expect(x.confirmed, `offset ${x.off}`).toBe(x.off <= SAMPLE_SALES_PLAN_CONFIRMED_THROUGH);
+    expect(r.rows.some((x) => x.confirmed)).toBe(true);
+    expect(r.rows.some((x) => !x.confirmed)).toBe(true);
   });
 
   it("칸의 주 · 수량이 샘플과 같다 — 주는 오늘이 든 주의 월요일에서 센다", async () => {

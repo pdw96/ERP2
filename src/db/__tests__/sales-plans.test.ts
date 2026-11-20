@@ -72,6 +72,23 @@ describe("판매계획 표의 제약", () => {
     const r = await rejection(db.insert(salesPlanChanges).values({ ...(await ids()), weekStart: "2026-11-16" }));
     expect(r.constraint).toBe("sales_plan_changes_some");
   });
+
+  it("고친 이력의 종류는 EDIT · CONFIRM · UNCONFIRM 만 받고, 정하지 않으면 EDIT 이다", async () => {
+    const base = { ...(await ids()), weekStart: "2026-11-16", before: 5, after: 5 };
+    const r = await rejection(db.insert(salesPlanChanges).values({ ...base, kind: "DELETE" }));
+    expect(r.constraint).toBe("sales_plan_changes_kind");
+    await db.insert(salesPlanChanges).values(base);
+    await db.insert(salesPlanChanges).values({ ...base, kind: "CONFIRM" });
+    await db.insert(salesPlanChanges).values({ ...base, kind: "UNCONFIRM" });
+    const kinds = (await db.select({ kind: salesPlanChanges.kind }).from(salesPlanChanges)).map((x) => x.kind);
+    expect(kinds).toEqual(["EDIT", "CONFIRM", "UNCONFIRM"]);
+  });
+
+  it("칸의 확정 일시는 정하지 않으면 비어 있다(미확정)", async () => {
+    await db.insert(salesPlans).values({ ...(await ids()), weekStart: "2026-11-16", qty: 5 });
+    const [row] = await db.select().from(salesPlans);
+    expect(row.confirmedAt).toBeNull();
+  });
 });
 
 const TW = "2026-11-16"; // 이번 주

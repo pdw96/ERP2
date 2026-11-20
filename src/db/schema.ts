@@ -889,6 +889,8 @@ export const salesPlans = pgTable(
       .references(() => items.id),
     weekStart: date("week_start", { mode: "string" }).notNull(),
     qty: numeric("qty", { precision: 15, scale: 3, mode: "number" }).notNull(),
+    /** 확정한 일시 — 비어 있으면 미확정이다(MPS 는 확정 칸만 읽는다). */
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
     ...timestamps(),
   },
   (t) => [
@@ -917,9 +919,12 @@ export const salesPlanChanges = pgTable(
     savedAt: timestamp("saved_at", { withTimezone: true }).notNull().defaultNow(),
     before: numeric("before", { precision: 15, scale: 3, mode: "number" }),
     after: numeric("after", { precision: 15, scale: 3, mode: "number" }),
+    /** 이력의 종류 — EDIT 수량을 고침 · CONFIRM 확정 · UNCONFIRM 확정 취소. 확정 줄의 전 · 후는 그때 수량이다. */
+    kind: text("kind").notNull().default("EDIT"),
   },
   (t) => [
     index("sales_plan_changes_saved_at_idx").on(t.savedAt),
+    check("sales_plan_changes_kind", sql`${t.kind} in ('EDIT', 'CONFIRM', 'UNCONFIRM')`),
     check("sales_plan_changes_monday", sql`extract(isodow from ${t.weekStart}) = 1`),
     check("sales_plan_changes_some", sql`${t.before} is not null or ${t.after} is not null`),
   ],

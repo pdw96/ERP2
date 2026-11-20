@@ -97,7 +97,10 @@ async function snapshot() {
     routings: strip(await db.select().from(routings).orderBy(asc(routings.id))),
     routingSteps: await db.select().from(routingSteps).orderBy(asc(routingSteps.id)),
     routingMaterials: await db.select().from(routingMaterials).orderBy(asc(routingMaterials.id)),
-    salesPlans: strip(await db.select().from(salesPlans).orderBy(asc(salesPlans.id))),
+    salesPlans: strip(await db.select().from(salesPlans).orderBy(asc(salesPlans.id))).map((row) => {
+      const { confirmedAt, ...rest } = row; // 확정 일시는 되돌림 시각이라 있고 없고만 견준다
+      return { ...rest, confirmed: confirmedAt != null };
+    }),
     salesPlanChanges: (await db.select().from(salesPlanChanges).orderBy(asc(salesPlanChanges.id))).map((row) => {
       const rest: Partial<typeof row> = { ...row };
       delete rest.savedAt;

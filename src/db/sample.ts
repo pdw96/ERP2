@@ -724,6 +724,7 @@ export const SAMPLE_ROUTINGS: SampleRouting[] = [
  * 샘플 판매계획(메뉴 「판매계획」 — 고객 × 품목 × 주). 이미 있는 샘플 고객 · 완제품만 쓴다. offset 은 이번 주 월요일에서 센 주 수다 — 지난 두 주(−2 · −1)부터
  * 열한 주 뒤(11)까지라, 지난 주 칸이 화면에 보인다. 되돌림이 표에 바로 넣고(지난 주 칸이 있어 저장 함수를 지나지 못한다), 마이그레이션 0024 가 같은 값을
  * 데이터가 있는 DB 에 넣는다(시험이 견준다). 이력은 넣지 않는다(샘플의 시작점이다). 한두 줄은 일부 주를 비워 둔다.
+ * 칸 가운데 offset 이 SAMPLE_SALES_PLAN_CONFIRMED_THROUGH 이하인 것은 확정이고, 그 뒤 주는 미확정이다(마이그레이션 0025 가 같은 꼴로 확정한다).
  */
 export type SampleSalesPlan = {
   customer: string;
@@ -735,6 +736,9 @@ export type SampleSalesPlan = {
 function planWeeks(qtys: readonly (string | null)[]): { offset: number; qty: string }[] {
   return qtys.flatMap((qty, i) => (qty === null ? [] : [{ offset: i - 2, qty }]));
 }
+
+/** 샘플 판매계획 칸 가운데 이 offset 이하는 확정, 그 뒤는 미확정이다. */
+export const SAMPLE_SALES_PLAN_CONFIRMED_THROUGH = 5;
 
 export const SAMPLE_SALES_PLANS: readonly SampleSalesPlan[] = [
   {
