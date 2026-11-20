@@ -29,7 +29,7 @@ import { CODE_KEY, ROW_ERROR } from "@/lib/sheet";
 import { addWeeks } from "@/lib/weeks";
 import { migratedDb, rejection } from "./pglite";
 
-// 판매계획(메뉴 「판매계획」) — 표의 제약과 열기 · 저장 · 고친 이력 · 품목 합계를 PGlite 에서 실제 SQL 로.
+// 판매계획(메뉴 「판매계획 등록」 · 「판매계획 확정」) — 표의 제약과 열기 · 저장 · 고친 이력 · 품목 합계를 PGlite 에서 실제 SQL 로.
 // 바탕은 샘플로 되돌린 뒤 판매계획 표만 비운 DB 다. 오늘은 2026-11-19(목), 이번 주는 2026-11-16.
 
 const TODAY = "2026-11-19";

@@ -15,7 +15,7 @@ import { first, limitMessage, REGISTER_LOCK, STALE, touched, type Params } from 
 import { items, partners, salesPlanChanges, salesPlans, unitSpecs } from "./schema";
 import type { Db } from "./types";
 
-// 판매계획의 열기 · 저장 · 확정 · 확정 취소 · 고친 이력 · 품목 합계(메뉴 「판매계획」). 화면(src/app/sales/plans/)과 MPS 는 이 함수만 부른다.
+// 판매계획의 열기 · 저장 · 확정 · 확정 취소 · 고친 이력 · 품목 합계(메뉴 「판매계획 등록」 · 「판매계획 확정」). 화면(src/app/sales/plans/)과 MPS 는 이 함수만 부른다.
 // - 칸 하나 = 고객 × 완제품 × 주(월요일). 수량이 있는 칸만 DB 에 있다 — 빈 칸 · 0 은 그 칸을 지운다.
 // - 저장한 칸은 미확정이다. [확정]한 칸만 MPS 수요 · 품목 합계에 들고, 확정 칸은 저장으로 고치지 못한다([확정 취소]로 미확정에 되돌린 뒤 고친다).
 // - 저장은 화면이 보낸 바뀐 칸만 한 트랜잭션에서 바꾼다. 칸마다 화면을 연 때의 값(before)을 지금 값과 견줘, 하나라도 다르면 아무것도 쓰지 않는다.

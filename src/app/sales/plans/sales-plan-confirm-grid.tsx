@@ -109,7 +109,12 @@ export function SalesPlanConfirmGrid({
           노란 칸(미확정)은 확정되고, 「확정」 칸은 확정이 풀립니다. 수량은{" "}
           <Link
             href={planHref(ENTRY_PATH, back.from, back)}
-            className="font-semibold text-ink underline underline-offset-4"
+            // 링크는 fieldset disabled 가 막지 못한다 — 확정 · 확정 취소를 보내는 동안은 눌러도 가지 않는다.
+            aria-disabled={pending || undefined}
+            onClick={(e) => {
+              if (pending) e.preventDefault();
+            }}
+            className={`font-semibold underline underline-offset-4 ${pending ? "pointer-events-none text-muted" : "text-ink"}`}
           >
             판매계획 등록
           </Link>

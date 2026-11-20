@@ -1065,7 +1065,7 @@ describe("마이그레이션 0021 · 0022 — 라우팅 표 · 샘플 라우팅(
   });
 });
 
-describe("마이그레이션 0023 · 0024 — 판매계획 표 · 샘플 판매계획(메뉴 「판매계획」)", () => {
+describe("마이그레이션 0023 · 0024 — 판매계획 표 · 샘플 판매계획(메뉴 「판매계획 등록」 · 「판매계획 확정」)", () => {
   async function dataDb(applied = 24) {
     const h = await fresh();
     await h.migrate(firstMigrations(applied)); // 0023 까지 — 표는 있고 샘플 판매계획은 아직 없다
@@ -1155,7 +1155,7 @@ describe("마이그레이션 0023 · 0024 — 판매계획 표 · 샘플 판매�
   });
 });
 
-describe("마이그레이션 0025 — 판매계획 확정 칸 · 샘플의 확정(메뉴 「판매계획」)", () => {
+describe("마이그레이션 0025 — 판매계획 확정 칸 · 샘플의 확정(메뉴 「판매계획 확정」)", () => {
   async function dataDb() {
     const h = await fresh();
     await h.migrate(firstMigrations(24)); // 0023 까지

@@ -136,6 +136,24 @@ describe("판매계획 확정 — 표", () => {
     );
   });
 
+  it("확정을 보내는 동안에는 「판매계획 등록」 링크를 눌러도 가지 않고, 끝나면 다시 간다", async () => {
+    let finish: (v: null) => void = () => {};
+    h.confirm.mockReturnValue(new Promise<null>((resolve) => (finish = resolve)));
+    render(<SalesPlanConfirmGrid sheet={sheet} options={options} back={back} />);
+    const link = screen.getByRole("link", { name: "판매계획 등록" });
+    expect(link).not.toHaveAttribute("aria-disabled");
+    fireEvent.click(pick("BP-0004", "FG-0001"));
+    await act(async () => fireEvent.click(button("확정")));
+    await waitFor(() => expect(h.confirm).toHaveBeenCalled());
+    expect(link).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(link);
+    expect(h.go).not.toHaveBeenCalled();
+    await act(async () => finish(null));
+    await waitFor(() => expect(link).not.toHaveAttribute("aria-disabled"));
+    fireEvent.click(link);
+    expect(h.go).toHaveBeenCalledTimes(1);
+  });
+
   it("◀ ▶ · 「이번 주」 · 거르기는 「판매계획 확정」의 주소로 간다", () => {
     render(
       <SalesPlanConfirmGrid

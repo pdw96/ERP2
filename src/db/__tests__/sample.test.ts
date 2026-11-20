@@ -199,7 +199,7 @@ describe("시스템 코드는 프로그램이 아는 값과 같다(ADR 0009)", (
   });
 });
 
-describe("샘플 판매계획 — 메뉴 「판매계획」", () => {
+describe("샘플 판매계획 — 메뉴 「판매계획 등록」 · 「판매계획 확정」", () => {
   const TODAY = "2026-11-19"; // 목요일 — 이번 주 월요일은 2026-11-16
   let handle: Awaited<ReturnType<typeof migratedDb>>;
   let db: Db;
