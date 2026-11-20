@@ -147,6 +147,46 @@ describe("Sidebar", () => {
     ]);
   });
 
+  it("영업은 묶음 셋 — 영업 기준정보 · 영업 계획(판매계획 등록 · 판매계획 확정) · 영업 관리(준비 중)", () => {
+    const sales = AREAS.find((a) => a.href === "/sales")!;
+    expect(sales.groups.map((g) => [g.label, g.menus.map((m) => [m.label, m.slice, m.href ?? ""])])).toEqual([
+      ["영업 기준정보", [["판매 단가", "영업", ""]]],
+      [
+        "영업 계획",
+        [
+          ["판매계획 등록", "MPS", "/sales/plans"],
+          ["판매계획 확정", "MPS", "/sales/plans/confirm"],
+        ],
+      ],
+      [
+        "영업 관리",
+        [
+          ["수주", "영업", ""],
+          ["출하요청", "영업", ""],
+          ["출하", "영업", ""],
+          ["매출", "영업", ""],
+          ["반품", "영업", ""],
+        ],
+      ],
+    ]);
+  });
+
+  it("판매계획 확정 화면은 「판매계획 확정」만, 판매계획 등록 화면은 「판매계획 등록」만 표시한다 — 가장 길게 맞는 메뉴", () => {
+    for (const [path, current, other] of [
+      ["/sales/plans/confirm", "판매계획 확정", "판매계획 등록"],
+      ["/sales/plans", "판매계획 등록", "판매계획 확정"],
+    ]) {
+      nav.pathname = path;
+      const { unmount } = render(<Sidebar />);
+      const menu = within(screen.getByRole("list", { name: "영업 메뉴" }));
+      expect(menu.getByText("영업 계획")).toBeInTheDocument();
+      expect(menu.getByText("영업 관리")).toBeInTheDocument();
+      expect(menu.getByRole("link", { name: current })).toHaveAttribute("aria-current", "page");
+      expect(menu.getByRole("link", { name: other })).not.toHaveAttribute("aria-current");
+      unmount();
+    }
+  });
+
   it("실사 보기(/inventory/counts/<실사 번호>)는 메뉴 「재고 실사」를 가리킨다", () => {
     nav.pathname = "/inventory/counts/PI-20261108-001";
     render(<Sidebar />);

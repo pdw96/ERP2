@@ -56,12 +56,18 @@ describe("ModuleHome", () => {
     expect(screen.queryAllByRole("link")).toHaveLength(1);
   });
 
-  it("영업 — 「판매계획」만 링크이고, 나머지 메뉴는 조각 「영업」과 함께 준비 중", () => {
+  it("영업 — 「영업 계획」의 판매계획 등록 · 판매계획 확정만 링크이고, 「영업 관리」의 메뉴는 조각 「영업」과 함께 준비 중", () => {
     render(<ModuleHome href="/sales" />);
     expect(screen.queryByText("준비 중입니다.")).toBeNull();
-    expect(screen.getByRole("link", { name: /판매계획/ })).toHaveAttribute("href", "/sales/plans");
-    expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.getByText("수주").parentElement).toHaveTextContent("준비 중 · 조각 「영업」");
+    const plan = within(screen.getByRole("region", { name: "영업 계획" }));
+    expect(plan.getByRole("link", { name: /판매계획 등록/ })).toHaveAttribute("href", "/sales/plans");
+    expect(plan.getByRole("link", { name: /판매계획 확정/ })).toHaveAttribute("href", "/sales/plans/confirm");
+    expect(screen.getAllByRole("link")).toHaveLength(2);
+    const manage = within(screen.getByRole("region", { name: "영업 관리" }));
+    for (const soon of ["수주", "출하요청", "출하", "매출", "반품"])
+      expect(manage.getByText(soon).parentElement).toHaveTextContent("준비 중 · 조각 「영업」");
+    const basis = within(screen.getByRole("region", { name: "영업 기준정보" }));
+    expect(basis.getByText("판매 단가").parentElement).toHaveTextContent("준비 중 · 조각 「영업」");
   });
 
   it("생산 — 「BOM 등록」 · 「BOM 조회」 · 「공정 등록」 · 「작업장 등록」 · 「라우팅」이 링크이고 메뉴 「BOM」은 없다(ADR 0026 의 6)", () => {

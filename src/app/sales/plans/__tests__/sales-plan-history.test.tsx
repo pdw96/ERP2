@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { SalesPlanChangeRow } from "@/db/sales-plans";
 import { SalesPlanHistory } from "../sales-plan-history";
 
-// 판매계획 화면의 고친 이력 표(메뉴 「판매계획」) — 일시 · 고객 · 품목 · 주 · 구분 · 전 → 후, 없음은 「—」. 확정 · 확정 취소는 수량 하나. 이번 주는 2026-11-16(47주).
+// 판매계획 화면의 고친 이력 표(메뉴 「판매계획 등록」) — 일시 · 고객 · 품목 · 주 · 구분 · 전 → 후, 없음은 「—」. 확정 · 확정 취소는 수량 하나. 이번 주는 2026-11-16(47주).
 
 const row = (over: Partial<SalesPlanChangeRow>): SalesPlanChangeRow => ({
   savedAt: "2026-11-19 10:05",

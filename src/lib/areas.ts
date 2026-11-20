@@ -46,13 +46,21 @@ export const AREAS: readonly Area[] = [
     groups: [
       { label: "영업 기준정보", menus: [{ label: "판매 단가", slice: "영업" }] },
       {
+        label: "영업 계획",
+        menus: [
+          // 넣는 메뉴와 확정하는 메뉴를 나눈다(저자 판정 2026-11-20). 확정은 등록의 주소 아래라, 지금 화면은 가장 길게 맞는 메뉴다(activeMenuHref).
+          { label: "판매계획 등록", slice: "MPS", href: "/sales/plans" },
+          { label: "판매계획 확정", slice: "MPS", href: "/sales/plans/confirm" },
+        ],
+      },
+      {
+        label: "영업 관리",
         menus: [
           { label: "수주", slice: "영업" },
           { label: "출하요청", slice: "영업" },
           { label: "출하", slice: "영업" },
           { label: "매출", slice: "영업" },
           { label: "반품", slice: "영업" },
-          { label: "판매계획", slice: "MPS", href: "/sales/plans" },
         ],
       },
     ],

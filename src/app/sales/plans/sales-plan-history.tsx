@@ -2,7 +2,7 @@ import { SALES_PLAN_HISTORY_SHOWN, type SalesPlanChangeRow } from "@/db/sales-pl
 import { weekLabel } from "@/lib/weeks";
 import { shownQty } from "./plan-qty";
 
-// 판매계획의 고친 이력(메뉴 「판매계획」) — 최근 것부터, 저장 · 확정 · 확정 취소한 칸마다 한 줄. 범위는 위의 거르기와 같다(고객 · 품목, 모든 주).
+// 판매계획의 고친 이력(메뉴 「판매계획 등록」) — 최근 것부터, 저장 · 확정 · 확정 취소한 칸마다 한 줄. 범위는 위의 거르기와 같다(고객 · 품목, 모든 주).
 // 확정 · 확정 취소 줄은 수량이 바뀌지 않아(전 = 후) 그때 수량 하나만 보인다.
 // 누가 고쳤는지는 아직 남지 않는다 — 로그인이 생긴 뒤(BOM · 라우팅과 같다). 읽기만 한다.
 

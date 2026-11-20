@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// 판매계획의 입구 — 저장 · 확정 · 확정 취소. 서면 같은 쪽 · 같은 거르기로 돌아가 바꾼 칸 수를 주소에 싣고(꼴이 틀린 돌아갈 값은 뺀다),
+// 판매계획의 입구 — 저장(메뉴 「판매계획 등록」) · 확정 · 확정 취소(메뉴 「판매계획 확정」). 서면 그 메뉴의 같은 쪽 · 같은 거르기로
+// 돌아가 바꾼 칸 수를 주소에 싣고(꼴이 틀린 돌아갈 값은 뺀다),
 // 거절되면 까닭을 돌려준다. DB 가 실패하면 오류 코드만 로그에 남긴다(넣은 글자는 남기지 않는다).
 
 const h = vi.hoisted(() => ({
@@ -32,27 +33,47 @@ const serverError = () =>
 describe("판매계획의 입구", () => {
   afterEach(() => vi.resetAllMocks());
 
-  it("확정되면 같은 쪽 · 같은 거르기로 돌아가 「confirmed=칸 수」를 싣는다", async () => {
+  it("확정되면 「판매계획 확정」의 같은 쪽 · 같은 거르기로 돌아가 「confirmed=칸 수」를 싣는다", async () => {
     h.confirm.mockResolvedValue({ ok: true, changed: 1 });
     await confirmSalesPlanAction(cells, back);
     expect(h.confirm).toHaveBeenCalledWith("db", cells, expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
-    expect(h.redirect).toHaveBeenCalledWith("/sales/plans?from=2026-11-16&customer=BP-0004&confirmed=1");
+    expect(h.redirect).toHaveBeenCalledWith("/sales/plans/confirm?from=2026-11-16&customer=BP-0004&confirmed=1");
   });
 
-  it("확정 취소되면 「unconfirmed=칸 수」를 싣는다", async () => {
+  it("확정 취소되면 「판매계획 확정」으로 돌아가 「unconfirmed=칸 수」를 싣는다", async () => {
     h.unconfirm.mockResolvedValue({ ok: true, changed: 12 });
     await unconfirmSalesPlanAction(cells, { from: "2026-11-16", customer: "", item: "FG-0001" });
     expect(h.unconfirm).toHaveBeenCalledWith("db", cells, expect.any(String));
-    expect(h.redirect).toHaveBeenCalledWith("/sales/plans?from=2026-11-16&item=FG-0001&unconfirmed=12");
+    expect(h.redirect).toHaveBeenCalledWith("/sales/plans/confirm?from=2026-11-16&item=FG-0001&unconfirmed=12");
   });
 
   it("돌아갈 값의 꼴이 틀리면 뺀다 — 월요일이 아닌 쪽 · 코드 꼴이 아닌 거르기", async () => {
     h.confirm.mockResolvedValue({ ok: true, changed: 2 });
     await confirmSalesPlanAction(cells, { from: "2026-11-17", customer: "x&saved=9", item: "https://evil" });
-    expect(h.redirect).toHaveBeenCalledWith("/sales/plans?confirmed=2");
+    expect(h.redirect).toHaveBeenCalledWith("/sales/plans/confirm?confirmed=2");
     h.save.mockResolvedValue({ ok: true, changed: 0 });
     await saveSalesPlanAction([], back);
     expect(h.redirect).toHaveBeenLastCalledWith("/sales/plans?from=2026-11-16&customer=BP-0004&saved=0");
+  });
+
+  it("저장되면 「판매계획 등록」의 같은 쪽 · 같은 거르기로 돌아가 「saved=칸 수」를 싣는다", async () => {
+    h.save.mockResolvedValue({ ok: true, changed: 4 });
+    await saveSalesPlanAction([], { from: "2026-11-23", customer: "", item: "FG-0002" });
+    expect(h.redirect).toHaveBeenCalledWith("/sales/plans?from=2026-11-23&item=FG-0002&saved=4");
+  });
+
+  it("돌아갈 경로는 동작마다 정해져 있다 — back 에 경로 같은 값을 실어도 쿼리로만 걸러진다", async () => {
+    h.unconfirm.mockResolvedValue({ ok: true, changed: 1 });
+    await unconfirmSalesPlanAction(cells, {
+      from: "/sales/plans",
+      customer: "../../evil",
+      item: "//evil.example",
+      path: "https://evil.example",
+    } as never);
+    expect(h.redirect).toHaveBeenCalledWith("/sales/plans/confirm?unconfirmed=1");
+    h.save.mockResolvedValue({ ok: true, changed: 1 });
+    await saveSalesPlanAction([], null as never);
+    expect(h.redirect).toHaveBeenLastCalledWith("/sales/plans?saved=1");
   });
 
   it("거절되면 까닭을 돌려주고 옮기지 않는다", async () => {
