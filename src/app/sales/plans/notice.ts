@@ -1,0 +1,29 @@
+// 판매계획 화면의 알림 — 주소에 실린 칸 수를 문장으로. 「판매계획 등록」은 저장(?saved=), 「판매계획 확정」은 확정 · 확정 취소
+// (?confirmed= · ?unconfirmed=)만 알린다. 한 번에 2,000칸까지라 네 자리까지만 읽는다 — 숫자가 아니면 알림을 내지 않는다.
+
+type Params = Record<string, string | string[] | undefined>;
+
+/** 칸 수 — 같은 이름이 여럿이면 앞의 것(쪽 · 거르기와 같다). */
+function countOf(value: string | string[] | undefined): number | undefined {
+  const v = Array.isArray(value) ? value[0] : value;
+  return v !== undefined && /^[0-9]{1,4}$/.test(v) ? Number(v) : undefined;
+}
+
+const n = (count: number) => count.toLocaleString("ko-KR");
+
+/** 「판매계획 등록」 — 저장 뒤. */
+export function savedNotice(params: Params): string | undefined {
+  const saved = countOf(params.saved);
+  if (saved === undefined) return undefined;
+  return saved === 0 ? "바뀐 칸이 없습니다" : `${n(saved)}칸을 저장했습니다`;
+}
+
+/** 「판매계획 확정」 — 확정 · 확정 취소 뒤. */
+export function confirmNotice(params: Params): string | undefined {
+  const confirmed = countOf(params.confirmed);
+  if (confirmed !== undefined) return confirmed === 0 ? "확정할 칸이 없습니다" : `${n(confirmed)}칸을 확정했습니다`;
+  const unconfirmed = countOf(params.unconfirmed);
+  if (unconfirmed !== undefined)
+    return unconfirmed === 0 ? "확정을 취소할 칸이 없습니다" : `${n(unconfirmed)}칸의 확정을 취소했습니다`;
+  return undefined;
+}

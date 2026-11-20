@@ -7,12 +7,15 @@ import {
   SAMPLE_CODES,
   SAMPLE_ITEMS,
   SAMPLE_PARTNERS,
+  SAMPLE_SALES_PLANS,
+  SAMPLE_SALES_PLAN_CONFIRMED_THROUGH,
   SAMPLE_UNIT_SPECS,
   SAMPLE_WAREHOUSES,
 } from "@/db/sample";
-import { codeGroups, codes } from "@/db/schema";
+import { codeGroups, codes, salesPlanChanges, salesPlans } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { ITEM_TYPE_DEFAULTS, SYSTEM_CODE_GROUPS, type ItemType } from "@/lib/master-codes";
+import { addWeeks, mondayOf } from "@/lib/weeks";
 import { migratedDb } from "./pglite";
 
 describe("샘플 데이터 — 성공 기준 1", () => {
@@ -193,5 +196,94 @@ describe("시스템 코드는 프로그램이 아는 값과 같다(ADR 0009)", (
   it("시스템 코드 묶음은 프로그램이 아는 것뿐이다", async () => {
     const system = (await db.select().from(codeGroups).where(eq(codeGroups.isSystem, true))).map((g) => g.code);
     expect(system.sort()).toEqual(Object.keys(SYSTEM_CODE_GROUPS).sort());
+  });
+});
+
+describe("샘플 판매계획 — 메뉴 「판매계획 등록」 · 「판매계획 확정」", () => {
+  const TODAY = "2026-11-19"; // 목요일 — 이번 주 월요일은 2026-11-16
+  let handle: Awaited<ReturnType<typeof migratedDb>>;
+  let db: Db;
+  beforeAll(async () => {
+    handle = await migratedDb();
+    db = handle.db;
+    await resetToSample(db, TODAY);
+  });
+  afterAll(() => handle.close());
+
+  it("다섯 줄 — 고객 × 품목은 BP-0004 · 0005 · 0007 × FG-0001, BP-0004 · 0007 × FG-0002", () => {
+    expect(SAMPLE_SALES_PLANS.map((p) => `${p.customer} × ${p.item}`)).toEqual([
+      "BP-0004 × FG-0001",
+      "BP-0005 × FG-0001",
+      "BP-0007 × FG-0001",
+      "BP-0004 × FG-0002",
+      "BP-0007 × FG-0002",
+    ]);
+  });
+
+  it("주는 −2 … 11 안이고, 수량은 FG-0001 은 1,000 배수 · FG-0002 는 500 배수이며, 한두 줄은 일부 주를 비운다", () => {
+    for (const p of SAMPLE_SALES_PLANS) {
+      const unit = p.item === "FG-0001" ? 1000 : 500;
+      const offsets = p.weeks.map((w) => w.offset);
+      expect(new Set(offsets).size).toBe(offsets.length);
+      for (const w of p.weeks) {
+        expect(w.offset).toBeGreaterThanOrEqual(-2);
+        expect(w.offset).toBeLessThanOrEqual(11);
+        expect(Number(w.qty) % unit, `${p.customer} × ${p.item} ${w.offset}`).toBe(0);
+        expect(Number(w.qty)).toBeGreaterThan(0);
+      }
+    }
+    const gappy = SAMPLE_SALES_PLANS.filter((p) => p.weeks.length < 14);
+    expect(gappy.length).toBeGreaterThanOrEqual(1);
+    expect(gappy.length).toBeLessThanOrEqual(2);
+  });
+
+  it("되돌림이 넣은 칸 수 = 샘플의 주 수 합이고, 지난 주(2026-11-02)의 칸이 있으며, 이력은 비어 있다", async () => {
+    const rows = await db.select().from(salesPlans);
+    expect(rows).toHaveLength(SAMPLE_SALES_PLANS.reduce((n, p) => n + p.weeks.length, 0));
+    expect(rows.some((r) => r.weekStart === "2026-11-02")).toBe(true);
+    expect(rows.every((r) => r.weekStart >= "2026-11-02")).toBe(true);
+    expect(await db.select().from(salesPlanChanges)).toHaveLength(0);
+  });
+
+  it("확정 — 되돌림 뒤 offset 5 까지의 칸은 확정 일시가 있고 6 이상은 미확정이다", async () => {
+    expect(SAMPLE_SALES_PLAN_CONFIRMED_THROUGH).toBe(5);
+    const r = await handle.client.query<{ off: number; confirmed: boolean }>(
+      `select ((s.week_start - date '${mondayOf(TODAY)}') / 7)::int as off, s.confirmed_at is not null as confirmed
+         from sales_plans s`,
+    );
+    expect(r.rows.length).toBeGreaterThan(0);
+    for (const x of r.rows) expect(x.confirmed, `offset ${x.off}`).toBe(x.off <= SAMPLE_SALES_PLAN_CONFIRMED_THROUGH);
+    expect(r.rows.some((x) => x.confirmed)).toBe(true);
+    expect(r.rows.some((x) => !x.confirmed)).toBe(true);
+  });
+
+  it("칸의 주 · 수량이 샘플과 같다 — 주는 오늘이 든 주의 월요일에서 센다", async () => {
+    const r = await handle.client.query<{ customer: string; item: string; week: string; qty: string }>(
+      `select p.code as customer, i.code as item, to_char(s.week_start, 'YYYY-MM-DD') as week, s.qty::text as qty
+         from sales_plans s join partners p on p.id = s.partner_id join items i on i.id = s.item_id
+         order by p.code, i.code, s.week_start`,
+    );
+    const want = SAMPLE_SALES_PLANS.flatMap((p) =>
+      p.weeks.map((w) => ({
+        customer: p.customer,
+        item: p.item,
+        week: addWeeks(mondayOf(TODAY), w.offset),
+        qty: Number(w.qty).toFixed(3),
+      })),
+    ).sort((a, b) => (a.customer + a.item + a.week).localeCompare(b.customer + b.item + b.week));
+    expect(r.rows).toEqual(want);
+  });
+
+  it("고객은 「사용」 매출처이고 품목은 「사용」 완제품이다", async () => {
+    for (const p of SAMPLE_SALES_PLANS) {
+      const c = SAMPLE_PARTNERS.find((x) => x.code === p.customer);
+      expect(c, p.customer).toBeDefined();
+      expect(c!.isCustomer).toBe(true);
+      expect(c!.active ?? true).toBe(true);
+      const i = SAMPLE_ITEMS.find((x) => x.code === p.item);
+      expect(i, p.item).toBeDefined();
+      expect(i!.itemType).toBe("FG");
+      expect(i!.active ?? true).toBe(true);
+    }
   });
 });

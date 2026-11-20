@@ -12,6 +12,7 @@ import {
   SAMPLE_NUMBER_RULES,
   SAMPLE_PARTNERS,
   SAMPLE_PROCESSES,
+  SAMPLE_SALES_PLANS,
   SAMPLE_UNIT_SPECS,
   SAMPLE_WAREHOUSES,
   SAMPLE_WORK_CENTERS,
@@ -33,6 +34,8 @@ import {
   routingMaterials,
   routings,
   routingSteps,
+  salesPlanChanges,
+  salesPlans,
   stockBalances,
   stockCountLines,
   stockCounts,
@@ -94,6 +97,15 @@ async function snapshot() {
     routings: strip(await db.select().from(routings).orderBy(asc(routings.id))),
     routingSteps: await db.select().from(routingSteps).orderBy(asc(routingSteps.id)),
     routingMaterials: await db.select().from(routingMaterials).orderBy(asc(routingMaterials.id)),
+    salesPlans: strip(await db.select().from(salesPlans).orderBy(asc(salesPlans.id))).map((row) => {
+      const { confirmedAt, ...rest } = row; // 확정 일시는 되돌림 시각이라 있고 없고만 견준다
+      return { ...rest, confirmed: confirmedAt != null };
+    }),
+    salesPlanChanges: (await db.select().from(salesPlanChanges).orderBy(asc(salesPlanChanges.id))).map((row) => {
+      const rest: Partial<typeof row> = { ...row };
+      delete rest.savedAt;
+      return rest;
+    }),
     routingChanges: (await db.select().from(routingChanges).orderBy(asc(routingChanges.id))).map((row) => {
       const rest: Partial<typeof row> = { ...row };
       delete rest.savedAt;
@@ -141,6 +153,11 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
       sql`insert into bom_changes (parent_item_id, kind, after) values ((select id from items where code = 'FG-0001'), 'BASE', '{"baseQty":"1"}')`,
     );
     // 라우팅 — 줄 하나를 고치고, 자재 하나를 떼고, 라우팅 하나를 지우고, 고친 이력을 더한다(되돌림이 비우고 샘플 라우팅의 저장이 다시 채운다).
+    await db.execute(sql`update sales_plans set qty = 777 where id = 1`);
+    await db.execute(sql`delete from sales_plans where id = 2`);
+    await db.execute(
+      sql`insert into sales_plan_changes (partner_id, item_id, week_start, before, after) values (1, 1, '2026-11-02', 1, 2)`,
+    );
     await db.execute(sql`update routing_steps set note = '방문자 비고' where seq = 10`);
     await db.execute(sql`delete from routing_materials where item_id = (select id from items where code = 'RM-0002')`);
     await db.execute(sql`delete from routings where item_id = (select id from items where code = 'FG-0002')`);
@@ -171,7 +188,11 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
     expect(await snapshot()).toEqual(clean);
     expect([clean.routings.length, clean.routingSteps.length, clean.routingMaterials.length]).toEqual([4, 14, 14]);
     expect(clean.routingChanges.length).toBeGreaterThan(0);
+    expect(clean.salesPlans.length).toBe(SAMPLE_SALES_PLANS.reduce((n, p) => n + p.weeks.length, 0));
+    expect(clean.salesPlanChanges).toHaveLength(0);
     expect(counts).toEqual({
+      sales_plan_changes: clean.salesPlanChanges.length,
+      sales_plans: clean.salesPlans.length,
       routing_changes: clean.routingChanges.length,
       routing_materials: clean.routingMaterials.length,
       routing_steps: clean.routingSteps.length,
@@ -300,7 +321,7 @@ describe("코드 번호 — 같은 머리의 가장 큰 번호 + 1", () => {
     expect(await nextCode(db, "CS")).toBe("CS-0003");
     await db.execute(
       sql.raw(
-        `truncate table "routing_changes", "routing_materials", "routing_steps", "routings", "bom_changes", "bom_lines", "boms", "stock_count_lines", "stock_balances", "stock_move_lines", "items"`,
+        `truncate table "sales_plan_changes", "sales_plans", "routing_changes", "routing_materials", "routing_steps", "routings", "bom_changes", "bom_lines", "boms", "stock_count_lines", "stock_balances", "stock_move_lines", "items"`,
       ),
     );
     expect(await nextCode(db, "RM")).toBe("RM-0001");

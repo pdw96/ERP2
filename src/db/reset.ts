@@ -1,6 +1,7 @@
-import { asc, count, eq, sql } from "drizzle-orm";
+import { asc, count, eq, inArray, sql } from "drizzle-orm";
 import type { ItemType } from "@/lib/master-codes";
 import { koreaToday } from "@/lib/today";
+import { addWeeks, mondayOf } from "@/lib/weeks";
 import {
   SAMPLE_BOMS,
   SAMPLE_CODE_GROUPS,
@@ -14,6 +15,8 @@ import {
   SAMPLE_PARTNERS,
   SAMPLE_PROCESSES,
   SAMPLE_ROUTINGS,
+  SAMPLE_SALES_PLANS,
+  SAMPLE_SALES_PLAN_CONFIRMED_THROUGH,
   SAMPLE_UNIT_SPECS,
   SAMPLE_WAREHOUSES,
   SAMPLE_WORK_CENTERS,
@@ -35,6 +38,8 @@ import {
   routingMaterials,
   routings,
   routingSteps,
+  salesPlanChanges,
+  salesPlans,
   stockBalances,
   stockCountLines,
   stockCounts,
@@ -46,12 +51,15 @@ import {
 } from "./schema";
 import { lockBom, saveBom } from "./boms";
 import { lockRouting, saveRouting } from "./routings";
+import { lockSalesPlans } from "./sales-plans";
 import { cancelMove, lockStock, saveMove } from "./stock";
 import { confirmCount, openCountSheet, saveCount } from "./stock-counts";
 import type { Db } from "./types";
 
 /** 되돌림이 비우고 다시 채우는 테이블 — 테이블을 더하는 조각은 여기에도 더한다(시험이 스키마와 견준다). */
 export const RESET_TABLES = [
+  "sales_plan_changes",
+  "sales_plans",
   "routing_changes",
   "routing_materials",
   "routing_steps",
@@ -92,6 +100,8 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
     await lockBom(tx);
     // 라우팅도 같다 — 샘플 라우팅을 넣는 saveRouting 이 비운 뒤 이 잠금을 다시 쥐므로(같은 트랜잭션이라 겹쳐 쥐어도 된다) 먼저 쥔다(PR #58 Codex 리뷰).
     await lockRouting(tx);
+    // 판매계획도 같다 — 판매계획을 고치는 저장이 쥐는 잠금이라, 비우기 전에 쥐어 저장과 같은 차례(재고 → BOM → 라우팅 → 판매계획)를 지킨다.
+    await lockSalesPlans(tx);
     await tx.execute(sql.raw(`truncate table ${RESET_TABLES.map((t) => `"${t}"`).join(", ")} restart identity`));
     await tx.insert(codeGroups).values(SAMPLE_CODE_GROUPS);
     await tx.insert(codes).values(SAMPLE_CODES);
@@ -136,6 +146,7 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
     await insertSampleCounts(tx, today);
     await insertSampleBoms(tx, today);
     await insertSampleRoutings(tx);
+    await insertSampleSalesPlans(tx, today);
     const n = async (
       t:
         | typeof stockMoves
@@ -151,9 +162,13 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
         | typeof routings
         | typeof routingSteps
         | typeof routingMaterials
-        | typeof routingChanges,
+        | typeof routingChanges
+        | typeof salesPlans
+        | typeof salesPlanChanges,
     ) => (await tx.select({ n: count() }).from(t))[0].n;
     return {
+      sales_plan_changes: await n(salesPlanChanges),
+      sales_plans: await n(salesPlans),
       routing_changes: await n(routingChanges),
       routing_materials: await n(routingMaterials),
       routing_steps: await n(routingSteps),
@@ -290,4 +305,36 @@ async function insertSampleRoutings(tx: Db) {
     if (!saved.ok)
       throw new Error(`샘플 라우팅 저장 실패(${r.item}): ${JSON.stringify([saved.errors, saved.formError])}`);
   }
+}
+
+/**
+ * 샘플 판매계획을 표에 바로 넣는다(라우팅 뒤). 지난 주 칸이 있어 저장 함수(saveSalesPlan)를 지나지 못한다 — 저장은 지난 주를 막는다.
+ * 주는 today(한국 시각의 오늘)가 든 주의 월요일에서 센다. 고객 · 품목이 샘플에 없으면 던져 되돌림 전체를 되돌린다.
+ */
+async function insertSampleSalesPlans(tx: Db, today: string) {
+  const thisWeek = mondayOf(today);
+  const confirmedAt = new Date();
+  const customers = await tx
+    .select({ code: partners.code, id: partners.id })
+    .from(partners)
+    .where(inArray(partners.code, [...new Set(SAMPLE_SALES_PLANS.map((p) => p.customer))]));
+  const goods = await tx
+    .select({ code: items.code, id: items.id })
+    .from(items)
+    .where(inArray(items.code, [...new Set(SAMPLE_SALES_PLANS.map((p) => p.item))]));
+  await tx.insert(salesPlans).values(
+    SAMPLE_SALES_PLANS.flatMap((p) => {
+      const partnerId = customers.find((c) => c.code === p.customer)?.id;
+      const itemId = goods.find((g) => g.code === p.item)?.id;
+      if (partnerId === undefined || itemId === undefined)
+        throw new Error(`샘플 판매계획의 고객 · 품목이 없다: ${p.customer} × ${p.item}`);
+      return p.weeks.map((w) => ({
+        partnerId,
+        itemId,
+        weekStart: addWeeks(thisWeek, w.offset),
+        qty: Number(w.qty),
+        confirmedAt: w.offset <= SAMPLE_SALES_PLAN_CONFIRMED_THROUGH ? confirmedAt : null,
+      }));
+    }),
+  );
 }

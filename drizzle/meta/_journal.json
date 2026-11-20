@@ -162,6 +162,27 @@
       "when": 1795065763574,
       "tag": "0022_routing_values",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1795086232873,
+      "tag": "0023_sales_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795088617340,
+      "tag": "0024_sales_plan_values",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795162632120,
+      "tag": "0025_sales_plan_confirm",
+      "breakpoints": true
     }
   ]
 }

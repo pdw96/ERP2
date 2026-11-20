@@ -15,7 +15,7 @@ import {
 import { resetToSample } from "@/db/reset";
 import { countryNames, countryOptions } from "@/db/partners";
 import { updateCode } from "@/db/codes";
-import { partners } from "@/db/schema";
+import { partners, salesPlans } from "@/db/schema";
 import type { Db } from "@/db/types";
 import type { PartnerValues } from "@/lib/partner-input";
 import { migratedDb } from "./pglite";
@@ -123,6 +123,7 @@ describe("등록", () => {
   });
 
   it("빈 테이블이면 첫 번호 BP-0001 이다", async () => {
+    await db.delete(salesPlans); // 샘플 판매계획이 거래처를 가리킨다
     await db.delete(partners);
     expect(await createPartner(db, newSupplier)).toEqual({ ok: true, code: "BP-0001" });
   });
