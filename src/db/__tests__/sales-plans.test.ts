@@ -636,6 +636,14 @@ describe("판매계획 — 확정 · 확정 취소", () => {
       .from(salesPlanChanges)
       .where(eq(salesPlanChanges.kind, "CONFIRM"));
     expect(new Set(at.map((r) => r.at)).size).toBe(1);
+    // 확정으로 남은 칸(W1)의 confirmed_at 은 확정 이력의 saved_at 과 같다(W2 는 확정 취소로 null).
+    const stored = await db
+      .select({ week: salesPlans.weekStart, at: sql<string | null>`${salesPlans.confirmedAt}::text` })
+      .from(salesPlans);
+    const confirmedCells = stored.filter((r) => r.at !== null);
+    expect(confirmedCells.map((r) => r.week)).toEqual([W1]);
+    expect(confirmedCells.every((r) => r.at === at[0].at)).toBe(true);
+    expect(stored.find((r) => r.week === W2)?.at).toBeNull();
   });
 
   it("열기는 칸마다 확정인지 · 그 13주 · 거르기 범위의 미확정 칸 수를 보인다", async () => {
@@ -658,19 +666,25 @@ describe("판매계획 — 확정 · 확정 취소", () => {
   });
 
   it("빈 확정은 아무것도 쓰지 않고, 꼴이 틀린 요청 · 같은 칸 둘 · 2,000칸 넘음은 formError", async () => {
-    const FORM = "저장하지 못했습니다 — 화면을 새로 여세요";
+    const FORM = "확정하지 못했습니다 — 화면을 새로 여세요";
+    const FORM_UNDO = "확정을 취소하지 못했습니다 — 화면을 새로 여세요";
     expect(await confirm([])).toEqual({ ok: true, changed: 0 });
     expect(await unconfirm([])).toEqual({ ok: true, changed: 0 });
     expect(await confirmSalesPlan(db, "x" as never, TODAY)).toEqual({ ok: false, errors: {}, formError: FORM });
     expect(await unconfirmSalesPlan(db, [{ customer: "BP-0004", item: "FG-0001", week: W1 }] as never, TODAY)).toEqual({
       ok: false,
       errors: {},
-      formError: FORM,
+      formError: FORM_UNDO,
     });
     expect(await confirm([seen("BP-0004", "FG-0001", W1, "1"), seen("BP-0004", "FG-0001", W1, "2")])).toEqual({
       ok: false,
       errors: {},
       formError: FORM,
+    });
+    expect(await unconfirm([seen("BP-0004", "FG-0001", W1, "1"), seen("BP-0004", "FG-0001", W1, "2")])).toEqual({
+      ok: false,
+      errors: {},
+      formError: FORM_UNDO,
     });
     const many = Array.from({ length: 2001 }, (_, i) => seen(`BP-${String(i).padStart(4, "0")}`, "FG-0001", W1, "1"));
     expect(await confirm(many)).toEqual({

@@ -569,10 +569,11 @@ async function setConfirmed(
   const formFail = (formError: string): SalesPlanSaveResult => ({ ok: false, errors: {}, formError });
   const confirming = kind === "CONFIRM";
   const verb = confirming ? "확정" : "확정 취소";
+  const reopen = `${confirming ? "확정하지" : "확정을 취소하지"} 못했습니다 — 화면을 새로 여세요`;
 
-  if (!Array.isArray(cells) || !cells.every(isConfirmInput)) return formFail(FORM);
+  if (!Array.isArray(cells) || !cells.every(isConfirmInput)) return formFail(reopen);
   const keys = new Set(cells.map((c) => cellKey(c.customer, c.item, c.week)));
-  if (keys.size !== cells.length) return formFail(FORM);
+  if (keys.size !== cells.length) return formFail(reopen);
   if (cells.length > SALES_PLAN_SAVE_MAX_CELLS)
     return formFail(
       `한 번에 ${SALES_PLAN_SAVE_MAX_CELLS.toLocaleString("ko-KR")}칸까지 ${verb}합니다 — 나눠 ${verb}하세요`,

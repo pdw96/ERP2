@@ -24,7 +24,7 @@ import { milliOf, shownQty, typedQty } from "./plan-qty";
 type Back = { from: string; customer: string; item: string };
 type Row = { customer: PlanCustomer; item: PlanItem; cells: Record<string, SalesPlanCell>; added?: boolean };
 type Kind = "save" | "confirm" | "unconfirm";
-type Request =
+type PlanRequest =
   { kind: "save"; cells: SalesPlanCellInput[] } | { kind: "confirm" | "unconfirm"; cells: SalesPlanConfirmInput[] };
 /** 마지막으로 부른 동작과 그 결과 — 거절이면 까닭을 보인다(서면 주소가 바뀌어 화면이 새로 열린다). */
 type Outcome = { kind: Kind; result: SalesPlanActionState } | null;
@@ -62,7 +62,7 @@ export function SalesPlanGrid({
   options: { customers: PlanCustomer[]; items: PlanItem[] };
   back: Back;
 }) {
-  const [outcome, dispatch, pending] = useActionState<Outcome, Request>(async (_prev, request) => {
+  const [outcome, dispatch, pending] = useActionState<Outcome, PlanRequest>(async (_prev, request) => {
     const result =
       request.kind === "save"
         ? await saveSalesPlanAction(request.cells, back)
@@ -186,7 +186,7 @@ export function SalesPlanGrid({
     });
   const toggleAll = () =>
     setSelected(allChosen ? new Set() : new Set(loadedRows.map((r) => pairOf(r.customer.code, r.item.code))));
-  const send = (request: Request) => {
+  const send = (request: PlanRequest) => {
     if (!request.cells.length) return;
     setDoing(request.kind);
     startTransition(() => dispatch(request));
@@ -196,6 +196,12 @@ export function SalesPlanGrid({
   const busy = (kind: Kind) => (pending && doing === kind ? `${VERB[kind]} 중…` : VERB[kind]);
 
   const wrong = Object.keys(errors).length;
+  const wrongLine =
+    outcome?.kind === "confirm"
+      ? `확정하지 못한 칸 ${wrong}개 — 칸 아래의 까닭을 보세요.`
+      : outcome?.kind === "unconfirm"
+        ? `확정을 취소하지 못한 칸 ${wrong}개 — 칸 아래의 까닭을 보세요.`
+        : `틀린 칸 ${wrong}개 — 칸 아래의 까닭을 보고 고치세요.`;
   const failed = VERB[outcome?.kind ?? "save"];
   // 거르기 후보 — DB 에 칸이 있는 모든 고객 · 품목(거르기와 상관없이) ∪ 새 줄 후보. 한쪽을 걸러도 다른 쪽 후보가 줄지 않는다.
   const filterCustomers = choices([sheet.planned.customers, options.customers], back.customer);
@@ -291,7 +297,7 @@ export function SalesPlanGrid({
             {failed}하지 않았습니다 — 칸이 하나라도 틀리면 아무것도 {failed}되지 않습니다.
           </p>
           {formError && <p className="mt-1 text-sm">{formError}</p>}
-          {wrong > 0 && <p className="mt-1 text-sm">틀린 칸 {wrong}개 — 칸 아래의 까닭을 보고 고치세요.</p>}
+          {wrong > 0 && <p className="mt-1 text-sm">{wrongLine}</p>}
         </div>
       )}
 
@@ -429,13 +435,13 @@ export function SalesPlanGrid({
                             aria-label={`${name} ${weekLabel(w, thisWeek)} 수량`}
                             aria-invalid={error ? true : undefined}
                             aria-describedby={error ? domId(key) : undefined}
-                            className={`w-full min-w-24 rounded-sm border px-1.5 py-1 text-right tabular-nums ${
+                            className={`w-full min-w-24 rounded-sm border py-1 text-right tabular-nums ${fixed ? "pr-1.5 pl-9" : "px-1.5"} ${
                               error
                                 ? "border-red-700 bg-white"
                                 : !editable
                                   ? `border-transparent text-muted ${open ? "bg-yellow-100" : "bg-floor"}`
                                   : fixed
-                                    ? "border-rule bg-white text-muted"
+                                    ? "border-rule bg-stone-100 text-muted"
                                     : changed.has(key)
                                       ? "border-machine bg-safety/25 font-semibold"
                                       : open
@@ -444,7 +450,7 @@ export function SalesPlanGrid({
                             }`}
                           />
                           {fixed && (
-                            <span className="pointer-events-none absolute top-0 left-1.5 rounded-sm bg-machine px-0.5 text-[0.625rem] leading-tight text-white">
+                            <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 rounded-sm bg-machine px-0.5 text-[0.625rem] leading-tight text-white">
                               확정
                             </span>
                           )}
@@ -525,7 +531,7 @@ export function SalesPlanGrid({
             type="button"
             onClick={() => send({ kind: "save", cells: changes })}
             disabled={pending || !unsaved}
-            className="rounded bg-machine px-6 py-2.5 font-semibold text-white hover:bg-machine-deep disabled:opacity-60"
+            className="rounded bg-machine px-6 py-2.5 font-semibold text-white hover:bg-machine-deep disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy("save")}
           </button>
@@ -533,7 +539,7 @@ export function SalesPlanGrid({
             type="button"
             onClick={() => send({ kind: "confirm", cells: toConfirm })}
             disabled={!canConfirm}
-            className="rounded border border-machine bg-white px-5 py-2.5 font-semibold hover:bg-floor disabled:opacity-60"
+            className="rounded border border-machine bg-white px-5 py-2.5 font-semibold hover:bg-floor disabled:cursor-not-allowed disabled:border-rule disabled:bg-floor disabled:text-muted disabled:hover:bg-floor disabled:opacity-50"
           >
             {busy("confirm")}
           </button>
@@ -541,7 +547,7 @@ export function SalesPlanGrid({
             type="button"
             onClick={() => send({ kind: "unconfirm", cells: toUnconfirm })}
             disabled={!canUnconfirm}
-            className="rounded border border-machine bg-white px-5 py-2.5 font-semibold hover:bg-floor disabled:opacity-60"
+            className="rounded border border-machine bg-white px-5 py-2.5 font-semibold hover:bg-floor disabled:cursor-not-allowed disabled:border-rule disabled:bg-floor disabled:text-muted disabled:hover:bg-floor disabled:opacity-50"
           >
             {busy("unconfirm")}
           </button>
@@ -551,7 +557,7 @@ export function SalesPlanGrid({
           <span role="status" className="text-sm text-muted">
             {unsaved ? `고친 칸 ${changes.length.toLocaleString("ko-KR")}개` : "고친 칸이 없습니다"}
           </span>
-          {unsaved && <span className="text-sm font-semibold text-red-700">먼저 저장하세요</span>}
+          {unsaved && chosen.length > 0 && <span className="text-sm font-semibold text-red-700">먼저 저장하세요</span>}
         </div>
 
         <div className="mt-6 grid gap-3 border-y border-rule bg-white px-4 py-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
@@ -595,7 +601,7 @@ export function SalesPlanGrid({
             type="button"
             onClick={addRow}
             disabled={!canAdd}
-            className="rounded border border-machine bg-white px-4 py-2 font-semibold hover:bg-floor disabled:opacity-60"
+            className="rounded border border-machine bg-white px-4 py-2 font-semibold hover:bg-floor disabled:cursor-not-allowed disabled:opacity-50"
           >
             줄 더하기
           </button>

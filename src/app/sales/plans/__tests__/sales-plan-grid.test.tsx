@@ -373,7 +373,12 @@ describe("확정 · 확정 취소", () => {
     const fixedCell = cell("BP-0005", "FG-0001", "47주");
     expect(fixedCell).toHaveAttribute("readOnly");
     expect(fixedCell).toBeEnabled();
-    expect(within(fixedCell.closest("td")!).getByText("확정")).toBeInTheDocument();
+    const chip = within(fixedCell.closest("td")!).getByText("확정");
+    expect(chip).toBeInTheDocument();
+    // 확정 칸은 회색 바탕으로 잠겨 보이고, 「확정」 표시는 칸 안쪽 가운데 높이에 놓인다 — 칸 윗 테두리에 걸치지 않는다.
+    expect(fixedCell).toHaveClass("bg-stone-100");
+    expect(chip.className).toContain("top-1/2");
+    expect(chip.className).not.toMatch(/(^|\s)top-0(\s|$)/);
     // 미확정 칸 · 빈 칸은 고칠 수 있고 「확정」 표시가 없다.
     const openCell = cell("BP-0004", "FG-0001", "47주");
     expect(openCell).not.toHaveAttribute("readOnly");
@@ -438,6 +443,41 @@ describe("확정 · 확정 취소", () => {
     expect(screen.getByRole("button", { name: "확정 취소" })).toBeEnabled();
   });
 
+  it("꺼진 단추는 켜진 단추와 다르게 흐리고 누를 수 없는 모양(not-allowed)이다 — [저장]도 같다", () => {
+    render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
+    for (const name of ["저장", "확정", "확정 취소"]) {
+      const button = screen.getByRole("button", { name });
+      expect(button).toBeDisabled();
+      expect(button.className).toContain("disabled:opacity-50");
+      expect(button.className).toContain("disabled:cursor-not-allowed");
+    }
+    for (const name of ["확정", "확정 취소"])
+      expect(screen.getByRole("button", { name }).className).toContain("disabled:text-muted");
+  });
+
+  it("「먼저 저장하세요」는 줄을 고른 채 저장하지 않은 칸이 있을 때만 보인다", () => {
+    render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
+    fireEvent.change(cell("BP-0005", "FG-0001", "48주"), { target: { value: "700" } });
+    expect(screen.queryByText("먼저 저장하세요")).toBeNull();
+    fireEvent.click(pick("BP-0004", "FG-0001"));
+    expect(screen.getByText("먼저 저장하세요")).toBeInTheDocument();
+    fireEvent.click(pick("BP-0004", "FG-0001"));
+    expect(screen.queryByText("먼저 저장하세요")).toBeNull();
+  });
+
+  it("확정 칸에 글자를 넣어도(change) 저장에 가지 않는다", async () => {
+    render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
+    fireEvent.change(cell("BP-0005", "FG-0001", "47주"), { target: { value: "9999" } });
+    expect(screen.getByRole("button", { name: "저장" })).toBeDisabled();
+    fireEvent.change(cell("BP-0005", "FG-0001", "48주"), { target: { value: "700" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "저장" })));
+    await waitFor(() => expect(h.save).toHaveBeenCalled());
+    expect(h.save).toHaveBeenCalledWith(
+      [{ customer: "BP-0005", item: "FG-0001", week: NEXT, before: "600", after: "700" }],
+      back,
+    );
+  });
+
   it("저장하지 않은 칸이 있으면 확정 · 확정 취소가 꺼지고 「먼저 저장하세요」", () => {
     render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
     fireEvent.click(pick("BP-0004", "FG-0001"));
@@ -484,6 +524,28 @@ describe("확정 · 확정 취소", () => {
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "확정" })));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("확정하지 않았습니다"));
     expect(screen.getByRole("alert")).toHaveTextContent("다른 사람이 먼저 고쳤습니다");
+  });
+
+  it("칸별 거절의 안내문은 동작을 따른다 — 확정 · 확정 취소는 「칸 아래의 까닭을 보세요」, 저장은 「고치세요」", async () => {
+    const key = cellKey("BP-0004", "FG-0001", THIS);
+    h.confirm.mockResolvedValue({ ok: false, errors: { [key]: "남이 먼저 고쳤습니다" } });
+    h.unconfirm.mockResolvedValue({ ok: false, errors: { [key]: "MPS 가 확정한 주입니다" } });
+    const { unmount } = render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
+    fireEvent.click(pick("BP-0004", "FG-0001"));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "확정" })));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("확정하지 못한 칸 1개 — 칸 아래의 까닭을 보세요"),
+    );
+    expect(screen.getByRole("alert")).not.toHaveTextContent("고치세요");
+    unmount();
+
+    render(<SalesPlanGrid sheet={sheet} options={options} back={back} />);
+    fireEvent.click(pick("BP-0004", "FG-0001"));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "확정 취소" })));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("확정을 취소하지 못한 칸 1개 — 칸 아래의 까닭을 보세요"),
+    );
+    expect(screen.getByRole("alert")).not.toHaveTextContent("고치세요");
   });
 
   it("품목 합계는 확정값이라고 밝히고, 미확정 칸 수를 알린다 — 0 이면 숨긴다", () => {
