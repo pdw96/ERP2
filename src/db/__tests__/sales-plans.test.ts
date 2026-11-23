@@ -749,6 +749,14 @@ describe("판매계획 — 확정 · 확정 취소", () => {
     expect(await unconfirm([seen("BP-0004", "FG-0001", W1, "2000")])).toEqual({ ok: true, changed: 1 });
   });
 
+  it("MPS 가 고정한 주여도 미확정 칸의 확정은 막지 않는다", async () => {
+    const [fg] = await db.select({ id: items.id }).from(items).where(eq(items.code, "FG-0001"));
+    await save([cell("BP-0004", "FG-0001", TW, "", "3000")]);
+    await db.insert(mpsFixed).values({ itemId: fg.id, weekStart: TW, qty: 500, fixedAt: new Date() });
+    expect(await confirm([seen("BP-0004", "FG-0001", TW, "3000")])).toEqual({ ok: true, changed: 1 });
+    expect(await confirmedOf("BP-0004", "FG-0001", TW)).toBe(true);
+  });
+
   it("확정 · 확정 취소도 고친 이력의 상한(50,000)을 넘기지 않는다", async () => {
     await save([cell("BP-0004", "FG-0001", W1, "", "3000")]);
     const [p] = await db.select({ id: partners.id }).from(partners).where(eq(partners.code, "BP-0005"));
@@ -885,7 +893,7 @@ describe("단위 — 판매계획에 든 품목은 단위 · 자릿수를 바꾸
     await db.insert(mpsFixed).values({ itemId: id, weekStart: W1, qty: 1.25, fixedAt: new Date() });
     expect(await updateCode(db, "UNIT", "KG", kg("1"))).toMatchObject({
       ok: false,
-      errors: { decimals: expect.any(String) },
+      errors: { decimals: "MPS 에 고정한 수량이 소수 1자리를 넘어 자릿수를 줄이지 못합니다" },
     });
     expect((await getUnitSpec(db, "KG"))!.decimals).toBe(3);
     await db.execute(sql`update mps_fixed set qty = 1.2`);

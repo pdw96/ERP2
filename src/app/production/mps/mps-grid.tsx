@@ -401,8 +401,8 @@ function ItemRows({
             )}
           </span>
           <span className="block text-xs text-muted tabular-nums">
-            가용 {shownQty(row.available)} · 안전 {shownQty(row.safety)} · 최소 {shownQty(row.minLot)} · 배수{" "}
-            {shownQty(row.multiple)}
+            가용 {shownQty(row.available)} · 안전 {shownQty(row.safety)}
+            {!item.active && "(사용 안 함)"} · 최소 {shownQty(row.minLot)} · 배수 {shownQty(row.multiple)}
           </span>
         </th>
         <td colSpan={weeks.length} className={`${line} border-t-2 border-t-machine bg-floor`} />

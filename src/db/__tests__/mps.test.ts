@@ -431,6 +431,43 @@ describe("MPS — MRP 가 읽는 공급량", () => {
   });
 });
 
+describe("MPS — 「사용 안 함」 완제품은 단계적 폐기 — 안전재고 0 으로 본다", () => {
+  /** FG-0002 를 사용 안 함으로 두고, 안전재고는 가용보다 100 위 · 최소 500 · 배수 100 으로 한다. */
+  async function phaseOut(): Promise<bigint> {
+    const available = (await availableByItem(db, [await idOf("FG-0002")])).get(await idOf("FG-0002"))!;
+    const safety = Number(available / BigInt(1000)) + 100;
+    await db.execute(
+      sql`update items set active = false, safety_stock = ${safety}, min_lot = 500, lot_multiple = 100 where code = 'FG-0002'`,
+    );
+    return available;
+  }
+
+  it("가용이 안전재고 밑이어도 수요 · 고정이 없으면 안을 내지 않는다 — 줄도 없다", async () => {
+    await phaseOut();
+    expect(rowOf(await open(), "FG-0002")).toBeUndefined();
+    expect((await mpsSupply(db, w(51), TODAY)).filter((s) => s.item === "FG-0002")).toEqual([]);
+  });
+
+  it("확정 수요가 가용을 넘으면 그 부족만 채운다(최소 · 배수 그대로) — 안전재고 채움 없음, 머리의 안전은 0", async () => {
+    const available = await phaseOut();
+    const demand = Number(available / BigInt(1000)) + 50; // 부족 50 → 최소 500
+    await plan("BP-0004", "FG-0002", w(1), demand);
+    const row = rowOf(await open(), "FG-0002")!;
+    expect(row.safety).toBe("0");
+    expect([0, 1, 2].map((i) => row.cells[w(i)].mps)).toEqual(["0", "500", "0"]);
+    expect(row.cells[w(1)].projected).toBe(txt(available + m(500) - m(demand)));
+    expect(row.cells[w(2)].projected).toBe(row.cells[w(1)].projected); // 이후 안 없음
+    const supply = (await mpsSupply(db, w(51), TODAY)).filter((s) => s.item === "FG-0002");
+    expect(supply).toEqual([{ item: "FG-0002", week: w(1), qty: "500", fixed: false }]);
+  });
+
+  it("다시 「사용」으로 바꾸면 평소대로 안전재고까지 채운다", async () => {
+    await phaseOut();
+    await db.execute(sql`update items set active = true where code = 'FG-0002'`);
+    expect(rowOf(await open(), "FG-0002")!.cells[w(0)].mps).not.toBe("0");
+  });
+});
+
 describe("MPS — 상한 · 이력 · 단위의 도우미", () => {
   it("고정 칸이 20,000 을 넘으면 · 이력이 50,000 을 넘으면 쓰지 않는다", async () => {
     const id = await idOf("FG-0002");

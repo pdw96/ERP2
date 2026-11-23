@@ -126,6 +126,17 @@ describe("MPS 표", () => {
     expect(screen.getByTestId(`demand-FG-0001-${W3}`)).toHaveTextContent(/^$/);
   });
 
+  it("「사용 안 함」 완제품은 품목 이름 옆에 표시하고 안전을 「안전 0(사용 안 함)」으로 보인다 — 사용 중인 품목은 그대로", () => {
+    const off: MpsRow = { ...fg2, item: item({ code: "FG-0002", name: "센서 IC", active: false }), safety: "0" };
+    render(<MpsGrid sheet={{ ...sheet, rows: [fg1, off] }} back={back} />);
+    const head = screen.getByTestId("item-FG-0002");
+    expect(head).toHaveTextContent("FG-0002 센서 IC (EA)사용 안 함");
+    expect(head).toHaveTextContent("안전 0(사용 안 함)");
+    const on = screen.getByTestId("item-FG-0001");
+    expect(on).not.toHaveTextContent("사용 안 함");
+    expect(on).toHaveTextContent("안전 2,000");
+  });
+
   it("주 머리는 「47주」 + 「11/16~11/22」, 이번 주 머리에 「이번 주」", () => {
     render(<MpsGrid sheet={sheet} back={back} />);
     const head = screen.getByRole("columnheader", { name: /47주/ });

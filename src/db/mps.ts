@@ -134,7 +134,9 @@ async function computeMps(tx: Db, thisWeek: string): Promise<Computed[]> {
     m.set(f.week, milliOf(f.qty));
     fixedOf.set(f.itemId, m);
   }
-  return fg.map((item) => {
+  return fg.map((full) => {
+    // 「사용 안 함」 완제품은 단계적 폐기 — 안전재고 0 으로 보고 남은 확정 수요만 채운다(저자 판정 2026-11-23, ADR 0036).
+    const item = full.active ? full : { ...full, safety: ZERO };
     const start = available.get(item.id) ?? ZERO;
     return {
       item,
