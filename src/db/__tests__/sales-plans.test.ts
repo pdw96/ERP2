@@ -22,7 +22,7 @@ import {
   type SalesPlanSheet,
   unconfirmSalesPlan,
 } from "@/db/sales-plans";
-import { items, partners, salesPlanChanges, salesPlans } from "@/db/schema";
+import { items, mpsFixed, partners, salesPlanChanges, salesPlans } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { cellKey, type SalesPlanCellInput, type SalesPlanConfirmInput } from "@/lib/sales-plan-input";
 import { CODE_KEY, ROW_ERROR } from "@/lib/sheet";
@@ -42,7 +42,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await resetToSample(db, TODAY);
-  await db.execute(sql`truncate table sales_plan_changes, sales_plans restart identity`);
+  await db.execute(sql`truncate table mps_changes, mps_fixed, sales_plan_changes, sales_plans restart identity`);
 });
 afterAll(() => handle.close());
 
@@ -715,6 +715,48 @@ describe("판매계획 — 확정 · 확정 취소", () => {
     expect(await changeCount()).toBe(0);
   });
 
+  it("MPS 가 고정한 주의 칸은 확정 취소를 막는다 — 고정 수량 0 이어도, 함께 보낸 다른 주 칸도 바뀌지 않는다", async () => {
+    const MPS_FIXED_WEEK = "MPS 가 고정한 주입니다 — MPS 에서 확정 취소한 뒤 하세요";
+    const [fg] = await db.select({ id: items.id }).from(items).where(eq(items.code, "FG-0001"));
+    await save([
+      cell("BP-0004", "FG-0001", TW, "", "3000"),
+      cell("BP-0005", "FG-0001", TW, "", "1000"),
+      cell("BP-0004", "FG-0001", W1, "", "2000"),
+    ]);
+    const all = [
+      seen("BP-0004", "FG-0001", TW, "3000"),
+      seen("BP-0005", "FG-0001", TW, "1000"),
+      seen("BP-0004", "FG-0001", W1, "2000"),
+    ];
+    expect(await confirm(all)).toEqual({ ok: true, changed: 3 });
+    await db.insert(mpsFixed).values({ itemId: fg.id, weekStart: TW, qty: 0, fixedAt: new Date() });
+    const changes = await changeCount();
+
+    expect(await unconfirm(all)).toEqual({
+      ok: false,
+      errors: {
+        [cellKey("BP-0004", "FG-0001", TW)]: MPS_FIXED_WEEK,
+        [cellKey("BP-0005", "FG-0001", TW)]: MPS_FIXED_WEEK,
+      },
+      formError: MPS_FIXED_WEEK,
+    });
+    expect(await confirmedOf("BP-0004", "FG-0001", TW)).toBe(true);
+    expect(await confirmedOf("BP-0005", "FG-0001", TW)).toBe(true);
+    expect(await confirmedOf("BP-0004", "FG-0001", W1)).toBe(true);
+    expect(await changeCount()).toBe(changes);
+
+    // 고정이 없는 주의 칸만 보내면 된다.
+    expect(await unconfirm([seen("BP-0004", "FG-0001", W1, "2000")])).toEqual({ ok: true, changed: 1 });
+  });
+
+  it("MPS 가 고정한 주여도 미확정 칸의 확정은 막지 않는다", async () => {
+    const [fg] = await db.select({ id: items.id }).from(items).where(eq(items.code, "FG-0001"));
+    await save([cell("BP-0004", "FG-0001", TW, "", "3000")]);
+    await db.insert(mpsFixed).values({ itemId: fg.id, weekStart: TW, qty: 500, fixedAt: new Date() });
+    expect(await confirm([seen("BP-0004", "FG-0001", TW, "3000")])).toEqual({ ok: true, changed: 1 });
+    expect(await confirmedOf("BP-0004", "FG-0001", TW)).toBe(true);
+  });
+
   it("확정 · 확정 취소도 고친 이력의 상한(50,000)을 넘기지 않는다", async () => {
     await save([cell("BP-0004", "FG-0001", W1, "", "3000")]);
     const [p] = await db.select({ id: partners.id }).from(partners).where(eq(partners.code, "BP-0005"));
@@ -778,6 +820,7 @@ describe("판매계획 — 단위의 도우미", () => {
 });
 
 describe("단위 — 판매계획에 든 품목은 단위 · 자릿수를 바꾸지 못한다", () => {
+  const MPS_UNIT = "MPS 에 고정한 수량이 있어 단위를 바꾸지 못합니다";
   const PLAN_UNIT = "판매계획에 든 품목이라 단위를 바꾸지 못합니다 — 계획 수량의 뜻이 바뀝니다";
   const base = {
     procurement: "MAKE",
@@ -827,6 +870,33 @@ describe("단위 — 판매계획에 든 품목은 단위 · 자릿수를 바꾸
     });
     expect((await getUnitSpec(db, "KG"))!.decimals).toBe(3);
     expect(await save([cell("BP-0004", fg, W1, "1.25", "1.2")])).toEqual({ ok: true, changed: 1 });
+    expect((await updateCode(db, "UNIT", "KG", kg("1"))).ok).toBe(true);
+    expect((await getUnitSpec(db, "KG"))!.decimals).toBe(1);
+  });
+
+  it("MPS 에 고정한 수량이 있는 품목은 판매계획 칸이 없어도 단위를 바꾸지 못하고, 고정을 풀면 바뀐다", async () => {
+    const fg = await newFg();
+    const [{ id }] = await db.select({ id: items.id }).from(items).where(eq(items.code, fg));
+    await db.insert(mpsFixed).values({ itemId: id, weekStart: W1, qty: 5, fixedAt: new Date() });
+    expect(await updateItem(db, fg, { ...base, unit: "KG" })).toMatchObject({ ok: false, errors: { unit: MPS_UNIT } });
+    const rows = (await loadItemsForSheet(db, { q: "", includeInactive: true })).rows;
+    const r = await saveItemRows(db, [{ ...rows.find((x) => x[CODE_KEY] === fg)!, unit: "KG" }]);
+    expect(r.saved).toEqual([]);
+    expect(r.rejected[0].errors.unit ?? r.rejected[0].errors[ROW_ERROR]).toBe(MPS_UNIT);
+    await db.execute(sql`truncate table mps_fixed`);
+    expect(await updateItem(db, fg, { ...base, unit: "KG" })).toEqual({ ok: true, code: fg });
+  });
+
+  it("단위 자릿수를 줄여 MPS 고정 수량 1.25 가 맞지 않으면 거절하고, 1.2 로 고치면 줄인다", async () => {
+    const fg = await newFg("KG");
+    const [{ id }] = await db.select({ id: items.id }).from(items).where(eq(items.code, fg));
+    await db.insert(mpsFixed).values({ itemId: id, weekStart: W1, qty: 1.25, fixedAt: new Date() });
+    expect(await updateCode(db, "UNIT", "KG", kg("1"))).toMatchObject({
+      ok: false,
+      errors: { decimals: "MPS 에 고정한 수량이 소수 1자리를 넘어 자릿수를 줄이지 못합니다" },
+    });
+    expect((await getUnitSpec(db, "KG"))!.decimals).toBe(3);
+    await db.execute(sql`update mps_fixed set qty = 1.2`);
     expect((await updateCode(db, "UNIT", "KG", kg("1"))).ok).toBe(true);
     expect((await getUnitSpec(db, "KG"))!.decimals).toBe(1);
   });

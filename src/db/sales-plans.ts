@@ -12,7 +12,7 @@ import {
 } from "@/lib/sales-plan-input";
 import { addWeeks, EDIT_WEEKS, isEditableWeek, isMonday, mondayOf, pageWeeks } from "@/lib/weeks";
 import { first, limitMessage, REGISTER_LOCK, STALE, touched, type Params } from "./master-shared";
-import { items, partners, salesPlanChanges, salesPlans, unitSpecs } from "./schema";
+import { items, mpsFixed, partners, salesPlanChanges, salesPlans, unitSpecs } from "./schema";
 import type { Db } from "./types";
 
 // 판매계획의 열기 · 저장 · 확정 · 확정 취소 · 고친 이력 · 품목 합계(메뉴 「판매계획 등록」 · 「판매계획 확정」). 화면(src/app/sales/plans/)과 MPS 는 이 함수만 부른다.
@@ -20,7 +20,11 @@ import type { Db } from "./types";
 // - 저장한 칸은 미확정이다. [확정]한 칸만 MPS 수요 · 품목 합계에 들고, 확정 칸은 저장으로 고치지 못한다([확정 취소]로 미확정에 되돌린 뒤 고친다).
 // - 저장은 화면이 보낸 바뀐 칸만 한 트랜잭션에서 바꾼다. 칸마다 화면을 연 때의 값(before)을 지금 값과 견줘, 하나라도 다르면 아무것도 쓰지 않는다.
 //   확정 · 확정 취소도 칸마다 화면이 본 수량 · 상태를 지금과 견줘, 하나라도 다르면 아무것도 바꾸지 않는다.
+// - 확정 취소는 MPS 가 고정(mps_fixed)한 같은 품목 · 주의 칸을 막는다 — MPS 에서 그 고정을 확정 취소한 뒤 한다. 확정은 막지 않는다.
 // - 저장 · 확정 · 확정 취소는 판매계획의 잠금(REGISTER_LOCK.salesPlans)을 쥐고 돈다 — 칸 전체 · 고친 이력의 상한을 세고 넣는 사이에 남이 끼지 못한다.
+
+/** 확정 취소가 MPS 가 고정한 주의 칸에 닿을 때 — 칸마다 · 폼 전체에 같은 글자. */
+const MPS_FIXED_WEEK = "MPS 가 고정한 주입니다 — MPS 에서 확정 취소한 뒤 하세요";
 
 /** 판매계획 칸 전체의 등록 상한 — 매일 밤 되돌림이 샘플로 되돌린다. */
 export const SALES_PLAN_CELL_LIMIT = 20000;
@@ -48,7 +52,7 @@ export async function lockSalesPlans(tx: Db): Promise<void> {
 // ── 수량의 글자 ─────────────────────────────────────────
 
 /** 천분의 일 단위의 수량을 정규 글자로 — 쉼표 없음, 끝 0 · 소수점 없음(1500 → 「1.5」, 3000000 → 「3000」). */
-function canon(qty: Milli): string {
+export function canon(qty: Milli): string {
   const frac = String(qty % THOUSAND)
     .padStart(3, "0")
     .replace(/0+$/, "");
@@ -56,7 +60,7 @@ function canon(qty: Milli): string {
 }
 
 /** DB 의 numeric 글자(「3000.000」)를 정규 글자로. 합계는 아홉 자리를 넘을 수 있어 수로 바꾸지 않고 글자로 다룬다. */
-function canonText(text: string): string {
+export function canonText(text: string): string {
   return text.includes(".") ? text.replace(/0+$/, "").replace(/\.$/, "") : text;
 }
 
@@ -602,7 +606,26 @@ async function setConfirmed(
       return formFail(
         `다른 사람이 먼저 바꿨습니다 — 화면을 새로 열어 다시 ${confirming ? "확정하" : "확정 취소하"}세요`,
       );
-    // 「MPS」 착공: 확정 취소는 MPS 가 확정한 주의 칸을 막는다 — 그 검사가 여기에 든다.
+    // 확정 취소는 MPS 가 고정한 (품목, 주)의 칸을 막는다 — 고정 수량 0 · 그 주 수요와 상관없다. 이미 쥔 잠금 안에서 읽고, 하나라도 걸리면 아무것도 바꾸지 않는다.
+    if (!confirming) {
+      const fixed = await tx
+        .select({ itemId: mpsFixed.itemId, week: mpsFixed.weekStart })
+        .from(mpsFixed)
+        .where(
+          sql`(${mpsFixed.itemId}, ${mpsFixed.weekStart}) in (${sql.join(
+            targets.map((t) => sql`(${t.item.id}::integer, ${t.week}::date)`),
+            sql`, `,
+          )})`,
+        );
+      const fixedSet = new Set(fixed.map((f) => `${f.itemId}|${f.week}`));
+      const blocked = targets.filter((t) => fixedSet.has(`${t.item.id}|${t.week}`));
+      if (blocked.length)
+        return {
+          ok: false,
+          errors: Object.fromEntries(blocked.map((t) => [t.key, MPS_FIXED_WEEK])),
+          formError: MPS_FIXED_WEEK,
+        };
+    }
 
     const [{ changesNow }] = await tx.select({ changesNow: count() }).from(salesPlanChanges);
     if (changesNow + targets.length > SALES_PLAN_CHANGE_LIMIT)

@@ -844,3 +844,13 @@ export const SAMPLE_SALES_PLANS: readonly SampleSalesPlan[] = [
     ]),
   },
 ];
+
+/**
+ * 샘플 MPS 고정 칸(메뉴 「MPS」 — 완제품 × 주). offset 은 이번 주 월요일에서 센 주 수다. 샘플 재고 · 판매계획이 오늘 · 이번 주에서 센 상대값이라
+ * 그날의 안이 늘 같다 — 고정 없이 연 이번 주 · 다음 주의 안(가용 2,500 · 확정 수요 7,000 · 9,000 · 안전재고 2,000)을 상수로 적는다(시험이 견준다).
+ * 되돌림이 표에 바로 넣고, 마이그레이션 0027 이 같은 값을 데이터가 있는 DB 에 넣는다(시험이 견준다). 이력은 넣지 않는다.
+ */
+export const SAMPLE_MPS_FIXED: readonly { item: string; offset: number; qty: string }[] = [
+  { item: "FG-0001", offset: 0, qty: "7000" },
+  { item: "FG-0001", offset: 1, qty: "9000" },
+];

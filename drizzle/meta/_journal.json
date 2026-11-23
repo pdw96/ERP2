@@ -183,6 +183,20 @@
       "when": 1795162632120,
       "tag": "0025_sales_plan_confirm",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1795172139158,
+      "tag": "0026_mps",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1795172139881,
+      "tag": "0027_mps_values",
+      "breakpoints": true
     }
   ]
 }

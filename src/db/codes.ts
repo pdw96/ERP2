@@ -15,6 +15,7 @@ import {
 } from "./master-shared";
 import { codeGroups, codes, unitSpecs } from "./schema";
 import { bomQuantitiesFit, lockBom } from "./boms";
+import { mpsQuantitiesFit } from "./mps";
 import { lockSalesPlans, salesPlanQuantitiesFit } from "./sales-plans";
 import { lockStock, unitQuantitiesFit } from "./stock";
 import type { Db } from "./types";
@@ -234,6 +235,9 @@ export async function updateCode(
         await lockSalesPlans(tx);
         if (!(await salesPlanQuantitiesFit(tx, current.code, decimals.value.decimals)))
           throw new DecimalsMisfit(decimals.value.decimals);
+        // MPS 가 고정한 수량도 그 단위의 자릿수를 지킨다 — 같은 판매계획 잠금 안에서 본다.
+        if (!(await mpsQuantitiesFit(tx, current.code, decimals.value.decimals)))
+          throw new DecimalsMisfit(decimals.value.decimals, true);
       }
       const done = await tx
         .update(codes)
@@ -253,6 +257,12 @@ export async function updateCode(
       return { ok: true, code };
     });
   } catch (error) {
+    if (error instanceof DecimalsMisfit && error.onlyMps)
+      return {
+        ok: false,
+        errors: { decimals: `MPS 에 고정한 수량이 소수 ${error.decimals}자리를 넘어 자릿수를 줄이지 못합니다` },
+        values,
+      };
     if (error instanceof DecimalsMisfit)
       return {
         ok: false,
@@ -265,9 +275,12 @@ export async function updateCode(
   }
 }
 
-/** 자릿수를 줄이면 남은 수불 수량이 맞지 않는다 — 던져 고침을 되돌린다. */
+/** 자릿수를 줄이면 남은 수불 수량이 맞지 않는다 — 던져 고침을 되돌린다. onlyMps 면 앞의 검사는 다 지나고 MPS 의 고정 수량만 걸린 것. */
 class DecimalsMisfit extends Error {
-  constructor(readonly decimals: number) {
+  constructor(
+    readonly decimals: number,
+    readonly onlyMps = false,
+  ) {
     super("단위 자릿수를 줄이지 못한다");
   }
 }

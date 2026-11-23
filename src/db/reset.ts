@@ -15,6 +15,7 @@ import {
   SAMPLE_PARTNERS,
   SAMPLE_PROCESSES,
   SAMPLE_ROUTINGS,
+  SAMPLE_MPS_FIXED,
   SAMPLE_SALES_PLANS,
   SAMPLE_SALES_PLAN_CONFIRMED_THROUGH,
   SAMPLE_UNIT_SPECS,
@@ -30,6 +31,8 @@ import {
   defectTypeProcesses,
   defectTypes,
   items,
+  mpsChanges,
+  mpsFixed,
   numberRules,
   numberRuleSeqs,
   partners,
@@ -58,6 +61,8 @@ import type { Db } from "./types";
 
 /** 되돌림이 비우고 다시 채우는 테이블 — 테이블을 더하는 조각은 여기에도 더한다(시험이 스키마와 견준다). */
 export const RESET_TABLES = [
+  "mps_changes",
+  "mps_fixed",
   "sales_plan_changes",
   "sales_plans",
   "routing_changes",
@@ -147,6 +152,7 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
     await insertSampleBoms(tx, today);
     await insertSampleRoutings(tx);
     await insertSampleSalesPlans(tx, today);
+    await insertSampleMps(tx, today);
     const n = async (
       t:
         | typeof stockMoves
@@ -164,9 +170,13 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
         | typeof routingMaterials
         | typeof routingChanges
         | typeof salesPlans
-        | typeof salesPlanChanges,
+        | typeof salesPlanChanges
+        | typeof mpsFixed
+        | typeof mpsChanges,
     ) => (await tx.select({ n: count() }).from(t))[0].n;
     return {
+      mps_changes: await n(mpsChanges),
+      mps_fixed: await n(mpsFixed),
       sales_plan_changes: await n(salesPlanChanges),
       sales_plans: await n(salesPlans),
       routing_changes: await n(routingChanges),
@@ -335,6 +345,26 @@ async function insertSampleSalesPlans(tx: Db, today: string) {
         qty: Number(w.qty),
         confirmedAt: w.offset <= SAMPLE_SALES_PLAN_CONFIRMED_THROUGH ? confirmedAt : null,
       }));
+    }),
+  );
+}
+
+/**
+ * 샘플 MPS 고정 칸을 표에 바로 넣는다(판매계획 뒤). 주는 today(한국 시각의 오늘)가 든 주의 월요일에서 센다.
+ * 품목이 샘플에 없으면 던져 되돌림 전체를 되돌린다. 잠금은 이미 쥔 lockSalesPlans 로 충분하다(MPS 쓰기도 그 잠금을 쓴다).
+ */
+async function insertSampleMps(tx: Db, today: string) {
+  const thisWeek = mondayOf(today);
+  const fixedAt = new Date();
+  const goods = await tx
+    .select({ code: items.code, id: items.id })
+    .from(items)
+    .where(inArray(items.code, [...new Set(SAMPLE_MPS_FIXED.map((f) => f.item))]));
+  await tx.insert(mpsFixed).values(
+    SAMPLE_MPS_FIXED.map((f) => {
+      const itemId = goods.find((g) => g.code === f.item)?.id;
+      if (itemId === undefined) throw new Error(`샘플 MPS 고정의 품목이 없다: ${f.item}`);
+      return { itemId, weekStart: addWeeks(thisWeek, f.offset), qty: Number(f.qty), fixedAt };
     }),
   );
 }

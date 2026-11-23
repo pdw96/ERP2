@@ -1,18 +1,20 @@
 // @vitest-environment node
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { openMps } from "@/db/mps";
 import { resetToSample } from "@/db/reset";
 import {
   SAMPLE_CODE_GROUPS,
   SAMPLE_CODES,
   SAMPLE_ITEMS,
+  SAMPLE_MPS_FIXED,
   SAMPLE_PARTNERS,
   SAMPLE_SALES_PLANS,
   SAMPLE_SALES_PLAN_CONFIRMED_THROUGH,
   SAMPLE_UNIT_SPECS,
   SAMPLE_WAREHOUSES,
 } from "@/db/sample";
-import { codeGroups, codes, salesPlanChanges, salesPlans } from "@/db/schema";
+import { codeGroups, codes, mpsChanges, mpsFixed, salesPlanChanges, salesPlans } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { ITEM_TYPE_DEFAULTS, SYSTEM_CODE_GROUPS, type ItemType } from "@/lib/master-codes";
 import { addWeeks, mondayOf } from "@/lib/weeks";
@@ -284,6 +286,64 @@ describe("샘플 판매계획 — 메뉴 「판매계획 등록」 · 「판매�
       expect(i, p.item).toBeDefined();
       expect(i!.itemType).toBe("FG");
       expect(i!.active ?? true).toBe(true);
+    }
+  });
+});
+
+describe("샘플 MPS 고정 칸(메뉴 「MPS」)", () => {
+  const TODAY = "2026-11-19"; // 목요일 — 이번 주 월요일은 2026-11-16
+  let handle: Awaited<ReturnType<typeof migratedDb>>;
+  let db: Db;
+  beforeAll(async () => {
+    handle = await migratedDb();
+    db = handle.db;
+    await resetToSample(db, TODAY);
+  });
+  afterAll(() => handle.close());
+
+  it("품목은 「사용」 완제품이고, offset 은 이번 주 · 다음 주(0 · 1)다", () => {
+    expect(SAMPLE_MPS_FIXED.map((f) => [f.item, f.offset])).toEqual([
+      ["FG-0001", 0],
+      ["FG-0001", 1],
+    ]);
+    for (const f of SAMPLE_MPS_FIXED) {
+      const i = SAMPLE_ITEMS.find((x) => x.code === f.item);
+      expect(i, f.item).toBeDefined();
+      expect(i!.itemType).toBe("FG");
+      expect(i!.active ?? true).toBe(true);
+    }
+  });
+
+  it("되돌림이 넣은 칸의 주 · 수량이 샘플과 같고, 이력은 비어 있다", async () => {
+    const r = await handle.client.query<{ item: string; week: string; qty: string }>(
+      `select i.code as item, to_char(s.week_start, 'YYYY-MM-DD') as week, s.qty::text as qty
+         from mps_fixed s join items i on i.id = s.item_id order by i.code, s.week_start`,
+    );
+    expect(r.rows).toEqual(
+      SAMPLE_MPS_FIXED.map((f) => ({
+        item: f.item,
+        week: addWeeks(mondayOf(TODAY), f.offset),
+        qty: Number(f.qty).toFixed(3),
+      })),
+    );
+    expect(await db.select().from(mpsFixed)).toHaveLength(SAMPLE_MPS_FIXED.length);
+    expect(await db.select().from(mpsChanges)).toHaveLength(0);
+  });
+
+  it("샘플 값은 그날의 안이다 — 열면 그 주가 고정으로 보이고, 고정을 지우고 열면 그 주의 안이 샘플 값과 같다(0 이 아니다)", async () => {
+    const fixedRow = (await openMps(db, { from: "" }, TODAY)).rows.find((r) => r.item.code === "FG-0001")!;
+    for (const f of SAMPLE_MPS_FIXED)
+      expect(fixedRow.cells[addWeeks(mondayOf(TODAY), f.offset)]).toMatchObject({ mps: f.qty, fixed: true });
+
+    try {
+      await db.execute(sql`truncate table mps_fixed`);
+      const row = (await openMps(db, { from: "" }, TODAY)).rows.find((r) => r.item.code === "FG-0001")!;
+      for (const f of SAMPLE_MPS_FIXED) {
+        expect(Number(f.qty)).toBeGreaterThan(0);
+        expect(row.cells[addWeeks(mondayOf(TODAY), f.offset)]).toMatchObject({ mps: f.qty, fixed: false });
+      }
+    } finally {
+      await resetToSample(db, TODAY); // 다음 시험을 위해 샘플 고정 칸을 되돌린다
     }
   });
 });
