@@ -22,6 +22,12 @@ describe("parseMpsQty", () => {
     expect(parseMpsQty("-1", 0).ok).toBe(false);
     expect(parseMpsQty("abc", 0).ok).toBe(false);
   });
+  it("음수는 0 이상으로 적으라고 안내 — MPS 는 0 이 유효한 고정 수량", () => {
+    const want = { ok: false, message: "수량은 0 이상으로 적어 주세요." };
+    expect(parseMpsQty("-5", 0)).toEqual(want);
+    expect(parseMpsQty("-0.5", 1)).toEqual(want);
+    expect(parseMpsQty("-1000000000", 0)).toEqual(want);
+  });
   it("상한", () => {
     expect(parseMpsQty("99999999", 0).ok).toBe(true);
     expect(parseMpsQty("100000000", 0)).toEqual({ ok: false, message: "수량은 99,999,999 까지 적을 수 있습니다." });

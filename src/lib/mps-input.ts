@@ -17,6 +17,8 @@ export const mpsCellKey = (item: string, week: string): string => `${item}|${wee
 
 const ZERO_QTY = BigInt(0);
 
+const SALES_PLAN_NEGATIVE = "수량은 0 보다 커야 합니다.";
+
 /**
  * 수량 글자를 읽는다. 빈 칸은 「고정 풀기」(qty null), 0 꼴(「0」 · 「0.00」 · 「0,000」 — 단위 자릿수와 상관없이)은 고정 수량 0.
  * 그 밖은 판매계획과 같은 규칙 — 99,999,999 이하, 품목 단위의 소수 자릿수(decimals) 이하, 쉼표 허용, 음수 거절.
@@ -29,5 +31,8 @@ export function parseMpsQty(
   const parsed = parseSalesPlanQty(text, decimals);
   // 판매계획은 0 을 「그 칸을 지움」(null)으로 읽는다 — 빈 칸이 아니니 MPS 에서는 고정 수량 0 이다.
   if (parsed.ok && parsed.qty === null) return { ok: true, qty: ZERO_QTY };
+  // 판매계획의 「0 보다 커야 합니다」는 MPS 에 맞지 않는다 — 0 도 유효한 고정 수량이다.
+  if (!parsed.ok && parsed.message === SALES_PLAN_NEGATIVE)
+    return { ok: false, message: "수량은 0 이상으로 적어 주세요." };
   return parsed;
 }

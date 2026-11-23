@@ -6,6 +6,11 @@ import { lotSize, planMps, type MpsCalcInput } from "@/lib/mps-calc";
 const m = (n: number) => BigInt(n) * BigInt(1000);
 
 describe("lotSize", () => {
+  it("생산 배수가 단위 자릿수보다 잘면 둘의 공배수로 올린다 — EA 배수 1.5 는 3 의 배수", () => {
+    expect(lotSize(m(1), m(0), BigInt(1500), 0)).toBe(m(3));
+    expect(lotSize(BigInt(3200), m(0), BigInt(1500), 0)).toBe(m(6));
+    expect(lotSize(m(4), m(0), BigInt(1500), 0)).toBe(m(6));
+  });
   it("최소 생산량까지 올린다", () => {
     expect(lotSize(m(250), m(1000), m(1000), 0)).toBe(m(1000));
   });

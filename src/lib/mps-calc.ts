@@ -34,12 +34,22 @@ function ceilTo(q: bigint, unit: bigint): bigint {
   return ((q + unit - BigInt(1)) / unit) * unit;
 }
 
-/** 모자란 수량 → 안: 최소량까지 올리고, 배수(>0)의 배수로 올리고, 소수 decimals 자리에서 올림. need <= 0 이면 0. */
+function gcd(a: bigint, b: bigint): bigint {
+  while (b > ZERO) [a, b] = [b, a % b];
+  return a;
+}
+
+/**
+ * 모자란 수량 → 안: 최소량까지 올린 뒤, 생산 배수(>0)와 단위 소수 자릿수의 단위(10^(3-decimals) 밀리)를
+ * 둘 다 맞추는 최소 공배수 L 의 배수로 한 번에 올린다 — 두 번 나눠 올리면 자릿수 올림이 배수를 깨뜨린다
+ * (EA 에 배수 1.5 면 2 가 아니라 3). need <= 0 이면 0.
+ */
 export function lotSize(need: Milli, minLot: Milli, multiple: Milli, decimals: number): Milli {
   if (need <= ZERO) return ZERO;
-  let q = need > minLot ? need : minLot;
-  if (multiple > ZERO) q = ceilTo(q, multiple);
-  return ceilTo(q, BigInt(10) ** BigInt(3 - decimals));
+  const q = need > minLot ? need : minLot;
+  const step = BigInt(10) ** BigInt(3 - decimals);
+  const lot = multiple > ZERO ? (multiple / gcd(multiple, step)) * step : step;
+  return ceilTo(q, lot);
 }
 
 /** 주마다 차례로 예상재고를 잇는다. 음수 예상재고도 그대로 다음 주로 넘긴다. */
