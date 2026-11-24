@@ -12,10 +12,14 @@ import {
   mrpSettings,
   openMrpGrid,
   openMrpOrders,
+  openMrpPeg,
   overNumericLimit,
   overOrderLimit,
   parseMrpGridFrom,
   parseMrpOrderQuery,
+  parseMrpPegQuery,
+  type MrpPegDown,
+  type MrpPegUp,
   runMrp,
   saveMrpSettings,
 } from "@/db/mrp";
@@ -491,7 +495,7 @@ function rowsOf(result: unknown): { n: number }[] {
 }
 
 describe("[MRP 실행] 페깅 저장", () => {
-  const rowsOf = async <T>(q: SQL) => ((await db.execute(q)) as unknown as { rows: T[] }).rows;
+  const sqlRows = async <T>(q: SQL) => ((await db.execute(q)) as unknown as { rows: T[] }).rows;
 
   it("실행은 페깅을 저장하고 has_pegs 를 켠다", async () => {
     await ran();
@@ -502,8 +506,8 @@ describe("[MRP 실행] 페깅 저장", () => {
   });
 
   it("저장한 페깅의 합 — 계획오더마다 공급 줄 합 = 수량, 품목 × 주마다 ORDER 줄 합 = mrp_gross", async () => {
-    // 계획오더마다: 그 계획오더를 공급으로 하는 줄의 합 = 수량 + (남는 수량은 SURPLUS 줄이라 이미 들어 있다).
-    const bySupply = await rowsOf<{ number: string; qty: string; pegged: string }>(sql`
+    // 계획오더마다: 그 계획오더를 공급으로 하는 줄의 합 = 수량 (남는 수량은 SURPLUS 줄로 들어 있다).
+    const bySupply = await sqlRows<{ number: string; qty: string; pegged: string }>(sql`
       select o.number, o.qty::text as qty, coalesce(sum(p.qty), 0)::text as pegged
       from mrp_planned_orders o
       left join mrp_pegs p on p.supply_order_id = o.id
@@ -514,13 +518,12 @@ describe("[MRP 실행] 페깅 저장", () => {
     for (const r of bySupply) expect(Number(r.pegged)).toBeCloseTo(Number(r.qty), 3);
 
     // 품목 × 주마다: ORDER 줄(필요일이 속한 주)의 합 = 저장된 총소요.
-    const byWeek = await rowsOf<{ item_id: number; week: string; gross: string; pegged: string }>(sql`
+    const byWeek = await sqlRows<{ item_id: number; week: string; gross: string; pegged: string }>(sql`
       select g.item_id, g.week_start::text as week, g.qty::text as gross,
         coalesce((select sum(p.qty) from mrp_pegs p
           where p.run_id = g.run_id and p.item_id = g.item_id and p.kind = 'ORDER'
             and date_trunc('week', p.need_date)::date = g.week_start), 0)::text as pegged
       from mrp_gross g
-      where g.item_id in (select item_id from mrp_pegs)
       order by g.item_id, g.week_start`);
     expect(byWeek.length).toBeGreaterThan(0);
     for (const r of byWeek) expect(Number(r.pegged)).toBeCloseTo(Number(r.gross), 3);
@@ -530,7 +533,7 @@ describe("[MRP 실행] 페깅 저장", () => {
     await ran();
     const supply = (await mpsSupply(db, addWeeks(W0, 51), TODAY)).filter((s) => s.item === "FG-0001");
     expect(supply.length).toBeGreaterThan(0);
-    const rows = await rowsOf<{ mps_week: string; mps_fixed: boolean; qty: string }>(sql`
+    const rows = await sqlRows<{ mps_week: string; mps_fixed: boolean; qty: string }>(sql`
       select o.mps_week::text as mps_week, o.mps_fixed, o.qty::text as qty
       from mrp_planned_orders o join items i on i.id = o.item_id
       where i.code = 'FG-0001' order by o.due_date`);
@@ -553,5 +556,124 @@ describe("[MRP 실행] 페깅 저장", () => {
     const latest = all[all.length - 1].id;
     const ids = await db.selectDistinct({ runId: mrpPegs.runId }).from(mrpPegs);
     expect(ids).toEqual([{ runId: latest }]);
+  });
+});
+
+describe("parseMrpPegQuery", () => {
+  it("값이 없으면 비어 있고 틀린 꼴이 아니다", () => {
+    expect(parseMrpPegQuery({})).toEqual({ item: null, order: null, badInput: false });
+  });
+
+  it("맞는 꼴은 받는다", () => {
+    expect(parseMrpPegQuery({ order: "PL-20261124-001" })).toEqual({
+      item: null,
+      order: "PL-20261124-001",
+      badInput: false,
+    });
+    expect(parseMrpPegQuery({ item: "FG-0001" })).toEqual({ item: "FG-0001", order: null, badInput: false });
+  });
+
+  it("틀린 꼴은 그 칸을 비우고 badInput", () => {
+    expect(parseMrpPegQuery({ order: "../x" })).toEqual({ item: null, order: null, badInput: true });
+    expect(parseMrpPegQuery({ order: "pl-20261124-001" })).toEqual({ item: null, order: null, badInput: true });
+    expect(parseMrpPegQuery({ item: "fg-0001" })).toEqual({ item: null, order: null, badInput: true });
+    expect(parseMrpPegQuery({ item: "A".repeat(31) })).toEqual({ item: null, order: null, badInput: true });
+  });
+
+  it("배열 값은 첫 값", () => {
+    expect(parseMrpPegQuery({ order: ["PL-20261124-002", "x"] }).order).toBe("PL-20261124-002");
+  });
+});
+
+describe("openMrpPeg", () => {
+  const BASE = { item: null, order: null, badInput: false };
+  const sumOf = (xs: string[]) => canonOf(xs.reduce((a, x) => a + milliOf(x), BigInt(0)));
+  const canonOf = (q: bigint) => String(Number(q) / 1000);
+  const deepest = (up: MrpPegUp[]): MrpPegUp[] => {
+    for (const u of up) if (u.kind === "ORDER" && u.up.length > 0) return deepest(u.up);
+    return up;
+  };
+  const allDowns = (downs: MrpPegDown[]): MrpPegDown[] =>
+    downs.flatMap((d) => [d, ...d.covers.flatMap((c) => (c.stock ? [] : allDowns(c.down)))]);
+
+  it("처음 열면 첫 완제품 계획오더를 고른다", async () => {
+    const v = await openMrpPeg(db, BASE);
+    expect(v.hasPegs).toBe(true);
+    expect(v.selected!.item.itemType).toBe("FG");
+    expect(v.selected!.mps!.week >= W0).toBe(true);
+    expect(v.item).toBe(v.selected!.item.code);
+    expect(v.up).toEqual([]);
+    expect(v.orders.length).toBeGreaterThan(0);
+    expect(v.orders.map((o) => o.number)).toEqual(v.orders.map((o) => o.number).sort());
+    expect(v.items.map((i) => i.code)).toEqual(v.items.map((i) => i.code).sort());
+    expect(v.notice).toBeNull();
+    expect(v.truncated).toBe(false);
+  });
+
+  it("완제품을 고르면 아래로 자품목마다 소요 = 재고 + 계획오더", async () => {
+    const v = await openMrpPeg(db, BASE);
+    expect(v.down.length).toBeGreaterThan(0);
+    for (const d of allDowns(v.down)) expect(d.need).toBe(sumOf(d.covers.map((c) => c.qty)));
+    expect(v.down.map((d) => d.item.code)).toEqual(v.down.map((d) => d.item.code).sort());
+  });
+
+  it("원자재 계획오더를 고르면 위로 윗 계획오더를 거쳐 MPS 칸까지 간다", async () => {
+    const [rm] = (await openMrpOrders(db, { ...BASE_QUERY, itemType: "RM" })).rows;
+    const v = await openMrpPeg(db, { ...BASE, order: rm.number });
+    expect(v.selected!.number).toBe(rm.number);
+    expect(v.selected!.mps).toBeNull();
+    expect(v.up.length).toBeGreaterThan(0);
+    const top = deepest(v.up).filter((u) => u.kind === "ORDER");
+    expect(top.length).toBeGreaterThan(0);
+    for (const u of top) {
+      if (u.kind === "ORDER") {
+        expect(u.parent.item.itemType).toBe("FG");
+        expect(u.parent.mps).not.toBeNull();
+      }
+    }
+  });
+
+  it("지난 실행의 번호는 stale 안내", async () => {
+    const number = (await openMrpPeg(db, BASE)).selected!.number;
+    await ran();
+    const v = await openMrpPeg(db, { ...BASE, order: number });
+    expect(v.selected).toBeNull();
+    expect(v.notice).toEqual({ kind: "stale", order: number });
+    expect(v.up).toEqual([]);
+    expect(v.down).toEqual([]);
+  });
+
+  it("모르는 품목 · 틀린 꼴은 notFound", async () => {
+    const a = await openMrpPeg(db, { ...BASE, item: "ZZ-NONE" });
+    expect(a.notice).toEqual({ kind: "notFound" });
+    expect(a.selected).toBeNull();
+    const b = await openMrpPeg(db, { item: null, order: null, badInput: true });
+    expect(b.notice).toEqual({ kind: "notFound" });
+    expect(b.selected).toBeNull();
+  });
+
+  it("품목만 고르면 그 품목의 첫 계획오더", async () => {
+    const first = (await openMrpPeg(db, BASE)).items.find((i) => i.code !== "FG-0001")!;
+    const v = await openMrpPeg(db, { ...BASE, item: first.code });
+    expect(v.selected!.item.code).toBe(first.code);
+    expect(v.selected!.number).toBe(v.orders[0].number);
+  });
+
+  it("페깅 없는 실행이면 hasPegs false 이고 나무가 비어 있다", async () => {
+    await db.execute(sql`update mrp_runs set has_pegs = false`);
+    const v = await openMrpPeg(db, BASE);
+    expect(v.hasPegs).toBe(false);
+    expect(v.selected).not.toBeNull();
+    expect(v.up).toEqual([]);
+    expect(v.down).toEqual([]);
+  });
+
+  it("실행이 없으면 run null", async () => {
+    await db.execute(sql`delete from mrp_runs`);
+    const v = await openMrpPeg(db, BASE);
+    expect(v.run).toBeNull();
+    expect(v.selected).toBeNull();
+    expect(v.items).toEqual([]);
+    expect(v.orders).toEqual([]);
   });
 });

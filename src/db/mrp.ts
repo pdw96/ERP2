@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, max, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, max, sql, type SQL } from "drizzle-orm";
 import { THOUSAND, type Milli } from "@/lib/move-input";
 import { planMrp, type MrpItem } from "@/lib/mrp-calc";
 import { ITEM_TYPES } from "@/lib/master-codes";
@@ -202,8 +202,9 @@ async function insertInChunks<T>(rows: T[], insert: (part: T[]) => Promise<unkno
 
 /**
  * [MRP 실행] — 부르는 쪽이 트랜잭션(REPEATABLE READ)을 열고 lockMrp 를 쥔 뒤 부른다. today 는 실행한 날(한국 시각)이고 번호 · 늦음이 그날에 기댄다.
- * 실행 기록 상한 → 읽기 · 계산 → 계획오더 상한 차례로 보고, 거절이면 아무것도 쓰지 않는다. 그 밖에는 지난 실행들의 계획오더 · 품목 머리 · 총소요를
- * 지우고, 실행 한 줄 → 계획오더(planMrp 의 차례대로, 그날 실행들의 seq_end 최댓값 + 1 부터 번호) → 품목 머리 → 총소요를 넣는다.
+ * 실행 기록 상한 → 읽기 · 계산 → 계획오더 상한 → 페깅 줄 상한(MRP_PEG_LIMIT) · 수량 끝 차례로 보고, 거절이면 아무것도 쓰지 않는다. 그 밖에는 지난
+ * 실행들의 페깅 · 계획오더 · 품목 머리 · 총소요를 지우고(페깅을 먼저 — 계획오더를 가리킨다), 실행 한 줄 → 계획오더(planMrp 의 차례대로, 그날
+ * 실행들의 seq_end 최댓값 + 1 부터 번호) → 페깅(계획오더 id 가 있어야 한다) → 품목 머리 → 총소요를 넣는다.
  * 계산이 던지면(BOM 순환 · 없는 품목) 잡지 않는다 — 트랜잭션이 되돌아간다.
  */
 export async function runMrpIn(tx: Db, now: Date, today: string = koreaToday(now)): Promise<MrpRunResult> {
@@ -237,6 +238,7 @@ export async function runMrpIn(tx: Db, now: Date, today: string = koreaToday(now
   // 넣을 수량이 numeric(15,3) 의 끝을 넘으면 쓰기 전에 거절한다 — 넘는 채로 넣으면 22003 오류가 나 「잠시 뒤 다시」로 보인다.
   const tooLarge =
     plan.orders.some((o) => overNumericLimit(o.qty)) ||
+    plan.pegs.some((p) => overNumericLimit(p.qty)) ||
     plan.items.some(
       (p) =>
         overNumericLimit(p.available) ||
@@ -633,5 +635,363 @@ export async function openMrpGrid(
       };
     });
     return { run: infoOf(run), runWeek, weeks, rows };
+  }, ro);
+}
+
+// ── 페깅 ──
+
+/** 한 번에 그리는 계획오더 마디(MrpPegOrder)의 상한 — 닿으면 더 펼치지 않는다. */
+export const MRP_PEG_NODE_LIMIT = 500;
+
+export type MrpPegQuery = { item: string | null; order: string | null; badInput: boolean };
+
+const PEG_ITEM = /^[A-Z0-9][A-Z0-9-]{0,29}$/;
+const PEG_ORDER = /^PL-[0-9]{8}-[0-9]{3,6}$/;
+
+/** 주소의 값 — 품목코드 · 계획오더 번호의 꼴이 맞을 때만 받는다. 값이 있는데 꼴이 틀리면 그 칸은 비우고 badInput. */
+export function parseMrpPegQuery(params: Params): MrpPegQuery {
+  const item = first(params.item) || undefined;
+  const order = first(params.order) || undefined;
+  const itemOk = item !== undefined && PEG_ITEM.test(item);
+  const orderOk = order !== undefined && PEG_ORDER.test(order);
+  return {
+    item: itemOk ? item : null,
+    order: orderOk ? order : null,
+    badInput: (item !== undefined && !itemOk) || (order !== undefined && !orderOk),
+  };
+}
+
+export type MrpPegOrder = {
+  number: string;
+  kind: "MAKE" | "BUY";
+  item: MrpItemInfo;
+  qty: string;
+  unit: string;
+  startDate: string;
+  dueDate: string;
+  lateDays: number;
+  noBom: boolean;
+  /** 완제품 계획오더만 — 덮는 MPS 칸(MPS 수량 = 계획오더 수량). */
+  mps: { week: string; fixed: boolean } | null;
+};
+
+export type MrpPegUp =
+  | { kind: "ORDER"; qty: string; needDate: string; parent: MrpPegOrder; up: MrpPegUp[] }
+  | { kind: "SAFETY" | "SHORT" | "SURPLUS"; qty: string };
+
+export type MrpPegCover =
+  { stock: true; qty: string } | { stock: false; qty: string; order: MrpPegOrder; down: MrpPegDown[] };
+
+export type MrpPegDown = { item: MrpItemInfo; unit: string; need: string; covers: MrpPegCover[] };
+
+export type MrpPegView = {
+  run: MrpRunInfo | null;
+  hasPegs: boolean;
+  /** 이 실행에 계획오더가 있는 품목 — 코드 차례. */
+  items: { code: string; name: string }[];
+  /** 고른 품목. */
+  item: string | null;
+  /** 고른 품목의 계획오더 — 번호 차례. */
+  orders: { number: string; qty: string; unit: string; dueDate: string }[];
+  notice: { kind: "stale"; order: string } | { kind: "notFound" } | null;
+  selected: MrpPegOrder | null;
+  up: MrpPegUp[];
+  down: MrpPegDown[];
+  truncated: boolean;
+};
+
+type PegNode = { id: number; order: MrpPegOrder };
+
+/** 계획오더 마디들 — 한 쿼리. 「사용 안 함」은 그 실행의 품목 줄에서 읽는다(목록과 같게). */
+async function pegNodes(tx: Db, runId: number, ids: number[]): Promise<Map<number, PegNode>> {
+  const out = new Map<number, PegNode>();
+  if (ids.length === 0) return out;
+  const rows = await tx
+    .select({
+      id: mrpPlannedOrders.id,
+      number: mrpPlannedOrders.number,
+      kind: sql<"MAKE" | "BUY">`${mrpPlannedOrders.kind}`,
+      code: items.code,
+      name: items.name,
+      spec: items.spec,
+      itemType: items.itemType,
+      active: mrpRunItems.active,
+      qty: sql<string>`${mrpPlannedOrders.qty}::text`,
+      unit: mrpPlannedOrders.unit,
+      startDate: mrpPlannedOrders.startDate,
+      dueDate: mrpPlannedOrders.dueDate,
+      lateDays: mrpPlannedOrders.lateDays,
+      noBom: mrpPlannedOrders.noBom,
+      mpsWeek: mrpPlannedOrders.mpsWeek,
+      mpsFixed: mrpPlannedOrders.mpsFixed,
+    })
+    .from(mrpPlannedOrders)
+    .innerJoin(items, eq(items.id, mrpPlannedOrders.itemId))
+    .innerJoin(
+      mrpRunItems,
+      and(eq(mrpRunItems.runId, mrpPlannedOrders.runId), eq(mrpRunItems.itemId, mrpPlannedOrders.itemId)),
+    )
+    .where(and(eq(mrpPlannedOrders.runId, runId), inArray(mrpPlannedOrders.id, ids)));
+  for (const r of rows) {
+    out.set(r.id, {
+      id: r.id,
+      order: {
+        number: r.number,
+        kind: r.kind,
+        item: { code: r.code, name: r.name, spec: r.spec, itemType: r.itemType, active: r.active },
+        qty: canonText(r.qty),
+        unit: r.unit,
+        startDate: r.startDate,
+        dueDate: r.dueDate,
+        lateDays: r.lateDays,
+        noBom: r.noBom,
+        mps: r.mpsWeek ? { week: r.mpsWeek, fixed: r.mpsFixed === true } : null,
+      },
+    });
+  }
+  return out;
+}
+
+/** 마디 예산 — 그린 수가 상한에 닿으면 더 그리지 않고 truncated. */
+function pegBudget() {
+  const b = { used: 0, truncated: false };
+  return {
+    state: b,
+    take(): boolean {
+      if (b.used >= MRP_PEG_NODE_LIMIT) {
+        b.truncated = true;
+        return false;
+      }
+      b.used += 1;
+      return true;
+    },
+  };
+}
+
+/** 위로 — supply_order_id 가 고른 계획오더인 줄을 단계마다 한 쿼리로 읽고, ORDER 줄의 윗 계획오더에서 되풀이한다. */
+async function pegUp(tx: Db, runId: number, startId: number, take: () => boolean): Promise<MrpPegUp[]> {
+  const root: MrpPegUp[] = [];
+  let frontier: { id: number; target: MrpPegUp[] }[] = [{ id: startId, target: root }];
+  while (frontier.length > 0) {
+    const ids = [...new Set(frontier.map((f) => f.id))];
+    const rows = await tx
+      .select({
+        supplyId: mrpPegs.supplyOrderId,
+        kind: mrpPegs.kind,
+        parentId: mrpPegs.demandOrderId,
+        needDate: mrpPegs.needDate,
+        qty: sql<string>`${mrpPegs.qty}::text`,
+      })
+      .from(mrpPegs)
+      .where(and(eq(mrpPegs.runId, runId), inArray(mrpPegs.supplyOrderId, ids)))
+      .orderBy(asc(mrpPegs.needDate), asc(mrpPegs.demandOrderId), asc(mrpPegs.id));
+    const parents = await pegNodes(tx, runId, [
+      ...new Set(rows.flatMap((r) => (r.kind === "ORDER" && r.parentId !== null ? [r.parentId] : []))),
+    ]);
+    const next: typeof frontier = [];
+    for (const f of frontier) {
+      for (const r of rows) {
+        if (r.supplyId !== f.id) continue;
+        if (r.kind !== "ORDER") {
+          f.target.push({ kind: r.kind as "SAFETY" | "SHORT" | "SURPLUS", qty: canonText(r.qty) });
+          continue;
+        }
+        const parent = parents.get(r.parentId!);
+        if (!parent || !take()) continue;
+        const node: MrpPegUp = {
+          kind: "ORDER",
+          qty: canonText(r.qty),
+          needDate: r.needDate!,
+          parent: parent.order,
+          up: [],
+        };
+        f.target.push(node);
+        next.push({ id: parent.id, target: node.up });
+      }
+    }
+    frontier = next;
+  }
+  return root;
+}
+
+/** 아래로 — demand_order_id 가 고른 계획오더인 줄을 자품목마다 묶어 소요 = 재고 + 공급 계획오더마다 하나, 생산이면 그 아래로를 되풀이한다. */
+async function pegDown(tx: Db, runId: number, startId: number, take: () => boolean): Promise<MrpPegDown[]> {
+  const root: MrpPegDown[] = [];
+  let frontier: { id: number; target: MrpPegDown[] }[] = [{ id: startId, target: root }];
+  while (frontier.length > 0) {
+    const ids = [...new Set(frontier.map((f) => f.id))];
+    const rows = await tx
+      .select({
+        demandId: mrpPegs.demandOrderId,
+        itemId: mrpPegs.itemId,
+        supplyId: mrpPegs.supplyOrderId,
+        qty: sql<string>`sum(${mrpPegs.qty})::text`,
+      })
+      .from(mrpPegs)
+      .where(and(eq(mrpPegs.runId, runId), eq(mrpPegs.kind, "ORDER"), inArray(mrpPegs.demandOrderId, ids)))
+      .groupBy(mrpPegs.demandOrderId, mrpPegs.itemId, mrpPegs.supplyOrderId)
+      .orderBy(asc(mrpPegs.supplyOrderId));
+    const itemRows = await tx
+      .select({
+        id: items.id,
+        code: items.code,
+        name: items.name,
+        spec: items.spec,
+        itemType: items.itemType,
+        active: mrpRunItems.active,
+        unit: mrpRunItems.unit,
+      })
+      .from(items)
+      .innerJoin(mrpRunItems, and(eq(mrpRunItems.itemId, items.id), eq(mrpRunItems.runId, runId)))
+      .where(inArray(items.id, [...new Set(rows.map((r) => r.itemId))]));
+    const itemById = new Map(itemRows.map((i) => [i.id, i]));
+    const supplies = await pegNodes(tx, runId, [
+      ...new Set(rows.flatMap((r) => (r.supplyId !== null ? [r.supplyId] : []))),
+    ]);
+    const next: typeof frontier = [];
+    for (const f of frontier) {
+      const mine = rows.filter((r) => r.demandId === f.id && itemById.has(r.itemId));
+      const itemIds = [...new Set(mine.map((r) => r.itemId))].sort((a, b) =>
+        itemById.get(a)!.code < itemById.get(b)!.code ? -1 : 1,
+      );
+      for (const itemId of itemIds) {
+        const info = itemById.get(itemId)!;
+        const lines = mine.filter((r) => r.itemId === itemId);
+        const down: MrpPegDown = {
+          item: { code: info.code, name: info.name, spec: info.spec, itemType: info.itemType, active: info.active },
+          unit: info.unit,
+          need: canon(lines.reduce((a, r) => a + milliOf(r.qty), BigInt(0))),
+          covers: [],
+        };
+        const stock = lines.filter((r) => r.supplyId === null).reduce((a, r) => a + milliOf(r.qty), BigInt(0));
+        if (stock > BigInt(0)) down.covers.push({ stock: true, qty: canon(stock) });
+        for (const r of lines.filter((l) => l.supplyId !== null)) {
+          const supply = supplies.get(r.supplyId!);
+          if (!supply || !take()) continue;
+          const cover: MrpPegCover = { stock: false, qty: canonText(r.qty), order: supply.order, down: [] };
+          down.covers.push(cover);
+          if (supply.order.kind === "MAKE") next.push({ id: supply.id, target: cover.down });
+        }
+        f.target.push(down);
+      }
+    }
+    frontier = next;
+  }
+  return root;
+}
+
+/**
+ * [페깅] 화면 — 가장 새 실행에서 고른 계획오더의 위(그 계획오더가 덮는 소요를 거쳐 MPS 칸까지) · 아래(그 소요를 채우는 재고 · 계획오더, 맨 아래까지).
+ * 고르기: 번호가 있으면 그것(품목은 그 계획오더의 품목), 없으면 품목의 첫 계획오더, 둘 다 없으면 첫 완제품 계획오더. 읽기 전용 한 트랜잭션.
+ */
+export async function openMrpPeg(db: Db, q: MrpPegQuery): Promise<MrpPegView> {
+  return db.transaction(async (tx) => {
+    const run = await latestRun(tx);
+    const empty: MrpPegView = {
+      run: run ? infoOf(run) : null,
+      hasPegs: false,
+      items: [],
+      item: null,
+      orders: [],
+      notice: null,
+      selected: null,
+      up: [],
+      down: [],
+      truncated: false,
+    };
+    if (!run) return empty;
+    const [{ hasPegs }] = await tx.select({ hasPegs: mrpRuns.hasPegs }).from(mrpRuns).where(eq(mrpRuns.id, run.id));
+
+    const itemList = await tx
+      .selectDistinct({ code: items.code, name: items.name })
+      .from(mrpPlannedOrders)
+      .innerJoin(items, eq(items.id, mrpPlannedOrders.itemId))
+      .where(eq(mrpPlannedOrders.runId, run.id))
+      .orderBy(asc(items.code));
+    const known = (code: string | null) => code !== null && itemList.some((i) => i.code === code);
+
+    let selectedId: number | null = null;
+    let notice: MrpPegView["notice"] = null;
+    let item: string | null = known(q.item) ? q.item : null;
+
+    if (q.badInput) {
+      notice = { kind: "notFound" };
+    } else if (q.order) {
+      const [o] = await tx
+        .select({ id: mrpPlannedOrders.id, code: items.code })
+        .from(mrpPlannedOrders)
+        .innerJoin(items, eq(items.id, mrpPlannedOrders.itemId))
+        .where(and(eq(mrpPlannedOrders.runId, run.id), eq(mrpPlannedOrders.number, q.order)));
+      if (o) {
+        selectedId = o.id;
+        item = o.code;
+      } else {
+        notice = { kind: "stale", order: q.order };
+      }
+    } else if (q.item) {
+      if (item === null) notice = { kind: "notFound" };
+      else {
+        const [o] = await tx
+          .select({ id: mrpPlannedOrders.id })
+          .from(mrpPlannedOrders)
+          .innerJoin(items, eq(items.id, mrpPlannedOrders.itemId))
+          .where(and(eq(mrpPlannedOrders.runId, run.id), eq(items.code, item)))
+          .orderBy(asc(mrpPlannedOrders.id))
+          .limit(1);
+        selectedId = o?.id ?? null;
+      }
+    } else {
+      const pick = async (fgOnly: boolean) => {
+        const [o] = await tx
+          .select({ id: mrpPlannedOrders.id, code: items.code })
+          .from(mrpPlannedOrders)
+          .innerJoin(items, eq(items.id, mrpPlannedOrders.itemId))
+          .where(and(eq(mrpPlannedOrders.runId, run.id), fgOnly ? eq(items.itemType, "FG") : undefined))
+          .orderBy(asc(mrpPlannedOrders.id))
+          .limit(1);
+        return o;
+      };
+      const o = (await pick(true)) ?? (await pick(false));
+      if (o) {
+        selectedId = o.id;
+        item = o.code;
+      }
+    }
+
+    const orders = item
+      ? await tx
+          .select({
+            number: mrpPlannedOrders.number,
+            qty: sql<string>`${mrpPlannedOrders.qty}::text`,
+            unit: mrpPlannedOrders.unit,
+            dueDate: mrpPlannedOrders.dueDate,
+          })
+          .from(mrpPlannedOrders)
+          .innerJoin(items, eq(items.id, mrpPlannedOrders.itemId))
+          .where(and(eq(mrpPlannedOrders.runId, run.id), eq(items.code, item)))
+          .orderBy(asc(mrpPlannedOrders.id))
+      : [];
+
+    const view: MrpPegView = {
+      ...empty,
+      hasPegs,
+      items: itemList,
+      item,
+      orders: orders.map((o) => ({ ...o, qty: canonText(o.qty) })),
+      notice,
+    };
+    if (selectedId === null) return view;
+
+    const budget = pegBudget();
+    budget.take(); // 고른 계획오더 자신
+    const selected = (await pegNodes(tx, run.id, [selectedId])).get(selectedId);
+    if (!selected) return view;
+    view.selected = selected.order;
+    if (hasPegs) {
+      view.up = await pegUp(tx, run.id, selectedId, budget.take);
+      view.down = await pegDown(tx, run.id, selectedId, budget.take);
+    }
+    view.truncated = budget.state.truncated;
+    return view;
   }, ro);
 }
