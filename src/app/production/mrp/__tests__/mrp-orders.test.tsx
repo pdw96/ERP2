@@ -122,4 +122,12 @@ describe("계획오더 목록", () => {
     expect(screen.queryByText(/아직 MRP 를 실행하지 않았습니다/)).toBeNull();
     expect(screen.queryByRole("region", { name: "계획오더 표" })).toBeNull();
   });
+
+  it("번호는 그 계획오더의 페깅으로 가는 링크다", () => {
+    render(<MrpOrders orders={{ run, total: 1, page: 1, pages: 1, rows: [row({})] }} query={all} />);
+    expect(screen.getByRole("link", { name: "PL-20261124-001" })).toHaveAttribute(
+      "href",
+      "/production/mrp?view=peg&order=PL-20261124-001",
+    );
+  });
 });

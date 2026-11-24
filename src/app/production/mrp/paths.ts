@@ -8,3 +8,11 @@ export function mrpGridHref(from?: string): string {
   if (from) query.set("from", from);
   return `${MRP_PATH}?${query}`;
 }
+
+/** 페깅 탭의 주소 — item 은 고른 품목코드, order 는 고른 계획오더 번호. 없으면 그 칸은 싣지 않는다. */
+export function mrpPegHref(order?: string, item?: string): string {
+  const query = new URLSearchParams({ view: "peg" });
+  if (item) query.set("item", item);
+  if (order) query.set("order", order);
+  return `${MRP_PATH}?${query}`;
+}
