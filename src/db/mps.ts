@@ -110,7 +110,7 @@ type Computed = { item: FgItem; available: Milli; plan: MpsCalcWeek[] };
 const calcWeeks = (thisWeek: string) => Array.from({ length: EDIT_WEEKS }, (_, i) => addWeeks(thisWeek, i));
 
 /**
- * 완제품마다 계산 범위의 MPS — 가용재고 · 확정 수요 · 고정 칸을 읽어 planMps 를 돌린다. 부르는 쪽이 읽기 전용 REPEATABLE READ 트랜잭션에서 부른다
+ * 완제품마다 계산 범위의 MPS — 가용재고 · 확정 수요 · 고정 칸을 읽어 planMps 를 돌린다. 부르는 쪽이 REPEATABLE READ 트랜잭션에서 부른다
  * (재고 · 수요 · 고정이 한 스냅숏에서 나와, 화면과 MRP 가 같은 순간이면 같은 값을 읽는다).
  */
 async function computeMps(tx: Db, thisWeek: string): Promise<Computed[]> {
@@ -229,24 +229,27 @@ export async function openMps(db: Db, opts: { from: string }, today: string): Pr
   }, ro);
 }
 
+type MpsSupplyRow = { item: string; week: string; qty: string; fixed: boolean };
+
 /**
  * MRP 가 읽는 공급량 — 품목 × 주(이번 주 ~ toWeek)의 고정 수량 + 미확정 안, 0 은 뺀다. 품목 코드 · 주 차례, 수량은 정규 글자.
  * 화면과 같은 계산(computeMps)이라 같은 순간이면 openMps 의 같은 칸과 같다. 계산 범위(51주 뒤)를 넘는 주는 없다.
  */
-export async function mpsSupply(
-  db: Db,
-  toWeek: string,
-  today: string,
-): Promise<{ item: string; week: string; qty: string; fixed: boolean }[]> {
-  const thisWeek = mondayOf(today);
-  return db.transaction(async (tx) => {
-    const out: { item: string; week: string; qty: string; fixed: boolean }[] = [];
-    for (const c of await computeMps(tx, thisWeek))
-      for (const p of c.plan)
-        if (p.week <= toWeek && p.mps !== ZERO)
-          out.push({ item: c.item.code, week: p.week, qty: qtyText(p.mps), fixed: p.fixed });
-    return out;
-  }, ro);
+export async function mpsSupply(db: Db, toWeek: string, today: string): Promise<MpsSupplyRow[]> {
+  return db.transaction((tx) => mpsSupplyIn(tx, toWeek, today), ro);
+}
+
+/**
+ * mpsSupply 와 같은 값을, 트랜잭션을 열지 않고 부르는 쪽의 트랜잭션에서 읽는다 — MRP 실행이 품목 · BOM · 재고와 한 스냅숏에서 읽으려고 쓴다.
+ * 부르는 쪽이 REPEATABLE READ 트랜잭션을 연다.
+ */
+export async function mpsSupplyIn(tx: Db, toWeek: string, today: string): Promise<MpsSupplyRow[]> {
+  const out: MpsSupplyRow[] = [];
+  for (const c of await computeMps(tx, mondayOf(today)))
+    for (const p of c.plan)
+      if (p.week <= toWeek && p.mps !== ZERO)
+        out.push({ item: c.item.code, week: p.week, qty: qtyText(p.mps), fixed: p.fixed });
+  return out;
 }
 
 // ── 칸 대어 보기 ──────────────────────────────────────────

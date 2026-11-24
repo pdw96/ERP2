@@ -116,7 +116,7 @@ describe("마이그레이션과 첫 샘플 데이터", () => {
     expect(await h.db.select().from(codeGroups)).toHaveLength(10);
     expect(log[0]).toMatch(/^마이그레이션: 적용된 것 29개 — 이번에 29개 적용$/);
     expect(log[1]).toMatch(
-      /^샘플 데이터: 빈 DB 라 넣었다 — mrp_gross 0 · mrp_planned_orders 0 · mrp_run_items 0 · mrp_runs 0 · mrp_setting_changes 0 · mrp_settings 1 · mps_changes 0 · mps_fixed 2 · sales_plan_changes 0 · sales_plans 66 · routing_changes 32 · routing_materials 14 · routing_steps 14 · routings 4 · bom_changes 20 · bom_lines 16 · boms 4 · stock_count_lines 12 · stock_counts 2 · stock_balances 24 · stock_move_lines 32 · stock_moves 11 · items 14 · /,
+      /^샘플 데이터: 빈 DB 라 넣었다 — mrp_gross [1-9]\d* · mrp_planned_orders [1-9]\d* · mrp_run_items [1-9]\d* · mrp_runs 1 · mrp_setting_changes 0 · mrp_settings 1 · mps_changes 0 · mps_fixed 2 · sales_plan_changes 0 · sales_plans 66 · routing_changes 32 · routing_materials 14 · routing_steps 14 · routings 4 · bom_changes 20 · bom_lines 16 · boms 4 · stock_count_lines 12 · stock_counts 2 · stock_balances 24 · stock_move_lines 32 · stock_moves 11 · items 14 · /,
     );
   });
 

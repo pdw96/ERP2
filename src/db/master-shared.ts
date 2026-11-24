@@ -29,8 +29,6 @@ export const REGISTER_LOCK = {
   // 판매계획(메뉴 「판매계획 등록」 · 「판매계획 확정」) — 저장(계획 칸 전체 20,000 · 고친 이력 50,000 상한을 세고 넣기) · 확정 · 확정 취소(칸 상태를 대어 보고 바꾸기) ·
   // 품목의 단위 바꾸기와 단위 자릿수 바꾸기(판매계획에 든 품목 · 수량을 세고 막기 — items.ts · codes.ts) · 매일 밤 되돌림을 한 차례로 본다.
   salesPlans: 2026111902,
-  // MRP(메뉴 「MRP」) — 완성일 기준 요일 저장 · MRP 실행(계획오더 번호의 일련을 매기고 넣기) · 매일 밤 되돌림을 한 차례로 본다.
-  mrp: 2026112401,
 } as const;
 
 export type Params = Record<string, string | string[] | undefined>;
