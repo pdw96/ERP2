@@ -1,10 +1,11 @@
 // @vitest-environment node
-import { asc, count, eq, sql } from "drizzle-orm";
+import { asc, count, eq, sql, type SQL } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { limitMessage } from "@/db/master-shared";
 import { mpsSupply } from "@/db/mps";
 import {
   MRP_ORDER_LIMIT,
+  MRP_PEG_LIMIT,
   MRP_RUN_LIMIT,
   MRP_SETTING_CHANGE_LIMIT,
   MRP_SETTING_HISTORY_SHOWN,
@@ -19,7 +20,7 @@ import {
   saveMrpSettings,
 } from "@/db/mrp";
 import { resetToSample } from "@/db/reset";
-import { items, mrpPlannedOrders, mrpRuns } from "@/db/schema";
+import { items, mrpPegs, mrpPlannedOrders, mrpRuns } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { addDays, WEEKDAY_NAMES } from "@/lib/mrp-calc";
 import { milliOf } from "@/db/stock";
@@ -212,7 +213,7 @@ async function ran(now: Date = NOW): Promise<number> {
 
 describe("[MRP 실행]", () => {
   it("상수", () => {
-    expect([MRP_ORDER_LIMIT, MRP_RUN_LIMIT]).toEqual([20000, 1000]);
+    expect([MRP_ORDER_LIMIT, MRP_RUN_LIMIT, MRP_PEG_LIMIT]).toEqual([20000, 1000, 200000]);
   });
 
   it("완제품의 계획오더는 그 순간의 MPS 공급량과 주 · 수량이 하나씩 같다", async () => {
@@ -488,3 +489,69 @@ describe("openMrp", () => {
 function rowsOf(result: unknown): { n: number }[] {
   return (Array.isArray(result) ? result : (result as { rows: { n: number }[] }).rows) as { n: number }[];
 }
+
+describe("[MRP 실행] 페깅 저장", () => {
+  const rowsOf = async <T>(q: SQL) => ((await db.execute(q)) as unknown as { rows: T[] }).rows;
+
+  it("실행은 페깅을 저장하고 has_pegs 를 켠다", async () => {
+    await ran();
+    const all = await runs();
+    expect(all[all.length - 1].hasPegs).toBe(true);
+    const [{ n }] = await db.select({ n: count() }).from(mrpPegs);
+    expect(n).toBeGreaterThan(0);
+  });
+
+  it("저장한 페깅의 합 — 계획오더마다 공급 줄 합 = 수량, 품목 × 주마다 ORDER 줄 합 = mrp_gross", async () => {
+    // 계획오더마다: 그 계획오더를 공급으로 하는 줄의 합 = 수량 + (남는 수량은 SURPLUS 줄이라 이미 들어 있다).
+    const bySupply = await rowsOf<{ number: string; qty: string; pegged: string }>(sql`
+      select o.number, o.qty::text as qty, coalesce(sum(p.qty), 0)::text as pegged
+      from mrp_planned_orders o
+      left join mrp_pegs p on p.supply_order_id = o.id
+      where o.mps_week is null
+      group by o.id, o.number, o.qty
+      order by o.number`);
+    expect(bySupply.length).toBeGreaterThan(0);
+    for (const r of bySupply) expect(Number(r.pegged)).toBeCloseTo(Number(r.qty), 3);
+
+    // 품목 × 주마다: ORDER 줄(필요일이 속한 주)의 합 = 저장된 총소요.
+    const byWeek = await rowsOf<{ item_id: number; week: string; gross: string; pegged: string }>(sql`
+      select g.item_id, g.week_start::text as week, g.qty::text as gross,
+        coalesce((select sum(p.qty) from mrp_pegs p
+          where p.run_id = g.run_id and p.item_id = g.item_id and p.kind = 'ORDER'
+            and date_trunc('week', p.need_date)::date = g.week_start), 0)::text as pegged
+      from mrp_gross g
+      where g.item_id in (select item_id from mrp_pegs)
+      order by g.item_id, g.week_start`);
+    expect(byWeek.length).toBeGreaterThan(0);
+    for (const r of byWeek) expect(Number(r.pegged)).toBeCloseTo(Number(r.gross), 3);
+  });
+
+  it("완제품 계획오더에 MPS 주 · 고정이 남는다", async () => {
+    await ran();
+    const supply = (await mpsSupply(db, addWeeks(W0, 51), TODAY)).filter((s) => s.item === "FG-0001");
+    expect(supply.length).toBeGreaterThan(0);
+    const rows = await rowsOf<{ mps_week: string; mps_fixed: boolean; qty: string }>(sql`
+      select o.mps_week::text as mps_week, o.mps_fixed, o.qty::text as qty
+      from mrp_planned_orders o join items i on i.id = o.item_id
+      where i.code = 'FG-0001' order by o.due_date`);
+    expect(rows.map((r) => [r.mps_week, r.mps_fixed])).toEqual(supply.map((s) => [s.week, s.fixed]));
+  });
+
+  it("두 번 실행하면 앞 실행의 페깅 줄이 남지 않는다", async () => {
+    await ran();
+    await ran();
+    const all = await runs();
+    const latest = all[all.length - 1].id;
+    const ids = await db.selectDistinct({ runId: mrpPegs.runId }).from(mrpPegs);
+    expect(ids).toEqual([{ runId: latest }]);
+  });
+
+  it("되돌림이 페깅을 비우고 다시 만든다", async () => {
+    await ran();
+    await resetToSample(db, TODAY);
+    const all = await runs();
+    const latest = all[all.length - 1].id;
+    const ids = await db.selectDistinct({ runId: mrpPegs.runId }).from(mrpPegs);
+    expect(ids).toEqual([{ runId: latest }]);
+  });
+});

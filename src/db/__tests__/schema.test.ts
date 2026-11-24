@@ -53,6 +53,7 @@ describe("테이블", () => {
       "mps_changes",
       "mps_fixed",
       "mrp_gross",
+      "mrp_pegs",
       "mrp_planned_orders",
       "mrp_run_items",
       "mrp_runs",

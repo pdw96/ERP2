@@ -334,7 +334,7 @@ export function planMrp(input: MrpInput): MrpPlan {
   const position = new Map(orders.map((o, i) => [o, i]));
   const pegs: MrpPeg[] = [];
   for (const source of pegSources) {
-    pegs.push(...pegItem(source, weeks, demands.get(source.item.id) ?? new Map(), position));
+    for (const peg of pegItem(source, weeks, demands.get(source.item.id) ?? new Map(), position)) pegs.push(peg);
   }
   return { orders, items: plans, pegs };
 }

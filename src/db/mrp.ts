@@ -12,6 +12,7 @@ import {
   boms,
   items,
   mrpGross,
+  mrpPegs,
   mrpPlannedOrders,
   mrpRunItems,
   mrpRuns,
@@ -108,6 +109,8 @@ export async function saveMrpSettings(
 
 /** 한 실행의 계획오더 상한 — 넘으면 실행을 거절하고 아무것도 바꾸지 않는다. */
 export const MRP_ORDER_LIMIT = 20000;
+/** 한 실행의 페깅 줄 상한 — 넘으면 실행을 거절하고 아무것도 바꾸지 않는다(계획오더 상한 × 자품목 여러 줄을 넉넉히 덮는다). */
+export const MRP_PEG_LIMIT = 200000;
 /** 실행 기록 전체의 등록 상한 — 매일 밤 되돌림이 비운다. */
 export const MRP_RUN_LIMIT = 1000;
 
@@ -122,6 +125,8 @@ export type MrpRunResult = { ok: true; orders: number } | { ok: false; formError
 export function overOrderLimit(n: number): boolean {
   return n > MRP_ORDER_LIMIT;
 }
+
+const OVER_PEGS = `페깅 줄이 ${MRP_PEG_LIMIT.toLocaleString("ko-KR")}줄을 넘어 실행하지 못했습니다 — BOM · MPS 를 확인하세요`;
 
 const OVER_QTY = "계획량이 너무 커서 실행하지 못했습니다 — BOM 의 소요량과 MPS 수량을 확인하세요";
 
@@ -228,6 +233,7 @@ export async function runMrpIn(tx: Db, now: Date, today: string = koreaToday(now
 
   const plan = planMrp({ today, dueWeekday, weeks, items: all, bomLines: await runBomLines(tx), available, mps });
   if (overOrderLimit(plan.orders.length)) return { ok: false, formError: OVER_ORDERS };
+  if (plan.pegs.length > MRP_PEG_LIMIT) return { ok: false, formError: OVER_PEGS };
   // 넣을 수량이 numeric(15,3) 의 끝을 넘으면 쓰기 전에 거절한다 — 넘는 채로 넣으면 22003 오류가 나 「잠시 뒤 다시」로 보인다.
   const tooLarge =
     plan.orders.some((o) => overNumericLimit(o.qty)) ||
@@ -248,6 +254,7 @@ export async function runMrpIn(tx: Db, now: Date, today: string = koreaToday(now
   const firstSeq = (last ?? 0) + 1;
 
   // 지난 실행들의 결과를 지운다 — 실행 줄은 남긴다.
+  await tx.delete(mrpPegs);
   await tx.delete(mrpGross);
   await tx.delete(mrpPlannedOrders);
   await tx.delete(mrpRunItems);
@@ -260,29 +267,39 @@ export async function runMrpIn(tx: Db, now: Date, today: string = koreaToday(now
       dueWeekday,
       seqEnd: firstSeq - 1 + plan.orders.length,
       orderCount: plan.orders.length,
+      hasPegs: true,
     })
     .returning({ runId: mrpRuns.id });
 
   const itemOf = (id: number) => itemById.get(id)!;
   const numbered = plan.orders.map((o, i) => ({ ...o, number: plannedNumber(today, firstSeq + i) }));
-  await insertInChunks(numbered, (part) =>
-    tx.insert(mrpPlannedOrders).values(
-      part.map((o) => ({
-        runId,
-        number: o.number,
-        kind: o.kind,
-        itemId: o.itemId,
-        qty: sql`${numericText(o.qty)}::numeric`,
-        unit: itemOf(o.itemId).unit,
-        decimals: itemOf(o.itemId).decimals,
-        dueDate: o.dueDate,
-        plannedStart: o.plannedStart,
-        startDate: o.startDate,
-        lateDays: o.lateDays,
-        noBom: o.noBom,
-      })),
-    ),
-  );
+  // 계획오더를 넣고 번호 → id 를 모은다 — 페깅 줄이 계획오더를 자리(plan.orders 의 순서)로 가리키므로 번호로 id 를 찾는다.
+  const idByNumber = new Map<string, number>();
+  await insertInChunks(numbered, async (part) => {
+    const inserted = await tx
+      .insert(mrpPlannedOrders)
+      .values(
+        part.map((o) => ({
+          runId,
+          number: o.number,
+          kind: o.kind,
+          itemId: o.itemId,
+          qty: sql`${numericText(o.qty)}::numeric`,
+          unit: itemOf(o.itemId).unit,
+          decimals: itemOf(o.itemId).decimals,
+          dueDate: o.dueDate,
+          plannedStart: o.plannedStart,
+          startDate: o.startDate,
+          lateDays: o.lateDays,
+          noBom: o.noBom,
+          mpsWeek: o.mpsWeek,
+          mpsFixed: o.mpsFixed,
+        })),
+      )
+      .returning({ id: mrpPlannedOrders.id, number: mrpPlannedOrders.number });
+    for (const r of inserted) idByNumber.set(r.number, r.id);
+  });
+  const orderId = (position: number) => idByNumber.get(numbered[position].number)!;
   await insertInChunks(plan.items, (part) =>
     tx.insert(mrpRunItems).values(
       part.map((p) => {
@@ -310,6 +327,31 @@ export async function runMrpIn(tx: Db, now: Date, today: string = koreaToday(now
       .values(
         part.map((g) => ({ runId, itemId: g.itemId, weekStart: g.week, qty: sql`${numericText(g.qty)}::numeric` })),
       ),
+  );
+  await insertInChunks(plan.pegs, (part) =>
+    tx.insert(mrpPegs).values(
+      part.map((p) =>
+        p.kind === "ORDER"
+          ? {
+              runId,
+              itemId: p.itemId,
+              kind: p.kind,
+              demandOrderId: orderId(p.demandOrder),
+              supplyOrderId: p.supplyOrder === null ? null : orderId(p.supplyOrder),
+              needDate: p.needDate,
+              qty: sql`${numericText(p.qty)}::numeric`,
+            }
+          : {
+              runId,
+              itemId: p.itemId,
+              kind: p.kind,
+              demandOrderId: null,
+              supplyOrderId: orderId(p.supplyOrder),
+              needDate: null,
+              qty: sql`${numericText(p.qty)}::numeric`,
+            },
+      ),
+    ),
   );
   return { ok: true, orders: plan.orders.length };
 }

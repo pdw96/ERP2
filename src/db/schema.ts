@@ -1030,6 +1030,8 @@ export const mrpRuns = pgTable(
     dueWeekday: smallint("due_weekday"),
     seqEnd: integer("seq_end").notNull(),
     orderCount: integer("order_count").notNull(),
+    // 이 실행이 페깅(잇기)을 저장했는가 — 페깅을 넣기 전의 실행은 false(없음)로 읽힌다.
+    hasPegs: boolean("has_pegs").notNull().default(false),
   },
   (t) => [check("mrp_runs_due_weekday", sql`${t.dueWeekday} between 1 and 7`)],
 );
@@ -1055,6 +1057,9 @@ export const mrpPlannedOrders = pgTable(
     startDate: date("start_date", { mode: "string" }).notNull(),
     lateDays: integer("late_days").notNull(),
     noBom: boolean("no_bom").notNull().default(false),
+    // 완제품(MPS) 계획오더가 덮는 MPS 칸의 주(월요일)와 고정 여부 — 완제품이 아니면 null.
+    mpsWeek: date("mps_week", { mode: "string" }),
+    mpsFixed: boolean("mps_fixed"),
   },
   (t) => [
     index("mrp_planned_orders_run_idx").on(t.runId),
@@ -1107,5 +1112,39 @@ export const mrpGross = pgTable(
     unique("mrp_gross_unique").on(t.runId, t.itemId, t.weekStart),
     check("mrp_gross_monday", sql`extract(isodow from ${t.weekStart}) = 1`),
     check("mrp_gross_qty", sql`${t.qty} > 0`),
+  ],
+);
+
+/**
+ * 페깅 — 소요 하나를 공급 하나가 얼마만큼 채우는가. ORDER = 윗 계획오더(demand)의 소요를 재고(supply null) 또는 계획오더(supply)가 채우는 몫,
+ * SAFETY · SHORT = 계획오더가 채운 안전재고 · 가용 부족 메움, SURPLUS = 소요를 다 채우고 계획오더에 남는 수량(최소량 · 배수).
+ * 끝수로 몫이 0 이 된 ORDER 줄은 qty 0(supply null)로 남는다 — 그래서 qty 검사는 ORDER 만 0 이상.
+ */
+export const mrpPegs = pgTable(
+  "mrp_pegs",
+  {
+    id: id(),
+    runId: integer("run_id")
+      .notNull()
+      .references(() => mrpRuns.id, { onDelete: "cascade" }),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => items.id),
+    kind: text("kind").notNull(),
+    demandOrderId: integer("demand_order_id").references(() => mrpPlannedOrders.id, { onDelete: "cascade" }),
+    supplyOrderId: integer("supply_order_id").references(() => mrpPlannedOrders.id, { onDelete: "cascade" }),
+    needDate: date("need_date", { mode: "string" }),
+    qty: numeric("qty", { precision: 15, scale: 3, mode: "number" }).notNull(),
+  },
+  (t) => [
+    index("mrp_pegs_run_idx").on(t.runId),
+    index("mrp_pegs_demand_idx").on(t.demandOrderId),
+    index("mrp_pegs_supply_idx").on(t.supplyOrderId),
+    check("mrp_pegs_kind", sql`${t.kind} in ('ORDER', 'SAFETY', 'SHORT', 'SURPLUS')`),
+    check(
+      "mrp_pegs_shape",
+      sql`(${t.kind} = 'ORDER' and ${t.demandOrderId} is not null and ${t.needDate} is not null and ${t.qty} >= 0)
+        or (${t.kind} <> 'ORDER' and ${t.demandOrderId} is null and ${t.needDate} is null and ${t.supplyOrderId} is not null and ${t.qty} > 0)`,
+    ),
   ],
 );

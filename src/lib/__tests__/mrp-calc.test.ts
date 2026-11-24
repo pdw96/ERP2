@@ -434,6 +434,40 @@ describe("planMrp", () => {
       ]);
     });
 
+    it("한 소요가 두 계획오더에 나뉜다", () => {
+      // 최소량 30 인 R 이 첫 주에 30 · 둘째 주에 30 의 계획오더 둘을 낳는다. 둘째 주 소요가 50 이면 첫 계획오더의 남는 몫이 없어도 다음 계획오더에서 가져온다.
+      const { orders, pegs } = plan({
+        items: [item(1, "FG-0001"), item(3, "RM-0001", { procurement: "BUY", minLot: m(30) })],
+        bomLines: [line(1, 3)],
+        mps: [
+          { itemId: 1, week: "2026-12-07", qty: m(10), fixed: false },
+          { itemId: 1, week: "2026-12-14", qty: m(50), fixed: false },
+        ],
+      });
+      const rs = ordersOf(orders, 3);
+      expect(rs.map((o) => o.qty)).toEqual([m(30), m(30)]);
+      const [r0, r1] = [at(orders, 3, 0), at(orders, 3, 1)];
+      const second = pegsOf(pegs, 3).filter((p) => p.kind === "ORDER" && p.demandOrder === at(orders, 1, 1));
+      expect(second).toEqual([
+        {
+          kind: "ORDER",
+          itemId: 3,
+          demandOrder: at(orders, 1, 1),
+          supplyOrder: r0,
+          needDate: "2026-12-14",
+          qty: m(20),
+        },
+        {
+          kind: "ORDER",
+          itemId: 3,
+          demandOrder: at(orders, 1, 1),
+          supplyOrder: r1,
+          needDate: "2026-12-14",
+          qty: m(30),
+        },
+      ]);
+    });
+
     it("안전재고만 채우는 계획오더는 SAFETY", () => {
       const { orders, pegs } = plan({
         items: [item(7, "CS-0001", { procurement: "BUY", safety: m(100) })],
