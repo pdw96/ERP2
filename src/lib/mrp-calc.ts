@@ -234,10 +234,10 @@ export function planMrp(input: MrpInput): MrpPlan {
     plans.push({ itemId: id, fromMps: true, available: avail, safety: safetyOf(item), gross: new Map() });
   }
 
-  // 아래 품목 — 저단계 코드 차례로 넷팅
+  // 아래 품목 — 저단계 코드 차례로 넷팅. 완제품은 MPS 가 들므로(MPS 수량이 0 이라 줄이 없어도) 다시 넷팅하지 않는다.
   const level = lowLevelCodes(items, bomLines);
   const netted = items
-    .filter((i) => !mpsItems.has(i.id))
+    .filter((i) => i.itemType !== "FG" && !mpsItems.has(i.id))
     .sort((a, b) => level.get(a.id)! - level.get(b.id)! || byCode(a.code, b.code));
   for (const item of netted) {
     const cells = gross.get(item.id) ?? new Map<string, GrossCell>();

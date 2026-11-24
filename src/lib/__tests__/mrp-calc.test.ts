@@ -333,6 +333,15 @@ describe("planMrp", () => {
     expect(items).toEqual([]);
   });
 
+  it("MPS 줄이 없는 완제품은 넷팅하지 않는다 — 안전재고 미달이어도 계획오더 · 자재 소요가 없다", () => {
+    const { orders, items } = plan({
+      items: [item(1, "FG-0001", { safety: m(100) }), item(3, "RM-0001", { procurement: "BUY" })],
+      bomLines: [line(1, 3)],
+    });
+    expect(orders).toEqual([]);
+    expect(items).toEqual([]);
+  });
+
   it("넷팅에 가용재고를 쓴다 — 인터뷰 예시(결정 1)", () => {
     const { orders } = plan({
       items: [
