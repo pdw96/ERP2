@@ -39,7 +39,7 @@ const item = (over: Partial<typeof items.$inferInsert> = {}) => ({
 });
 
 describe("테이블", () => {
-  it("스키마의 테이블은 스물여덟이다 — 기준정보 다섯과 공정 · 작업장 · 불량 유형 · 불량 유형의 발생 공정 · 단위 사양 · 번호 규칙 · 번호 규칙의 일련 · 수불 전표 · 수불 줄 · 잔액 · 실사 · 실사 줄 · BOM 머리 · BOM 줄 · BOM 고친 이력 · 라우팅 머리 · 공정 줄 · 투입 자재 · 고친 이력 · 판매계획 · 판매계획 고친 이력 · MPS 고정 칸 · MPS 고친 이력", () => {
+  it("스키마의 테이블은 서른넷이다 — 기준정보 다섯과 공정 · 작업장 · 불량 유형 · 불량 유형의 발생 공정 · 단위 사양 · 번호 규칙 · 번호 규칙의 일련 · 수불 전표 · 수불 줄 · 잔액 · 실사 · 실사 줄 · BOM 머리 · BOM 줄 · BOM 고친 이력 · 라우팅 머리 · 공정 줄 · 투입 자재 · 고친 이력 · 판매계획 · 판매계획 고친 이력 · MPS 고정 칸 · MPS 고친 이력 · MRP 총소요 · 계획오더 · 실행 품목 · 실행 · 설정 이력 · 설정", () => {
     const names = Object.values(schema).filter(isTable).map(getTableName).sort();
     expect(names).toEqual([
       "bom_changes",
@@ -52,6 +52,12 @@ describe("테이블", () => {
       "items",
       "mps_changes",
       "mps_fixed",
+      "mrp_gross",
+      "mrp_planned_orders",
+      "mrp_run_items",
+      "mrp_runs",
+      "mrp_setting_changes",
+      "mrp_settings",
       "number_rule_seqs",
       "number_rules",
       "partners",

@@ -33,6 +33,12 @@ import {
   items,
   mpsChanges,
   mpsFixed,
+  mrpGross,
+  mrpPlannedOrders,
+  mrpRunItems,
+  mrpRuns,
+  mrpSettingChanges,
+  mrpSettings,
   numberRules,
   numberRuleSeqs,
   partners,
@@ -53,6 +59,7 @@ import {
   workCenters,
 } from "./schema";
 import { lockBom, saveBom } from "./boms";
+import { lockMrp } from "./mrp";
 import { lockRouting, saveRouting } from "./routings";
 import { lockSalesPlans } from "./sales-plans";
 import { cancelMove, lockStock, saveMove } from "./stock";
@@ -61,6 +68,12 @@ import type { Db } from "./types";
 
 /** 되돌림이 비우고 다시 채우는 테이블 — 테이블을 더하는 조각은 여기에도 더한다(시험이 스키마와 견준다). */
 export const RESET_TABLES = [
+  "mrp_gross",
+  "mrp_planned_orders",
+  "mrp_run_items",
+  "mrp_runs",
+  "mrp_setting_changes",
+  "mrp_settings",
   "mps_changes",
   "mps_fixed",
   "sales_plan_changes",
@@ -107,6 +120,8 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
     await lockRouting(tx);
     // 판매계획도 같다 — 판매계획을 고치는 저장이 쥐는 잠금이라, 비우기 전에 쥐어 저장과 같은 차례(재고 → BOM → 라우팅 → 판매계획)를 지킨다.
     await lockSalesPlans(tx);
+    // MRP 도 같다 — 완성일 기준 요일을 저장하는 쪽이 쥐는 잠금이라, 비우기 전에 쥐어 저장과 같은 차례(… → 판매계획 → MRP)를 지킨다.
+    await lockMrp(tx);
     await tx.execute(sql.raw(`truncate table ${RESET_TABLES.map((t) => `"${t}"`).join(", ")} restart identity`));
     await tx.insert(codeGroups).values(SAMPLE_CODE_GROUPS);
     await tx.insert(codes).values(SAMPLE_CODES);
@@ -153,6 +168,8 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
     await insertSampleRoutings(tx);
     await insertSampleSalesPlans(tx, today);
     await insertSampleMps(tx, today);
+    // MRP 설정은 줄 하나(id 1) — 처음 값(월요일)으로 다시 넣는다. 실행 · 계획오더 · 설정 이력은 비워 둔다.
+    await tx.insert(mrpSettings).values({ id: 1 });
     const n = async (
       t:
         | typeof stockMoves
@@ -172,9 +189,21 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
         | typeof salesPlans
         | typeof salesPlanChanges
         | typeof mpsFixed
-        | typeof mpsChanges,
+        | typeof mpsChanges
+        | typeof mrpGross
+        | typeof mrpPlannedOrders
+        | typeof mrpRunItems
+        | typeof mrpRuns
+        | typeof mrpSettingChanges
+        | typeof mrpSettings,
     ) => (await tx.select({ n: count() }).from(t))[0].n;
     return {
+      mrp_gross: await n(mrpGross),
+      mrp_planned_orders: await n(mrpPlannedOrders),
+      mrp_run_items: await n(mrpRunItems),
+      mrp_runs: await n(mrpRuns),
+      mrp_setting_changes: await n(mrpSettingChanges),
+      mrp_settings: await n(mrpSettings),
       mps_changes: await n(mpsChanges),
       mps_fixed: await n(mpsFixed),
       sales_plan_changes: await n(salesPlanChanges),

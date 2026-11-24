@@ -9,6 +9,9 @@ import { fromMs, mondayOf, toMs } from "./weeks";
 
 const DAY_MS = 86_400_000;
 
+/** 요일 이름 — 1(월) ~ 7(일) 의 차례대로(완성일 기준 요일 `dueWeekday - 1` 로 찾는다). */
+export const WEEKDAY_NAMES = ["월", "화", "수", "목", "금", "토", "일"] as const;
+
 /** date 에서 n일 뒤(음수는 앞). */
 export function addDays(date: string, n: number): string {
   return fromMs(toMs(date) + n * DAY_MS);

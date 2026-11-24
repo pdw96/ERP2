@@ -211,6 +211,12 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
     expect(clean.mpsFixed).toHaveLength(SAMPLE_MPS_FIXED.length);
     expect(clean.mpsChanges).toHaveLength(0);
     expect(counts).toEqual({
+      mrp_gross: 0,
+      mrp_planned_orders: 0,
+      mrp_run_items: 0,
+      mrp_runs: 0,
+      mrp_setting_changes: 0,
+      mrp_settings: 1,
       mps_changes: clean.mpsChanges.length,
       mps_fixed: clean.mpsFixed.length,
       sales_plan_changes: clean.salesPlanChanges.length,
@@ -343,7 +349,7 @@ describe("코드 번호 — 같은 머리의 가장 큰 번호 + 1", () => {
     expect(await nextCode(db, "CS")).toBe("CS-0003");
     await db.execute(
       sql.raw(
-        `truncate table "mps_changes", "mps_fixed", "sales_plan_changes", "sales_plans", "routing_changes", "routing_materials", "routing_steps", "routings", "bom_changes", "bom_lines", "boms", "stock_count_lines", "stock_balances", "stock_move_lines", "items"`,
+        `truncate table "mrp_gross", "mrp_planned_orders", "mrp_run_items", "mrp_runs", "mrp_setting_changes", "mrp_settings", "mps_changes", "mps_fixed", "sales_plan_changes", "sales_plans", "routing_changes", "routing_materials", "routing_steps", "routings", "bom_changes", "bom_lines", "boms", "stock_count_lines", "stock_balances", "stock_move_lines", "items"`,
       ),
     );
     expect(await nextCode(db, "RM")).toBe("RM-0001");

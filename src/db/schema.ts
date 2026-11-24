@@ -981,3 +981,131 @@ export const mpsChanges = pgTable(
     check("mps_changes_some", sql`${t.before} is not null or ${t.after} is not null`),
   ],
 );
+
+// ── MRP(메뉴 「MRP」) ──────────────────────────────────────────────────────────
+
+/** MRP 설정 — 줄은 하나(id 1)다. 「완성일 기준 요일」은 그 주의 필요 수량을 어느 요일에 맞춰 낼지 정한다(1 월 ~ 7 일). */
+export const mrpSettings = pgTable(
+  "mrp_settings",
+  {
+    id: integer("id").primaryKey(),
+    dueWeekday: smallint("due_weekday").notNull().default(1),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    check("mrp_settings_single", sql`${t.id} = 1`),
+    check("mrp_settings_due_weekday", sql`${t.dueWeekday} between 1 and 7`),
+  ],
+);
+
+/** 완성일 기준 요일을 바꾼 이력 — 바꿀 때마다 한 줄(전 · 후). 화면에서 고치거나 지우지 못한다. */
+export const mrpSettingChanges = pgTable(
+  "mrp_setting_changes",
+  {
+    id: id(),
+    changedAt: timestamp("changed_at", { withTimezone: true }).notNull().defaultNow(),
+    before: smallint("before").notNull(),
+    after: smallint("after").notNull(),
+  },
+  (t) => [
+    index("mrp_setting_changes_changed_at_idx").on(t.changedAt),
+    check("mrp_setting_changes_before", sql`${t.before} between 1 and 7`),
+    check("mrp_setting_changes_after", sql`${t.after} between 1 and 7`),
+  ],
+);
+
+/**
+ * MRP 실행 — 실행 하나가 한 줄. `run_date` 는 한국 날짜이고, `seq_end` 는 이번 실행의 마지막 일련(계획오더가 없으면 그날 앞 실행의 값)이라
+ * 같은 날 다음 실행이 이어 매긴다.
+ */
+export const mrpRuns = pgTable(
+  "mrp_runs",
+  {
+    id: id(),
+    ranAt: timestamp("ran_at", { withTimezone: true }).notNull(),
+    runDate: date("run_date", { mode: "string" }).notNull(),
+    dueWeekday: smallint("due_weekday"),
+    seqEnd: integer("seq_end").notNull(),
+    orderCount: integer("order_count").notNull(),
+  },
+  (t) => [check("mrp_runs_due_weekday", sql`${t.dueWeekday} between 1 and 7`)],
+);
+
+/** 계획오더 — 실행이 낸 생산(MAKE) · 구매(BUY) 계획. 번호는 `PL-<실행일 여덟 자리>-<일련>`. 단위 · 자릿수는 그때 값을 남긴다. */
+export const mrpPlannedOrders = pgTable(
+  "mrp_planned_orders",
+  {
+    id: id(),
+    runId: integer("run_id")
+      .notNull()
+      .references(() => mrpRuns.id, { onDelete: "cascade" }),
+    number: text("number").notNull().unique(),
+    kind: text("kind").notNull(),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => items.id),
+    qty: numeric("qty", { precision: 15, scale: 3, mode: "number" }).notNull(),
+    unit: text("unit").notNull(),
+    decimals: smallint("decimals").notNull(),
+    dueDate: date("due_date", { mode: "string" }).notNull(),
+    plannedStart: date("planned_start", { mode: "string" }).notNull(),
+    startDate: date("start_date", { mode: "string" }).notNull(),
+    lateDays: integer("late_days").notNull(),
+    noBom: boolean("no_bom").notNull().default(false),
+  },
+  (t) => [
+    index("mrp_planned_orders_run_idx").on(t.runId),
+    check("mrp_planned_orders_number_format", sql`${t.number} ~ '^PL-[0-9]{8}-[0-9]{3,}$'`),
+    check("mrp_planned_orders_kind", sql`${t.kind} in ('MAKE', 'BUY')`),
+    check("mrp_planned_orders_qty", sql`${t.qty} > 0`),
+    check("mrp_planned_orders_late_days", sql`${t.lateDays} >= 0`),
+  ],
+);
+
+/** 실행이 읽은 품목별 값 — 그때의 가용재고 · 안전재고 · 최소 로트 · 로트 배수 · 리드타임 · 단위. 실행 뒤 품목이 바뀌어도 그 실행의 뜻이 그대로다. */
+export const mrpRunItems = pgTable(
+  "mrp_run_items",
+  {
+    id: id(),
+    runId: integer("run_id")
+      .notNull()
+      .references(() => mrpRuns.id, { onDelete: "cascade" }),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => items.id),
+    fromMps: boolean("from_mps").notNull(),
+    available: numeric("available", { precision: 15, scale: 3, mode: "number" }).notNull(),
+    safety: numeric("safety", { precision: 15, scale: 3, mode: "number" }).notNull(),
+    minLot: numeric("min_lot", { precision: 15, scale: 3, mode: "number" }).notNull(),
+    lotMultiple: numeric("lot_multiple", { precision: 15, scale: 3, mode: "number" }).notNull(),
+    leadTimeDays: integer("lead_time_days").notNull(),
+    unit: text("unit").notNull(),
+    decimals: smallint("decimals").notNull(),
+    active: boolean("active").notNull(),
+  },
+  (t) => [unique("mrp_run_items_unique").on(t.runId, t.itemId)],
+);
+
+/** 실행이 셈한 품목 × 주(월요일)의 총소요 — 0 인 칸은 두지 않는다. */
+export const mrpGross = pgTable(
+  "mrp_gross",
+  {
+    id: id(),
+    runId: integer("run_id")
+      .notNull()
+      .references(() => mrpRuns.id, { onDelete: "cascade" }),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => items.id),
+    weekStart: date("week_start", { mode: "string" }).notNull(),
+    qty: numeric("qty", { precision: 15, scale: 3, mode: "number" }).notNull(),
+  },
+  (t) => [
+    unique("mrp_gross_unique").on(t.runId, t.itemId, t.weekStart),
+    check("mrp_gross_monday", sql`extract(isodow from ${t.weekStart}) = 1`),
+    check("mrp_gross_qty", sql`${t.qty} > 0`),
+  ],
+);
