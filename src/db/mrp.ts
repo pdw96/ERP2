@@ -218,6 +218,7 @@ export async function runMrpIn(tx: Db, now: Date, today: string = koreaToday(now
     itemId: idByCode.get(s.item)!,
     week: s.week,
     qty: milliOf(s.qty),
+    fixed: s.fixed,
   }));
   const [setting] = await tx
     .select({ dueWeekday: mrpSettingsTable.dueWeekday })
