@@ -13,12 +13,14 @@ export const VIEW_BACK_WEEKS = 52;
 const DATE = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/;
 const DAY_MS = 86_400_000;
 
-const toMs = (date: string): number => {
+/** `YYYY-MM-DD` → UTC 자정의 밀리초(꼴이 틀리면 NaN). */
+export const toMs = (date: string): number => {
   const m = DATE.exec(date);
   if (!m) return NaN;
   return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 };
-const fromMs = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
+/** 밀리초 → UTC 날짜 `YYYY-MM-DD`. */
+export const fromMs = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 
 /** `YYYY-MM-DD` 이고 달력에 있는 월요일인가. */
 export function isMonday(date: string): boolean {
