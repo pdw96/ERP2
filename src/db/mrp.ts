@@ -1,9 +1,11 @@
-import { asc, count, desc, eq, max, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, max, sql, type SQL } from "drizzle-orm";
 import { THOUSAND, type Milli } from "@/lib/move-input";
 import { planMrp, type MrpItem } from "@/lib/mrp-calc";
+import { ITEM_TYPES } from "@/lib/master-codes";
+import { PAGE_SIZE } from "@/lib/stock-query";
 import { koreaToday } from "@/lib/today";
-import { addWeeks, EDIT_WEEKS, mondayOf } from "@/lib/weeks";
-import { limitMessage } from "./master-shared";
+import { addWeeks, EDIT_WEEKS, mondayOf, PAGE_WEEKS, pageWeeks } from "@/lib/weeks";
+import { first, limitMessage, type Params } from "./master-shared";
 import { mpsSupplyIn } from "./mps";
 import {
   bomLines,
@@ -17,6 +19,7 @@ import {
   mrpSettings as mrpSettingsTable,
   unitSpecs,
 } from "./schema";
+import { canon, canonText } from "./sales-plans";
 import { milliOf } from "./stock";
 import { availableByItem } from "./stock-status";
 import type { Db } from "./types";
@@ -297,4 +300,268 @@ export async function runMrp(db: Db, now: Date = new Date()): Promise<MrpRunResu
     },
     { isolationLevel: "repeatable read" },
   );
+}
+
+// ── [결과 읽기] ────────────────────────────────────────────
+
+const ro = { isolationLevel: "repeatable read", accessMode: "read only" } as const;
+
+/** 가장 새 실행(id 가 가장 큰 줄)만 결과가 남는다 — 실행 줄이 없으면 null. */
+export type MrpRunInfo = { ranAt: Date; runDate: string; dueWeekday: number; orders: number };
+
+type LatestRun = MrpRunInfo & { id: number };
+
+async function latestRun(tx: Db): Promise<LatestRun | null> {
+  const [r] = await tx
+    .select({
+      id: mrpRuns.id,
+      ranAt: mrpRuns.ranAt,
+      runDate: mrpRuns.runDate,
+      dueWeekday: mrpRuns.dueWeekday,
+      orders: mrpRuns.orderCount,
+    })
+    .from(mrpRuns)
+    .orderBy(desc(mrpRuns.id))
+    .limit(1);
+  return r ? { ...r, dueWeekday: r.dueWeekday ?? 1 } : null;
+}
+
+const infoOf = (r: LatestRun): MrpRunInfo => ({
+  ranAt: r.ranAt,
+  runDate: r.runDate,
+  dueWeekday: r.dueWeekday,
+  orders: r.orders,
+});
+
+/** 쪽 — 마지막 쪽을 넘으면 마지막 쪽. */
+function clampPage(page: number, total: number) {
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  return { page: Math.min(page, pages), pages };
+}
+
+type MrpItemInfo = { code: string; name: string; spec: string; itemType: string; active: boolean };
+
+// ── 계획오더 목록 ──
+
+export type MrpOrderQuery = { kind: "MAKE" | "BUY" | null; itemType: string | null; lateOnly: boolean; page: number };
+
+/** 주소의 값 — 알 수 없는 값은 기본값(전체 · 첫 쪽)으로. */
+export function parseMrpOrderQuery(params: Params): MrpOrderQuery {
+  const kind = first(params.kind);
+  const type = first(params.type);
+  const page = first(params.page);
+  return {
+    kind: kind === "MAKE" || kind === "BUY" ? kind : null,
+    itemType: type !== undefined && ITEM_TYPES.some((t) => t.code === type) ? type : null,
+    lateOnly: first(params.late) === "1",
+    page: page !== undefined && /^[1-9][0-9]{0,8}$/.test(page) ? Number(page) : 1,
+  };
+}
+
+export type MrpOrderRow = {
+  number: string;
+  kind: "MAKE" | "BUY";
+  item: MrpItemInfo;
+  qty: string;
+  unit: string;
+  startDate: string;
+  dueDate: string;
+  lateDays: number;
+  noBom: boolean;
+};
+
+/** 가장 새 실행의 계획오더 — 번호 차례, 쪽당 PAGE_SIZE. 수량은 정규 글자. */
+export async function openMrpOrders(
+  db: Db,
+  q: MrpOrderQuery,
+): Promise<{ run: MrpRunInfo | null; total: number; page: number; pages: number; rows: MrpOrderRow[] }> {
+  return db.transaction(async (tx) => {
+    const run = await latestRun(tx);
+    if (!run) return { run: null, total: 0, page: 1, pages: 1, rows: [] };
+    const conds: SQL[] = [eq(mrpPlannedOrders.runId, run.id)];
+    if (q.kind) conds.push(eq(mrpPlannedOrders.kind, q.kind));
+    if (q.itemType) conds.push(eq(items.itemType, q.itemType));
+    if (q.lateOnly) conds.push(sql`${mrpPlannedOrders.lateDays} > 0`);
+    const where = and(...conds);
+    const [{ n }] = await tx
+      .select({ n: count() })
+      .from(mrpPlannedOrders)
+      .innerJoin(items, eq(items.id, mrpPlannedOrders.itemId))
+      .where(where);
+    const p = clampPage(q.page, n);
+    const rows = await tx
+      .select({
+        number: mrpPlannedOrders.number,
+        kind: sql<"MAKE" | "BUY">`${mrpPlannedOrders.kind}`,
+        code: items.code,
+        name: items.name,
+        spec: items.spec,
+        itemType: items.itemType,
+        active: items.active,
+        qty: sql<string>`${mrpPlannedOrders.qty}::text`,
+        unit: mrpPlannedOrders.unit,
+        startDate: mrpPlannedOrders.startDate,
+        dueDate: mrpPlannedOrders.dueDate,
+        lateDays: mrpPlannedOrders.lateDays,
+        noBom: mrpPlannedOrders.noBom,
+      })
+      .from(mrpPlannedOrders)
+      .innerJoin(items, eq(items.id, mrpPlannedOrders.itemId))
+      .where(where)
+      .orderBy(asc(mrpPlannedOrders.number))
+      .limit(PAGE_SIZE)
+      .offset((p.page - 1) * PAGE_SIZE);
+    return {
+      run: infoOf(run),
+      total: n,
+      ...p,
+      rows: rows.map((r) => ({
+        number: r.number,
+        kind: r.kind,
+        item: { code: r.code, name: r.name, spec: r.spec, itemType: r.itemType, active: r.active },
+        qty: canonText(r.qty),
+        unit: r.unit,
+        startDate: r.startDate,
+        dueDate: r.dueDate,
+        lateDays: r.lateDays,
+        noBom: r.noBom,
+      })),
+    };
+  }, ro);
+}
+
+// ── 품목별 MRP 표 ──
+
+export type MrpGridCell = {
+  gross: string | null;
+  receipt: string | null;
+  projected: string | null;
+  release: string | null;
+};
+export type MrpGridRow = {
+  item: MrpItemInfo;
+  unit: string;
+  fromMps: boolean;
+  available: string;
+  safety: string;
+  minLot: string;
+  multiple: string;
+  leadTimeDays: number;
+  cells: Record<string, MrpGridCell>;
+};
+
+/** 주소의 쪽 값 — 실행 주 + 13주 × k(k = 0 ~ 3)이면 그대로, 아니면 실행 주. */
+export function parseMrpGridFrom(param: string | undefined, runWeek: string): string {
+  const starts = Array.from({ length: 4 }, (_, k) => addWeeks(runWeek, PAGE_WEEKS * k));
+  return param !== undefined && starts.includes(param) ? param : runWeek;
+}
+
+const ZERO = BigInt(0);
+
+/** 0 은 null, 아니면 정규 글자(음수는 절댓값의 정규 글자에 「-」). */
+function cellText(q: Milli): string | null {
+  if (q === ZERO) return null;
+  return q < ZERO ? `-${canon(-q)}` : canon(q);
+}
+
+/**
+ * 가장 새 실행의 품목별 MRP 표 한 쪽(13주) — 줄은 그 실행의 품목 머리 전부(코드 차례).
+ * 입고 = 그 주에 완성일이, 착수 = 시작일이 드는 계획오더 수량 합. 예상재고는 보이는 쪽이 뒤여도 실행 주부터 이어서
+ * 「가용재고 + 입고 − 총소요」로 셈한다(완제품은 총소요 · 예상재고 없음). 칸의 0 은 null.
+ */
+export async function openMrpGrid(
+  db: Db,
+  from: string,
+): Promise<{ run: MrpRunInfo | null; runWeek: string | null; weeks: string[]; rows: MrpGridRow[] }> {
+  const weeks = pageWeeks(from);
+  return db.transaction(async (tx) => {
+    const run = await latestRun(tx);
+    if (!run) return { run: null, runWeek: null, weeks, rows: [] };
+    const runWeek = mondayOf(run.runDate);
+    const last = weeks[weeks.length - 1];
+    const lo = weeks[0];
+
+    const heads = await tx
+      .select({
+        itemId: mrpRunItems.itemId,
+        code: items.code,
+        name: items.name,
+        spec: items.spec,
+        itemType: items.itemType,
+        fromMps: mrpRunItems.fromMps,
+        available: sql<string>`${mrpRunItems.available}::text`,
+        safety: sql<string>`${mrpRunItems.safety}::text`,
+        minLot: sql<string>`${mrpRunItems.minLot}::text`,
+        multiple: sql<string>`${mrpRunItems.lotMultiple}::text`,
+        leadTimeDays: mrpRunItems.leadTimeDays,
+        unit: mrpRunItems.unit,
+        active: mrpRunItems.active,
+      })
+      .from(mrpRunItems)
+      .innerJoin(items, eq(items.id, mrpRunItems.itemId))
+      .where(eq(mrpRunItems.runId, run.id))
+      .orderBy(asc(items.code));
+
+    // 품목 × 주의 합 — 입고 · 총소요는 실행 주부터 보이는 마지막 주까지, 착수는 보이는 주만.
+    const key = (itemId: number, week: string) => `${itemId}|${week}`;
+    const dueWeek = sql<string>`date_trunc('week', ${mrpPlannedOrders.dueDate}::timestamp)::date::text`;
+    const startWeek = sql<string>`date_trunc('week', ${mrpPlannedOrders.startDate}::timestamp)::date::text`;
+    const sumQty = sql<string>`sum(${mrpPlannedOrders.qty})::text`;
+    const receiptRows = await tx
+      .select({ itemId: mrpPlannedOrders.itemId, week: dueWeek, qty: sumQty })
+      .from(mrpPlannedOrders)
+      .where(and(eq(mrpPlannedOrders.runId, run.id), sql`${dueWeek} between ${runWeek} and ${last}`))
+      .groupBy(mrpPlannedOrders.itemId, dueWeek);
+    const releaseRows = await tx
+      .select({ itemId: mrpPlannedOrders.itemId, week: startWeek, qty: sumQty })
+      .from(mrpPlannedOrders)
+      .where(and(eq(mrpPlannedOrders.runId, run.id), sql`${startWeek} between ${lo} and ${last}`))
+      .groupBy(mrpPlannedOrders.itemId, startWeek);
+    const grossRows = await tx
+      .select({ itemId: mrpGross.itemId, week: mrpGross.weekStart, qty: sql<string>`${mrpGross.qty}::text` })
+      .from(mrpGross)
+      .where(and(eq(mrpGross.runId, run.id), sql`${mrpGross.weekStart} between ${runWeek} and ${last}`));
+    const toMap = (rows: { itemId: number; week: string; qty: string }[]) =>
+      new Map(rows.map((r) => [key(r.itemId, r.week), milliOf(r.qty)] as const));
+    const receipts = toMap(receiptRows);
+    const releases = toMap(releaseRows);
+    const grosses = toMap(grossRows);
+
+    // 실행 주부터 보이는 마지막 주까지 이어 셈하는 주 목록.
+    const chain: string[] = [];
+    for (let w = runWeek; w <= last; w = addWeeks(w, 1)) chain.push(w);
+
+    const rows: MrpGridRow[] = heads.map((h) => {
+      const cells: Record<string, MrpGridCell> = {};
+      const projected = new Map<string, Milli>();
+      if (!h.fromMps) {
+        let stock = milliOf(h.available);
+        for (const w of chain) {
+          stock += (receipts.get(key(h.itemId, w)) ?? ZERO) - (grosses.get(key(h.itemId, w)) ?? ZERO);
+          projected.set(w, stock);
+        }
+      }
+      for (const w of weeks) {
+        const p = projected.get(w);
+        cells[w] = {
+          gross: h.fromMps ? null : cellText(grosses.get(key(h.itemId, w)) ?? ZERO),
+          receipt: cellText(receipts.get(key(h.itemId, w)) ?? ZERO),
+          projected: p === undefined ? null : (cellText(p) ?? "0"),
+          release: cellText(releases.get(key(h.itemId, w)) ?? ZERO),
+        };
+      }
+      return {
+        item: { code: h.code, name: h.name, spec: h.spec, itemType: h.itemType, active: h.active },
+        unit: h.unit,
+        fromMps: h.fromMps,
+        available: canonText(h.available),
+        safety: canonText(h.safety),
+        minLot: canonText(h.minLot),
+        multiple: canonText(h.multiple),
+        leadTimeDays: h.leadTimeDays,
+        cells,
+      };
+    });
+    return { run: infoOf(run), runWeek, weeks, rows };
+  }, ro);
 }

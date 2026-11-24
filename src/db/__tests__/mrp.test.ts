@@ -9,7 +9,11 @@ import {
   MRP_SETTING_CHANGE_LIMIT,
   MRP_SETTING_HISTORY_SHOWN,
   mrpSettings,
+  openMrpGrid,
+  openMrpOrders,
   overOrderLimit,
+  parseMrpGridFrom,
+  parseMrpOrderQuery,
   runMrp,
   saveMrpSettings,
 } from "@/db/mrp";
@@ -17,6 +21,7 @@ import { resetToSample } from "@/db/reset";
 import { items, mrpPlannedOrders, mrpRuns } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { addDays, WEEKDAY_NAMES } from "@/lib/mrp-calc";
+import { milliOf } from "@/db/stock";
 import { addWeeks, mondayOf } from "@/lib/weeks";
 import { migratedDb, rejection } from "./pglite";
 
@@ -331,6 +336,108 @@ describe("[MRP 실행]", () => {
     await db.execute(sql`update unit_specs set decimals = ${rm.decimals === 3 ? 0 : 3} where unit = ${rm.unit}`);
     const after = (await orders()).find((o) => o.number === rm.number)!;
     expect([after.unit, after.decimals]).toEqual([rm.unit, rm.decimals]);
+  });
+});
+
+// ── 결과 읽기 ─────────────────────────────────────────────
+
+const BASE_QUERY = { kind: null, itemType: null, lateOnly: false, page: 1 } as const;
+
+describe("openMrp", () => {
+  it("실행 전(결과 표가 빔)에는 실행이 없고 줄이 없다", async () => {
+    await db.execute(sql`truncate mrp_runs cascade`);
+    const o = await openMrpOrders(db, BASE_QUERY);
+    expect(o).toEqual({ run: null, total: 0, page: 1, pages: 1, rows: [] });
+    expect(await openMrpGrid(db, W0)).toEqual({
+      run: null,
+      runWeek: null,
+      weeks: expect.any(Array),
+      rows: [],
+    });
+  });
+
+  it("계획오더 목록 — 번호 차례, 거르기", async () => {
+    const all = await openMrpOrders(db, BASE_QUERY);
+    expect(all.run).toMatchObject({ runDate: TODAY, dueWeekday: 1 });
+    expect(all.total).toBe(all.run!.orders);
+    expect(all.rows[0].number).toBe("PL-20261124-001");
+    expect(all.rows.map((r) => r.number)).toEqual(all.rows.map((r) => r.number).sort());
+
+    const buy = await openMrpOrders(db, { ...BASE_QUERY, kind: "BUY" });
+    expect(buy.total).toBeGreaterThan(0);
+    expect(buy.rows.every((r) => r.kind === "BUY")).toBe(true);
+
+    const rm = await openMrpOrders(db, { ...BASE_QUERY, itemType: "RM" });
+    expect(rm.total).toBeGreaterThan(0);
+    expect(rm.rows.every((r) => r.item.itemType === "RM")).toBe(true);
+
+    const late = await openMrpOrders(db, { ...BASE_QUERY, lateOnly: true });
+    expect(late.rows.every((r) => r.lateDays > 0)).toBe(true);
+    const lateN = rowsOf(await db.execute(sql`select count(*)::int as n from mrp_planned_orders where late_days > 0`));
+    expect(late.total).toBe(lateN[0].n);
+  });
+
+  it("쪽이 넘치면 마지막 쪽, 수량은 정규 글자", async () => {
+    const over = await openMrpOrders(db, { ...BASE_QUERY, page: 99 });
+    expect(over.page).toBe(over.pages);
+    expect(over.rows.length).toBeGreaterThan(0);
+    const [o] = (await orders()).filter((x) => x.number === "PL-20261124-001");
+    const first = (await openMrpOrders(db, BASE_QUERY)).rows[0];
+    expect(first.qty).toBe(String(o.qty));
+    expect(first.qty).not.toMatch(/\.\d*0$/);
+  });
+
+  it("쿼리 값은 알 수 없는 것을 기본값으로 돌린다", () => {
+    expect(parseMrpOrderQuery({ page: "abc", kind: "XYZ", type: "ZZ", late: "yes" })).toEqual(BASE_QUERY);
+    expect(parseMrpOrderQuery({ page: "3", kind: "MAKE", type: "RM", late: "1" })).toEqual({
+      kind: "MAKE",
+      itemType: "RM",
+      lateOnly: true,
+      page: 3,
+    });
+    expect(parseMrpOrderQuery({ page: "0" }).page).toBe(1);
+    expect(parseMrpOrderQuery({ page: "1.5" }).page).toBe(1);
+  });
+
+  it("표의 쪽 값은 실행 주 + 13주 × k 만 받는다", () => {
+    expect(parseMrpGridFrom("2026-12-07", W0)).toBe(W0);
+    expect(parseMrpGridFrom(addWeeks(W0, 13), W0)).toBe("2027-02-22");
+    expect(parseMrpGridFrom(addWeeks(W0, 39), W0)).toBe(addWeeks(W0, 39));
+    expect(parseMrpGridFrom("2027-11-22", W0)).toBe(W0);
+    expect(parseMrpGridFrom(undefined, W0)).toBe(W0);
+  });
+
+  it("품목별 표 — 원자재의 예상재고는 실행 주부터 이어지고, 먼 쪽도 첫 쪽에서 이어진다", async () => {
+    const p1 = await openMrpGrid(db, W0);
+    expect(p1.runWeek).toBe(W0);
+    expect(p1.weeks).toHaveLength(13);
+    const p2 = await openMrpGrid(db, addWeeks(W0, 26));
+    const row1 = p1.rows.find((r) => r.item.itemType === "RM" && Object.values(r.cells).some((c) => c.gross))!;
+    expect(row1).toBeDefined();
+    const row2 = p2.rows.find((r) => r.item.code === row1.item.code)!;
+    let proj = milliOf(row1.available);
+    const check = (row: typeof row1, weeks: string[], skipChain = false) => {
+      for (const w of weeks) {
+        const c = row.cells[w];
+        proj += milliOf(c.receipt ?? "0") - milliOf(c.gross ?? "0");
+        if (!skipChain) expect(milliOf(c.projected!)).toBe(proj);
+      }
+    };
+    check(row1, p1.weeks);
+    // 셋째 쪽(k=2): 사이의 둘째 쪽 13주를 건너뛰어 열어도 첫 쪽부터 이어 셈한 값이어야 한다
+    const mid = (await openMrpGrid(db, addWeeks(W0, 13))).rows.find((r) => r.item.code === row1.item.code)!;
+    check(mid, Object.keys(mid.cells).sort(), true);
+    check(row2, p2.weeks);
+  });
+
+  it("완제품 줄 — fromMps, 총소요 · 예상재고 없음, 입고는 MPS 수량", async () => {
+    const g = await openMrpGrid(db, W0);
+    const fg = g.rows.find((r) => r.item.code === "FG-0001")!;
+    expect(fg.fromMps).toBe(true);
+    expect(Object.values(fg.cells).every((c) => c.gross === null && c.projected === null)).toBe(true);
+    const supply = (await mpsSupply(db, addWeeks(W0, 51), TODAY)).filter((s) => s.item === "FG-0001");
+    const week = supply.find((s) => g.weeks.includes(s.week))!;
+    expect(fg.cells[week.week].receipt).toBe(week.qty);
   });
 });
 
