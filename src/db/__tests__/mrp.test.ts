@@ -583,6 +583,16 @@ describe("parseMrpPegQuery", () => {
   it("배열 값은 첫 값", () => {
     expect(parseMrpPegQuery({ order: ["PL-20261124-002", "x"] }).order).toBe("PL-20261124-002");
   });
+
+  it("번호의 차례 자릿수는 3 ~ 8 — 하루 2천만 건까지 받고 9자리는 틀린 꼴", () => {
+    expect(parseMrpPegQuery({ order: "PL-20261124-12345678" })).toEqual({
+      item: null,
+      order: "PL-20261124-12345678",
+      badInput: false,
+    });
+    expect(parseMrpPegQuery({ order: "PL-20261124-123456789" })).toEqual({ item: null, order: null, badInput: true });
+    expect(parseMrpPegQuery({ order: "PL-20261124-12" }).badInput).toBe(true);
+  });
 });
 
 describe("openMrpPeg", () => {
@@ -593,6 +603,8 @@ describe("openMrpPeg", () => {
     for (const u of up) if (u.kind === "ORDER" && u.up.length > 0) return deepest(u.up);
     return up;
   };
+  const countUp = (ups: MrpPegUp[]): number =>
+    ups.reduce((a, u) => a + (u.kind === "ORDER" ? 1 + countUp(u.up) : 0), 0);
   const allDowns = (downs: MrpPegDown[]): MrpPegDown[] =>
     downs.flatMap((d) => [d, ...d.covers.flatMap((c) => (c.stock ? [] : allDowns(c.down)))]);
 
@@ -666,6 +678,35 @@ describe("openMrpPeg", () => {
     expect(v.selected).not.toBeNull();
     expect(v.up).toEqual([]);
     expect(v.down).toEqual([]);
+  });
+
+  it("마디 상한은 위로 · 아래로가 따로 — 작은 상한이면 truncated 로 끝나고, 위로가 다 써도 아래로의 첫 단계는 남는다", async () => {
+    const [rm] = (await openMrpOrders(db, { ...BASE_QUERY, itemType: "RM" })).rows;
+    const full = await openMrpPeg(db, { ...BASE, order: rm.number });
+    expect(full.truncated).toBe(false);
+    expect(countUp(full.up)).toBeGreaterThan(1);
+
+    const small = await openMrpPeg(db, { ...BASE, order: rm.number }, 2);
+    expect(small.truncated).toBe(true);
+    expect(countUp(small.up)).toBe(2);
+    expect(small.selected!.number).toBe(rm.number);
+  });
+
+  it("위로가 상한을 다 써도 아래로의 첫 단계 공급은 남는다", async () => {
+    // 중간 단계(생산 계획오더 중 위로 · 아래로가 모두 있는 것)를 찾아 위로 상한을 소진시킨다.
+    const mids = (await openMrpOrders(db, { ...BASE_QUERY, itemType: "SF" })).rows;
+    expect(mids.length).toBeGreaterThan(0);
+    let checked = 0;
+    for (const m of mids) {
+      const full = await openMrpPeg(db, { ...BASE, order: m.number });
+      if (countUp(full.up) < 2 || !full.down.some((d) => d.covers.some((c) => !c.stock))) continue;
+      const small = await openMrpPeg(db, { ...BASE, order: m.number }, 1);
+      expect(small.truncated).toBe(true);
+      expect(countUp(small.up)).toBe(1); // 위로는 제 예산을 다 썼다
+      expect(small.down.some((d) => d.covers.some((c) => !c.stock))).toBe(true); // 아래로는 제 몫으로 첫 단계가 보인다
+      checked += 1;
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 
   it("실행이 없으면 run null", async () => {

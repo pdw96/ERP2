@@ -40,6 +40,16 @@ function OrderLine({ order }: { order: MrpPegOrder }) {
   );
 }
 
+/** MPS 칸 한 줄 — MPS 수량은 그 계획오더의 수량이다. */
+function MpsLine({ order }: { order: MrpPegOrder & { mps: NonNullable<MrpPegOrder["mps"]> } }) {
+  return (
+    <p>
+      MPS · {order.item.code} · {order.mps.week.slice(5, 10)} 주 · {shownQty(order.qty)} ·{" "}
+      {order.mps.fixed ? "고정" : "안"}
+    </p>
+  );
+}
+
 function UpNode({ node }: { node: MrpPegUp }) {
   if (node.kind !== "ORDER") {
     return (
@@ -54,6 +64,7 @@ function UpNode({ node }: { node: MrpPegUp }) {
         <span className="font-semibold tabular-nums">{shownQty(node.qty)}</span> ← {shortDate(node.needDate)} 필요 ·{" "}
         <OrderLine order={node.parent} />
       </p>
+      {node.parent.mps && <MpsLine order={{ ...node.parent, mps: node.parent.mps }} />}
       {node.up.length > 0 && (
         <ul className={tree}>
           {node.up.map((child, i) => (
@@ -188,35 +199,38 @@ export function MrpPeg({ peg }: { peg: MrpPegView }) {
           <section aria-label="고른 계획오더" className="mt-4 border border-rule bg-white px-4 py-3">
             <OrderLine order={selected} />
           </section>
-          {peg.truncated && (
+          {peg.hasPegs && peg.truncated && (
             <p role="status" className="mt-4 max-w-3xl border-l-4 border-safety bg-white px-5 py-3">
               마디가 500개를 넘어 나머지는 줄였습니다
             </p>
           )}
-          <section aria-label="위로" className="mt-4">
-            <h2 className="font-semibold">▲ 위로 — 이 계획오더가 채우는 소요</h2>
-            <ul className={tree}>
-              {selected.mps && (
-                <li>
-                  MPS · {selected.item.code} · {selected.mps.week.slice(5, 10)} 주 · {shownQty(selected.qty)} ·{" "}
-                  {selected.mps.fixed ? "고정" : "안"}
-                </li>
-              )}
-              {peg.up.map((node, i) => (
-                <UpNode key={i} node={node} />
-              ))}
-            </ul>
-          </section>
-          <section aria-label="아래로" className="mt-4">
-            <h2 className="font-semibold">▼ 아래로 — 이 계획오더가 낳은 소요</h2>
-            {selected.kind === "BUY" ? (
-              <p className="mt-2 text-muted">구매라 아래가 없습니다</p>
-            ) : selected.noBom ? (
-              <p className="mt-2 text-muted">BOM 없음 — 펼칠 BOM 줄이 없습니다</p>
-            ) : (
-              <DownList downs={peg.down} />
-            )}
-          </section>
+          {peg.hasPegs && (
+            <>
+              <section aria-label="위로" className="mt-4">
+                <h2 className="font-semibold">▲ 위로 — 이 계획오더가 채우는 소요</h2>
+                <ul className={tree}>
+                  {selected.mps && (
+                    <li>
+                      <MpsLine order={{ ...selected, mps: selected.mps }} />
+                    </li>
+                  )}
+                  {peg.up.map((node, i) => (
+                    <UpNode key={i} node={node} />
+                  ))}
+                </ul>
+              </section>
+              <section aria-label="아래로" className="mt-4">
+                <h2 className="font-semibold">▼ 아래로 — 이 계획오더가 낳은 소요</h2>
+                {selected.kind === "BUY" ? (
+                  <p className="mt-2 text-muted">구매라 아래가 없습니다</p>
+                ) : selected.noBom ? (
+                  <p className="mt-2 text-muted">BOM 없음 — 펼칠 BOM 줄이 없습니다</p>
+                ) : (
+                  <DownList downs={peg.down} />
+                )}
+              </section>
+            </>
+          )}
         </>
       )}
     </>

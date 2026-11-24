@@ -640,13 +640,13 @@ export async function openMrpGrid(
 
 // ── 페깅 ──
 
-/** 한 번에 그리는 계획오더 마디(MrpPegOrder)의 상한 — 닿으면 더 펼치지 않는다. */
+/** 위로 · 아래로가 각각 그리는 계획오더 마디(MrpPegOrder)의 상한 — 닿으면 그 쪽은 더 펼치지 않는다(고른 계획오더 자신은 세지 않는다). */
 export const MRP_PEG_NODE_LIMIT = 500;
 
 export type MrpPegQuery = { item: string | null; order: string | null; badInput: boolean };
 
 const PEG_ITEM = /^[A-Z0-9][A-Z0-9-]{0,29}$/;
-const PEG_ORDER = /^PL-[0-9]{8}-[0-9]{3,6}$/;
+const PEG_ORDER = /^PL-[0-9]{8}-[0-9]{3,8}$/;
 
 /** 주소의 값 — 품목코드 · 계획오더 번호의 꼴이 맞을 때만 받는다. 값이 있는데 꼴이 틀리면 그 칸은 비우고 badInput. */
 export function parseMrpPegQuery(params: Params): MrpPegQuery {
@@ -752,13 +752,13 @@ async function pegNodes(tx: Db, runId: number, ids: number[]): Promise<Map<numbe
   return out;
 }
 
-/** 마디 예산 — 그린 수가 상한에 닿으면 더 그리지 않고 truncated. */
-function pegBudget() {
+/** 마디 예산 — 그린 수가 상한에 닿으면 더 그리지 않고 truncated. 방향마다 하나씩 만든다. */
+function pegBudget(limit: number) {
   const b = { used: 0, truncated: false };
   return {
     state: b,
     take(): boolean {
-      if (b.used >= MRP_PEG_NODE_LIMIT) {
+      if (b.used >= limit) {
         b.truncated = true;
         return false;
       }
@@ -884,7 +884,7 @@ async function pegDown(tx: Db, runId: number, startId: number, take: () => boole
  * [페깅] 화면 — 가장 새 실행에서 고른 계획오더의 위(그 계획오더가 덮는 소요를 거쳐 MPS 칸까지) · 아래(그 소요를 채우는 재고 · 계획오더, 맨 아래까지).
  * 고르기: 번호가 있으면 그것(품목은 그 계획오더의 품목), 없으면 품목의 첫 계획오더, 둘 다 없으면 첫 완제품 계획오더. 읽기 전용 한 트랜잭션.
  */
-export async function openMrpPeg(db: Db, q: MrpPegQuery): Promise<MrpPegView> {
+export async function openMrpPeg(db: Db, q: MrpPegQuery, nodeLimit: number = MRP_PEG_NODE_LIMIT): Promise<MrpPegView> {
   return db.transaction(async (tx) => {
     const run = await latestRun(tx);
     const empty: MrpPegView = {
@@ -982,16 +982,17 @@ export async function openMrpPeg(db: Db, q: MrpPegQuery): Promise<MrpPegView> {
     };
     if (selectedId === null) return view;
 
-    const budget = pegBudget();
-    budget.take(); // 고른 계획오더 자신
     const selected = (await pegNodes(tx, run.id, [selectedId])).get(selectedId);
     if (!selected) return view;
     view.selected = selected.order;
     if (hasPegs) {
-      view.up = await pegUp(tx, run.id, selectedId, budget.take);
-      view.down = await pegDown(tx, run.id, selectedId, budget.take);
+      // 위로 · 아래로가 예산을 따로 쓴다 — 위로가 다 써도 아래로의 공급 계획오더는 남는다.
+      const upBudget = pegBudget(nodeLimit);
+      const downBudget = pegBudget(nodeLimit);
+      view.up = await pegUp(tx, run.id, selectedId, upBudget.take);
+      view.down = await pegDown(tx, run.id, selectedId, downBudget.take);
+      view.truncated = upBudget.state.truncated || downBudget.state.truncated;
     }
-    view.truncated = budget.state.truncated;
     return view;
   }, ro);
 }

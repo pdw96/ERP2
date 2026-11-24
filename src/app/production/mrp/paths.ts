@@ -2,6 +2,9 @@
 
 export const MRP_PATH = "/production/mrp";
 
+/** MRP 화면의 탭 셋 — 계획오더 목록(기본) · 품목별 MRP 표 · 페깅. */
+export type MrpView = "list" | "grid" | "peg";
+
 /** 품목별 MRP 표의 주소 — from 은 쪽의 첫 주, 없으면 실행 주부터. */
 export function mrpGridHref(from?: string): string {
   const query = new URLSearchParams({ view: "grid" });

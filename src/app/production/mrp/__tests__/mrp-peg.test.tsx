@@ -132,6 +132,26 @@ describe("페깅 탭", () => {
     expect(down().getByText("BOM 없음 — 펼칠 BOM 줄이 없습니다")).toBeInTheDocument();
   });
 
+  it("위로의 윗 계획오더가 완제품이면 그 마디 밑에도 MPS 칸을 적는다", () => {
+    const fg = order({
+      number: "PL-20261124-002",
+      qty: "300",
+      mps: { week: "2026-12-08", fixed: false },
+    });
+    const ups: MrpPegUp[] = [
+      {
+        kind: "ORDER",
+        qty: "30",
+        needDate: "2026-12-01",
+        parent: order({ number: "PL-20261124-005", item: info("SF-0002", "보드 조립품", "SF") }),
+        up: [{ kind: "ORDER", qty: "30", needDate: "2026-12-08", parent: fg, up: [] }],
+      },
+    ];
+    render(<MrpPeg peg={view({ selected: order({ number: "PL-20261124-009", mps: null }), up: ups })} />);
+    expect(up().getByText("MPS · FG-0001 · 12-08 주 · 300 · 안")).toBeInTheDocument();
+    expect(up().queryByText(/고정/)).toBeNull();
+  });
+
   it("아래로는 생산 계획오더 밑으로 이어진다", () => {
     const inner: MrpPegDown[] = [
       { item: info("RM-0001", "솔더 페이스트", "RM"), unit: "KG", need: "9", covers: [stock("9")] },
@@ -157,6 +177,15 @@ describe("페깅 탭", () => {
       "이 실행에는 페깅이 없습니다 — [MRP 실행]을 다시 누르면 생깁니다",
     );
     expect(screen.queryByRole("region", { name: "위로" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "아래로" })).toBeNull();
+    expect(screen.queryByText(/▲ 위로|▼ 아래로/)).toBeNull();
+
+    // 고른 계획오더가 있어도(머리 한 줄) 페깅이 없으면 나무 칸은 없다
+    rerender(<MrpPeg peg={view({ hasPegs: false })} />);
+    expect(screen.getByRole("region", { name: "고른 계획오더" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("이 실행에는 페깅이 없습니다");
+    expect(screen.queryByRole("region", { name: "위로" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "아래로" })).toBeNull();
 
     rerender(<MrpPeg peg={view({ notice: { kind: "stale", order: "PL-20261101-009" }, selected: null })} />);
     expect(screen.getByRole("status")).toHaveTextContent(

@@ -23,7 +23,7 @@ import { MrpPeg } from "./mrp-peg";
 import { MrpRun } from "./mrp-run";
 import { koreaMinute, MrpSettingHistory } from "./mrp-setting-history";
 import { mrpNotice } from "./notice";
-import { MRP_PATH, mrpGridHref, mrpPegHref } from "./paths";
+import { MRP_PATH, mrpGridHref, mrpPegHref, type MrpView } from "./paths";
 
 export const metadata: Metadata = { title: "MRP — ERP2" };
 
@@ -99,7 +99,7 @@ async function Sheet({ searchParams }: Pick<PageProps<"/production/mrp">, "searc
         key={randomUUID()}
         lastRun={run ? koreaMinute(run.ranAt) : null}
         dueWeekday={settings.dueWeekday}
-        grid={grid}
+        view={view}
         from={shown.view === "grid" ? shown.sheet.weeks[0] : undefined}
       />
       <MrpTabs view={view} />
@@ -114,8 +114,6 @@ async function Sheet({ searchParams }: Pick<PageProps<"/production/mrp">, "searc
     </>
   );
 }
-
-type MrpView = "list" | "grid" | "peg";
 
 /** 탭 셋 — 주소의 view 만 바꾼다(거르기 · 쪽 · 고른 계획오더는 버린다). */
 function MrpTabs({ view }: { view: MrpView }) {
