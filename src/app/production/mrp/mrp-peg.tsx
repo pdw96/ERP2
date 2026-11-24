@@ -122,43 +122,61 @@ export function MrpPeg({ peg }: { peg: MrpPegView }) {
   return (
     <>
       {peg.hasPegs && (
-        <Form
-          key={`${peg.item}|${selected?.number}`}
-          action={MRP_PATH}
-          replace
-          role="search"
-          aria-label="페깅 계획오더 고르기"
-          className="mt-4 grid max-w-4xl gap-3 border-y border-rule bg-white px-4 py-4 sm:grid-cols-2 sm:items-end"
-        >
-          <input type="hidden" name="view" value="peg" />
-          <label className="grid gap-1 text-sm">
-            <span className="font-semibold">품목</span>
-            <select name="item" defaultValue={peg.item ?? ""} className={select}>
-              {peg.item === null && <option value="">품목을 고르세요</option>}
-              {peg.items.map((i) => (
-                <option key={i.code} value={i.code}>
-                  {i.code} {i.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="font-semibold">계획오더</span>
-            <select name="order" defaultValue={selected?.number ?? ""} className={select}>
-              {!selected && <option value="">계획오더를 고르세요</option>}
-              {peg.orders.map((o) => (
-                <option key={o.number} value={o.number}>
-                  {o.number} · {shownQty(o.qty)} {o.unit} · {shortDate(o.dueDate)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="sm:col-span-full">
-            <button type="submit" className="rounded border border-machine px-5 py-2 font-semibold hover:bg-floor">
-              보기
-            </button>
-          </div>
-        </Form>
+        // 폼 둘 — 품목을 바꾸면 고른 계획오더를 싣지 않아(서버가 그 품목의 첫 계획오더를 연다) 품목 바꿈이 묻히지 않는다.
+        <div className="mt-4 grid max-w-4xl gap-3 border-y border-rule bg-white px-4 py-4 sm:grid-cols-2">
+          <Form
+            key={`item|${peg.item}`}
+            action={MRP_PATH}
+            replace
+            role="search"
+            aria-label="페깅 품목 고르기"
+            className="grid gap-2"
+          >
+            <input type="hidden" name="view" value="peg" />
+            <label className="grid gap-1 text-sm">
+              <span className="font-semibold">품목</span>
+              <select name="item" defaultValue={peg.item ?? ""} className={select}>
+                {peg.item === null && <option value="">품목을 고르세요</option>}
+                {peg.items.map((i) => (
+                  <option key={i.code} value={i.code}>
+                    {i.code} {i.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div>
+              <button type="submit" className="rounded border border-machine px-5 py-2 font-semibold hover:bg-floor">
+                보기
+              </button>
+            </div>
+          </Form>
+          <Form
+            key={`order|${selected?.number}`}
+            action={MRP_PATH}
+            replace
+            role="search"
+            aria-label="페깅 계획오더 고르기"
+            className="grid gap-2"
+          >
+            <input type="hidden" name="view" value="peg" />
+            <label className="grid gap-1 text-sm">
+              <span className="font-semibold">계획오더</span>
+              <select name="order" defaultValue={selected?.number ?? ""} className={select}>
+                {!selected && <option value="">계획오더를 고르세요</option>}
+                {peg.orders.map((o) => (
+                  <option key={o.number} value={o.number}>
+                    {o.number} · {shownQty(o.qty)} {o.unit} · {shortDate(o.dueDate)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div>
+              <button type="submit" className="rounded border border-machine px-5 py-2 font-semibold hover:bg-floor">
+                보기
+              </button>
+            </div>
+          </Form>
+        </div>
       )}
       {notice && (
         <p role="status" className="mt-4 max-w-3xl border-l-4 border-safety bg-white px-5 py-3">

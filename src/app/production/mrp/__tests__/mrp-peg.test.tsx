@@ -85,14 +85,19 @@ describe("페깅 탭", () => {
     expect(within(head).getByText("7,000 EA")).toBeInTheDocument();
   });
 
-  it("고르는 폼 — 품목 · 계획오더 상자는 GET, view=peg 를 싣는다", () => {
+  it("고르는 폼 둘 — 품목 폼은 order 를, 계획오더 폼은 item 을 싣지 않는다(품목 바꿈이 묻히지 않게)", () => {
     render(<MrpPeg peg={view({})} />);
-    const form = screen.getByRole("search", { name: "페깅 계획오더 고르기" });
-    expect(form).toHaveAttribute("action", "/production/mrp");
-    expect(form.querySelector('input[name="view"]')).toHaveValue("peg");
-    expect(within(form).getByLabelText("품목")).toHaveValue("FG-0001");
-    expect(within(form).getByLabelText("계획오더")).toHaveValue("PL-20261124-001");
-    expect(within(form).getByRole("button", { name: "보기" })).toBeInTheDocument();
+    const itemForm = screen.getByRole("search", { name: "페깅 품목 고르기" });
+    const orderForm = screen.getByRole("search", { name: "페깅 계획오더 고르기" });
+    for (const form of [itemForm, orderForm]) {
+      expect(form).toHaveAttribute("action", "/production/mrp");
+      expect(form.querySelector('input[name="view"]')).toHaveValue("peg");
+      expect(within(form).getByRole("button", { name: "보기" })).toBeInTheDocument();
+    }
+    expect(within(itemForm).getByLabelText("품목")).toHaveValue("FG-0001");
+    expect(itemForm.querySelector('[name="order"]')).toBeNull();
+    expect(within(orderForm).getByLabelText("계획오더")).toHaveValue("PL-20261124-001");
+    expect(orderForm.querySelector('[name="item"]')).toBeNull();
   });
 
   it("늦은 계획오더는 머리에 빨강 N일 늦음", () => {
