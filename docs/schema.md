@@ -36,6 +36,12 @@
 | `sales_plan_changes` | 판매계획 고친 이력 | 칸 하나를 고칠 때마다 한 줄 — 고객 · 품목 · 주 · 일시 · 전 · 후(전이 비면 새로 정함, 후가 비면 지움)에 종류 `kind`(EDIT 고침 · CONFIRM 확정 · UNCONFIRM 확정 취소 — 확정 줄의 전 · 후는 그때 수량). 판매계획 칸을 가리키지 않아 지운 칸의 이력도 남는다. 고치거나 지우지 않는다 | 판매계획 |
 | `mps_fixed` | MPS 고정 칸 | 완제품 × 주(그 주 월요일)마다 고정 수량 하나 — 0 이상 99,999,999 이하(0 도 고정한 수량이다). 줄이 없는 주는 시스템 안이다. `fixed_at` 은 고정한 일시 | MPS |
 | `mps_changes` | MPS 고친 이력 | 칸 하나를 바꿀 때마다 한 줄 — 품목 · 주 · 일시 · 전 · 후(전이 비면 새로 고정, 후가 비면 고정을 풂)에 종류 `kind`(EDIT 고침 · CONFIRM 확정 · UNCONFIRM 확정 취소). 고정 칸을 가리키지 않아 푼 칸의 이력도 남는다. 고치거나 지우지 않는다 | MPS |
+| `mrp_settings` | MRP 설정 | 줄은 하나(id 1) — 완성일 기준 요일 `due_weekday`(1 월 ~ 7 일, 처음 1). 마이그레이션이 처음 줄을 넣고 매일 밤 되돌림이 다시 넣는다 | MRP |
+| `mrp_setting_changes` | MRP 설정 고친 이력 | 완성일 기준 요일을 바꿀 때마다 한 줄 — 일시 · 전 · 후(1 ~ 7). 전체 1,000줄까지. 고치거나 지우지 않는다 | MRP |
+| `mrp_runs` | MRP 실행 | 실행 하나가 한 줄 — 실행 일시 · 실행일(한국 날짜) · 그때의 완성일 기준 요일 · 이번 실행의 마지막 일련 `seq_end`(계획오더가 없으면 그날 앞 실행의 값) · 계획오더 수 | MRP |
+| `mrp_planned_orders` | MRP 계획오더 | 실행이 낸 생산(`MAKE`) · 구매(`BUY`) 계획 — 번호 `PL-<실행일 여덟 자리>-<일련>` · 품목 · 수량(0 보다 큼) · 단위 · 자릿수 · 완성일 · 계획 시작일 · 시작일 · 늦은 날수 · BOM 없음 표시. 실행이 지워지면 함께 지워진다 | MRP |
+| `mrp_run_items` | MRP 실행의 품목 값 | 실행이 읽은 품목별 값 — MPS 에서 왔는지 · 가용재고 · 안전재고 · 최소 로트 · 로트 배수 · 리드타임 · 단위 · 자릿수 · 사용 여부. 실행마다 품목 하나에 한 줄 | MRP |
+| `mrp_gross` | MRP 총소요 | 실행이 셈한 품목 × 주(그 주 월요일)의 총소요 — 0 보다 큼. 실행마다 품목 × 주에 한 줄 | MRP |
 
 ### DB 가 막는 것
 
@@ -87,6 +93,11 @@
   고친 이력도 주는 월요일이고(`sales_plan_changes_monday`) 전 · 후 가운데 하나는 값이 있다(`sales_plan_changes_some`). 이력의 종류는 EDIT · CONFIRM · UNCONFIRM 가운데 하나다(`sales_plan_changes_kind`). 계획 · 이력에 든 고객 · 품목은 지울 수 없다(참조).
 - **MPS**(메뉴 「MPS」) — 한 칸은 (품목, 주)마다 하나이고(`mps_fixed_cell_unique`) 주는 월요일이며(`mps_fixed_monday`) 수량은 0 이상 99,999,999 이하다(`mps_fixed_qty_range`).
   고친 이력도 주는 월요일이고(`mps_changes_monday`) 전 · 후 가운데 하나는 값이 있다(`mps_changes_some`). 이력의 종류는 EDIT · CONFIRM · UNCONFIRM 가운데 하나다(`mps_changes_kind`). 고정 칸 · 이력에 든 품목은 지울 수 없다(참조).
+- **MRP**(메뉴 「MRP」) — 설정은 한 줄(`mrp_settings_single`)이고 완성일 기준 요일은 1 ~ 7 이다(`mrp_settings_due_weekday`). 설정 이력의 전 · 후도 1 ~ 7 이다(`mrp_setting_changes_before` · `_after`).
+  실행의 기준 요일은 비었거나 1 ~ 7 이다(`mrp_runs_due_weekday`). 계획오더 번호는 `^PL-[0-9]{8}-[0-9]{3,}$` 이고 겹치지 않으며(`mrp_planned_orders_number_format` · `_unique`),
+  구분은 MAKE · BUY(`mrp_planned_orders_kind`), 수량은 0 보다 크고(`mrp_planned_orders_qty`) 늦은 날수는 0 이상이다(`mrp_planned_orders_late_days`).
+  실행의 품목 값은 실행마다 품목 하나(`mrp_run_items_unique`), 총소요는 실행마다 품목 × 주 하나(`mrp_gross_unique`)이고 주는 월요일(`mrp_gross_monday`) 수량은 0 보다 크다(`mrp_gross_qty`).
+  계획오더 · 품목 값 · 총소요는 실행이 지워지면 함께 지워지고, 이들에 든 품목은 지울 수 없다(참조).
 
 DB 가 막지 않고 서버가 막는 것(조각 「기준정보」 PR C · D · E) — 수량의 소수 넷째 자리(DB 는 `numeric(12,3)` 이라 거절하지 않고 셋째 자리로 반올림한다 — 재고 수량은 `numeric(14,3)`, ADR 0018) · 수량의 상한, 코드 · 품목 유형을 등록 뒤 바꾸지 않음, 「사용 안 함」 단위를
 새 품목에 쓰지 않음, 「사용 안 함」 분류를 새 품목에 쓰지 않음(PR H), 「사용 안 함」 국가를 새 거래처에 쓰지 않음, 시스템 코드 묶음을 바꾸지 않음, 국가 `KR` 을 「사용 안 함」으로 바꾸지

@@ -33,6 +33,12 @@ import {
   items,
   mpsChanges,
   mpsFixed,
+  mrpGross,
+  mrpPlannedOrders,
+  mrpRunItems,
+  mrpRuns,
+  mrpSettingChanges,
+  mrpSettings,
   numberRules,
   numberRuleSeqs,
   partners,
@@ -53,6 +59,7 @@ import {
   workCenters,
 } from "./schema";
 import { lockBom, saveBom } from "./boms";
+import { lockMrp, runMrpIn } from "./mrp";
 import { lockRouting, saveRouting } from "./routings";
 import { lockSalesPlans } from "./sales-plans";
 import { cancelMove, lockStock, saveMove } from "./stock";
@@ -61,6 +68,13 @@ import type { Db } from "./types";
 
 /** 되돌림이 비우고 다시 채우는 테이블 — 테이블을 더하는 조각은 여기에도 더한다(시험이 스키마와 견준다). */
 export const RESET_TABLES = [
+  // mrp_runs 를 맨 앞에 — 읽기가 mrp_runs 를 먼저 잠그므로 TRUNCATE 도 같은 차례로 잠가 서로 기다려 얽히지 않는다.
+  "mrp_runs",
+  "mrp_gross",
+  "mrp_planned_orders",
+  "mrp_run_items",
+  "mrp_setting_changes",
+  "mrp_settings",
   "mps_changes",
   "mps_fixed",
   "sales_plan_changes",
@@ -107,6 +121,9 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
     await lockRouting(tx);
     // 판매계획도 같다 — 판매계획을 고치는 저장이 쥐는 잠금이라, 비우기 전에 쥐어 저장과 같은 차례(재고 → BOM → 라우팅 → 판매계획)를 지킨다.
     await lockSalesPlans(tx);
+    // MRP 도 같다 — 완성일 기준 요일 저장 · MRP 실행이 쥐는 잠금이라, 비우기 전에 쥐어 그들과 같은 차례(… → 판매계획 → MRP)를 지킨다.
+    // MRP 실행은 이 잠금 하나만 쥐고(앞의 잠금들을 쥐지 않는다) 표를 읽으므로 서로 기다려 막히지 않는다.
+    await lockMrp(tx);
     await tx.execute(sql.raw(`truncate table ${RESET_TABLES.map((t) => `"${t}"`).join(", ")} restart identity`));
     await tx.insert(codeGroups).values(SAMPLE_CODE_GROUPS);
     await tx.insert(codes).values(SAMPLE_CODES);
@@ -153,6 +170,11 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
     await insertSampleRoutings(tx);
     await insertSampleSalesPlans(tx, today);
     await insertSampleMps(tx, today);
+    // MRP 설정은 줄 하나(id 1) — 처음 값(월요일)으로 다시 넣는다. 설정 이력은 비워 둔다.
+    await tx.insert(mrpSettings).values({ id: 1 });
+    // 샘플을 다 넣은 뒤 MRP 를 한 번 실행한다 — 데모에 계획오더가 늘 있다(그날 일련 001 부터). 상한에 걸릴 샘플이 아니므로 거절이면 던진다.
+    const mrp = await runMrpIn(tx, new Date(), today);
+    if (!mrp.ok) throw new Error(`샘플 MRP 실행 실패: ${mrp.formError}`);
     const n = async (
       t:
         | typeof stockMoves
@@ -172,9 +194,21 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
         | typeof salesPlans
         | typeof salesPlanChanges
         | typeof mpsFixed
-        | typeof mpsChanges,
+        | typeof mpsChanges
+        | typeof mrpGross
+        | typeof mrpPlannedOrders
+        | typeof mrpRunItems
+        | typeof mrpRuns
+        | typeof mrpSettingChanges
+        | typeof mrpSettings,
     ) => (await tx.select({ n: count() }).from(t))[0].n;
     return {
+      mrp_gross: await n(mrpGross),
+      mrp_planned_orders: await n(mrpPlannedOrders),
+      mrp_run_items: await n(mrpRunItems),
+      mrp_runs: await n(mrpRuns),
+      mrp_setting_changes: await n(mrpSettingChanges),
+      mrp_settings: await n(mrpSettings),
       mps_changes: await n(mpsChanges),
       mps_fixed: await n(mpsFixed),
       sales_plan_changes: await n(salesPlanChanges),

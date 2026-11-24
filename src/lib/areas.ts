@@ -138,7 +138,7 @@ export const AREAS: readonly Area[] = [
         label: "생산계획",
         menus: [
           { label: "MPS", slice: "MPS", href: "/production/mps" },
-          { label: "MRP", slice: "MRP" },
+          { label: "MRP", slice: "MRP", href: "/production/mrp" },
           { label: "능력계획", slice: "능력계획(CRP)" },
         ],
       },

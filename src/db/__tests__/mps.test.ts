@@ -11,6 +11,7 @@ import {
   mpsHistory,
   mpsQuantitiesFit,
   mpsSupply,
+  mpsSupplyIn,
   openMps,
   saveMps,
   unconfirmMps,
@@ -428,6 +429,14 @@ describe("MPS — MRP 가 읽는 공급량", () => {
     // toWeek 까지만.
     const near = await mpsSupply(db, w(3), TODAY);
     expect(near).toEqual(supply.filter((s) => s.week <= w(3)));
+  });
+
+  it("mpsSupplyIn 은 부르는 쪽의 트랜잭션 안에서 같은 값을 읽는다(MRP 실행이 쓴다)", async () => {
+    await designExample();
+    const supply = await mpsSupply(db, w(51), TODAY);
+    expect(supply.length).toBeGreaterThan(0);
+    expect(await db.transaction((tx) => mpsSupplyIn(tx, w(51), TODAY))).toEqual(supply);
+    expect(await db.transaction((tx) => mpsSupplyIn(tx, w(3), TODAY))).toEqual(supply.filter((s) => s.week <= w(3)));
   });
 });
 

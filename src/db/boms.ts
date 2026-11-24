@@ -18,6 +18,7 @@ import {
 } from "@/lib/bom-input";
 import { eun, iga } from "@/lib/josa";
 import { formatMilli, THOUSAND, ZERO, type Milli } from "@/lib/move-input";
+import { ceilToDecimals, reduced, requiredOf, type Ratio } from "@/lib/ratio";
 import { limitMessage, REGISTER_LOCK, STALE, touched, VERSION, versionIs, versionOf } from "./master-shared";
 import { bomChanges, bomLines, boms, items, unitSpecs } from "./schema";
 import { milliOf } from "./stock";
@@ -937,30 +938,7 @@ export const EXPLODE_DEPTH = 20;
 /** 한 번에 보이는 줄의 상한 — 같은 자재가 여러 길로 드는 BOM 은 길마다 줄이라, 엉뚱한 BOM 이 화면 · DB 를 붙잡지 않게 막는다. */
 export const EXPLODE_ROWS = 2000;
 
-/** 끝수를 버리지 않은 수 — 분자 / 분모(둘 다 양). */
-export type Ratio = { n: bigint; d: bigint };
-
-const gcd = (a: bigint, b: bigint): bigint => {
-  while (b !== ZERO) [a, b] = [b, a % b];
-  return a < ZERO ? -a : a;
-};
-const reduced = (n: bigint, d: bigint): Ratio => {
-  const g = gcd(n, d);
-  return { n: n / g, d: d / g };
-};
-const TEN_THOUSAND = BigInt(10000);
-
-/** 윗 단계의 필요량 × 소요량 ÷ 기준수량 × (1 + 로스율 ÷ 100) — 소요량 · 기준수량은 천분의 일 단위, 로스율은 백분의 일 퍼센트 단위. */
-export function requiredOf(upper: Ratio, qty: Milli, baseQty: Milli, lossHundredths: number): Ratio {
-  return reduced(upper.n * qty * (TEN_THOUSAND + BigInt(lossHundredths)), upper.d * baseQty * TEN_THOUSAND);
-}
-
-/** 끝수를 버리지 않은 수를 소수 decimals 자리로 올려 보이는 글자로 — 0.0042 → 「0.005」(decimals 3), 2.1 → 「3」(decimals 0). */
-export function ceilToDecimals(r: Ratio, decimals: number): string {
-  const scale = BigInt(10) ** BigInt(decimals);
-  const up = (r.n * scale + r.d - BigInt(1)) / r.d;
-  return formatMilli(up * BigInt(10) ** BigInt(3 - decimals));
-}
+export { ceilToDecimals, requiredOf, type Ratio } from "@/lib/ratio";
 
 /** 펼친 줄 하나 — 정전개는 자품목, 역전개는 부모가 그 줄의 품목이다. */
 export type ExplodedLine = {
