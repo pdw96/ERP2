@@ -38,6 +38,23 @@ describe("MRP 의 입구", () => {
     expect(h.redirect).toHaveBeenLastCalledWith("/production/mrp?view=grid&ran=37");
   });
 
+  it("표(view=grid)에서는 보던 쪽(from)이 월요일일 때만 싣는다 — 목록은 from 을 싣지 않는다", async () => {
+    h.run.mockResolvedValue({ ok: true, orders: 3 });
+    await runMrpAction(null, form({ view: "grid", from: "2026-12-07" }));
+    expect(h.redirect).toHaveBeenLastCalledWith("/production/mrp?view=grid&from=2026-12-07&ran=3");
+    for (const bad of ["2026-12-08", "2026-02-30", "garbage", "//evil.example", ""]) {
+      await runMrpAction(null, form({ view: "grid", from: bad }));
+      expect(h.redirect).toHaveBeenLastCalledWith("/production/mrp?view=grid&ran=3");
+    }
+    await runMrpAction(null, form({ from: "2026-12-07" }));
+    expect(h.redirect).toHaveBeenLastCalledWith("/production/mrp?ran=3");
+    h.save.mockResolvedValue({ ok: true, changed: true });
+    await saveMrpSettingAction(null, form({ dueWeekday: "5", view: "grid", from: "2026-12-07" }));
+    expect(h.redirect).toHaveBeenLastCalledWith("/production/mrp?view=grid&from=2026-12-07&setting=saved");
+    await saveMrpSettingAction(null, form({ dueWeekday: "5", from: "2026-12-07" }));
+    expect(h.redirect).toHaveBeenLastCalledWith("/production/mrp?setting=saved");
+  });
+
   it("view 가 grid 가 아니면 싣지 않는다 — 경로 같은 값도 쿼리로만 걸러진다", async () => {
     h.run.mockResolvedValue({ ok: true, orders: 0 });
     await runMrpAction(null, form({ view: "//evil.example", path: "https://evil.example" }));

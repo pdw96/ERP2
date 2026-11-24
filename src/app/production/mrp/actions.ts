@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { runMrp, saveMrpSettings } from "@/db/mrp";
 import { withDb } from "@/db/request";
 import { describeFailure } from "@/db/status";
+import { isMonday } from "@/lib/weeks";
 import { MRP_PATH } from "./paths";
 
 // MRP 의 입구 — [MRP 실행] · 완성일 기준 요일 저장(메뉴 「MRP」). 누구나 부를 수 있는 POST 라(데모는 로그인이 없다, ADR 0004) 화면을 믿지 않고
@@ -11,10 +12,17 @@ import { MRP_PATH } from "./paths";
 
 export type MrpActionState = { ok: false; formError: string } | null;
 
-/** 서고 돌아갈 주소 — 경로는 상수이고, 보던 탭은 품목별 MRP 표(view=grid)일 때만 싣는다. 끝에 결과. */
+/**
+ * 서고 돌아갈 주소 — 경로는 상수이고, 보던 탭은 품목별 MRP 표(view=grid)일 때만 싣는다. 표일 때는 보던 쪽(from)도 월요일이면 싣는다
+ * (아니면 버린다 — 화면이 parseMrpGridFrom 으로 다시 거르지만 주소에는 월요일 날짜만 오르게 한다). 끝에 결과.
+ */
 function backHref(form: FormData, done: [string, string]): string {
   const query = new URLSearchParams();
-  if (form.get("view") === "grid") query.set("view", "grid");
+  if (form.get("view") === "grid") {
+    query.set("view", "grid");
+    const from = form.get("from");
+    if (typeof from === "string" && isMonday(from)) query.set("from", from);
+  }
   query.set(...done);
   return `${MRP_PATH}?${query}`;
 }

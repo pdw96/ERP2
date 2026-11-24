@@ -410,6 +410,16 @@ describe("openMrp", () => {
     expect(late.total).toBe(lateN[0].n);
   });
 
+  it("「사용 안 함」은 실행 때의 것이다 — 뒤에 품목을 쓰지 않음으로 바꿔도 목록은 표와 같다", async () => {
+    const before = (await openMrpOrders(db, BASE_QUERY)).rows[0];
+    expect(before.item.active).toBe(true);
+    await db.update(items).set({ active: false }).where(eq(items.code, before.item.code));
+    const list = (await openMrpOrders(db, BASE_QUERY)).rows.find((r) => r.number === before.number)!;
+    expect(list.item.active).toBe(true);
+    const grid = (await openMrpGrid(db, W0)).rows.find((r) => r.item.code === before.item.code)!;
+    expect(grid.item.active).toBe(list.item.active);
+  });
+
   it("쪽이 넘치면 마지막 쪽, 수량은 정규 글자", async () => {
     const over = await openMrpOrders(db, { ...BASE_QUERY, page: 99 });
     expect(over.page).toBe(over.pages);

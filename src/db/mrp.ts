@@ -419,7 +419,7 @@ export async function openMrpOrders(
         name: items.name,
         spec: items.spec,
         itemType: items.itemType,
-        active: items.active,
+        active: mrpRunItems.active,
         qty: sql<string>`${mrpPlannedOrders.qty}::text`,
         unit: mrpPlannedOrders.unit,
         startDate: mrpPlannedOrders.startDate,
@@ -429,6 +429,11 @@ export async function openMrpOrders(
       })
       .from(mrpPlannedOrders)
       .innerJoin(items, eq(items.id, mrpPlannedOrders.itemId))
+      // 「사용 안 함」은 실행 때의 것(표와 같게) — 지금의 items.active 가 아니라 그 실행의 품목 줄에서 읽는다.
+      .innerJoin(
+        mrpRunItems,
+        and(eq(mrpRunItems.runId, mrpPlannedOrders.runId), eq(mrpRunItems.itemId, mrpPlannedOrders.itemId)),
+      )
       .where(where)
       .orderBy(asc(mrpPlannedOrders.id)) // 번호 차례로 넣었으므로 id 차례 = 번호의 수 차례(글자 차례는 1000 부터 어긋난다)
       .limit(PAGE_SIZE)

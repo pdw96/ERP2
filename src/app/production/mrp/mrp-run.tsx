@@ -25,6 +25,7 @@ export function MrpRun({
   lastRun,
   dueWeekday,
   grid,
+  from,
 }: {
   /** 마지막 실행 일시(한국 시각 「YYYY-MM-DD HH:mm」) — 실행한 적이 없으면 null. */
   lastRun: string | null;
@@ -32,10 +33,17 @@ export function MrpRun({
   dueWeekday: number;
   /** 보던 탭이 품목별 MRP 표인가. */
   grid: boolean;
+  /** 보던 표의 쪽(그 쪽 첫 주의 월요일) — 표일 때만 함께 보내 같은 쪽으로 돌아온다. */
+  from?: string;
 }) {
   const [ran, runAction, running] = useActionState<MrpActionState, FormData>(runMrpAction, null);
   const [saved, saveAction, saving] = useActionState<MrpActionState, FormData>(saveMrpSettingAction, null);
-  const view = grid && <input type="hidden" name="view" value="grid" />;
+  const view = grid && (
+    <>
+      <input type="hidden" name="view" value="grid" />
+      {from && <input type="hidden" name="from" value={from} />}
+    </>
+  );
 
   return (
     <div className="mt-6 grid max-w-3xl gap-4 border-y border-rule bg-white px-4 py-4">

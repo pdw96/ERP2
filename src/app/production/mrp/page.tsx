@@ -85,6 +85,7 @@ async function Sheet({ searchParams }: Pick<PageProps<"/production/mrp">, "searc
         lastRun={run ? koreaMinute(run.ranAt) : null}
         dueWeekday={settings.dueWeekday}
         grid={grid}
+        from={view.grid ? view.sheet.weeks[0] : undefined}
       />
       <MrpTabs grid={grid} />
       {view.grid ? (

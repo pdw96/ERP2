@@ -38,7 +38,21 @@ describe("MRP 실행 · 완성일 기준 요일", () => {
     await waitFor(() => expect(h.run).toHaveBeenCalled());
     const sent = h.run.mock.calls[0][1] as FormData;
     expect(sent.get("view")).toBe("grid");
+    expect(sent.get("from")).toBeNull();
     expect(await screen.findByRole("alert")).toHaveTextContent("실행하지 못했습니다 — 잠시 뒤 다시 실행하세요");
+  });
+
+  it("표에서는 보던 쪽(from)도 함께 보내고, 목록에서는 보내지 않는다", async () => {
+    h.run.mockResolvedValue({ ok: false, formError: "x" });
+    const { unmount } = render(<MrpRun lastRun={null} dueWeekday={1} grid from="2026-12-07" />);
+    fireEvent.click(screen.getByRole("button", { name: "MRP 실행" }));
+    await waitFor(() => expect(h.run).toHaveBeenCalledTimes(1));
+    expect((h.run.mock.calls[0][1] as FormData).get("from")).toBe("2026-12-07");
+    unmount();
+    render(<MrpRun lastRun={null} dueWeekday={1} grid={false} from="2026-12-07" />);
+    fireEvent.click(screen.getByRole("button", { name: "MRP 실행" }));
+    await waitFor(() => expect(h.run).toHaveBeenCalledTimes(2));
+    expect((h.run.mock.calls[1][1] as FormData).get("from")).toBeNull();
   });
 
   it("[저장]은 고른 요일을 보내고, 목록에서는 view 를 보내지 않는다 · 거절은 그대로", async () => {
