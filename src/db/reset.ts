@@ -68,10 +68,11 @@ import type { Db } from "./types";
 
 /** 되돌림이 비우고 다시 채우는 테이블 — 테이블을 더하는 조각은 여기에도 더한다(시험이 스키마와 견준다). */
 export const RESET_TABLES = [
+  // mrp_runs 를 맨 앞에 — 읽기가 mrp_runs 를 먼저 잠그므로 TRUNCATE 도 같은 차례로 잠가 서로 기다려 얽히지 않는다.
+  "mrp_runs",
   "mrp_gross",
   "mrp_planned_orders",
   "mrp_run_items",
-  "mrp_runs",
   "mrp_setting_changes",
   "mrp_settings",
   "mps_changes",

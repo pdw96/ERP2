@@ -123,6 +123,16 @@ export function overOrderLimit(n: number): boolean {
   return n > MRP_ORDER_LIMIT;
 }
 
+const OVER_QTY = "계획량이 너무 커서 실행하지 못했습니다 — BOM 의 소요량과 MPS 수량을 확인하세요";
+
+/** numeric(15,3) 이 담는 가장 큰 수 999,999,999,999.999 (천분의 일 단위). */
+const NUMERIC_MAX = BigInt("999999999999999");
+
+/** 천분의 일 단위의 수량이 numeric(15,3) 에 안 들어가는가(절댓값이 끝을 넘음). */
+export function overNumericLimit(q: Milli): boolean {
+  return (q < BigInt(0) ? -q : q) > NUMERIC_MAX;
+}
+
 /** 천분의 일 단위의 수량을 numeric 글자로(음수도). */
 function numericText(q: Milli): string {
   const abs = q < BigInt(0) ? -q : q;
@@ -217,12 +227,24 @@ export async function runMrpIn(tx: Db, now: Date, today: string = koreaToday(now
 
   const plan = planMrp({ today, dueWeekday, weeks, items: all, bomLines: await runBomLines(tx), available, mps });
   if (overOrderLimit(plan.orders.length)) return { ok: false, formError: OVER_ORDERS };
+  // 넣을 수량이 numeric(15,3) 의 끝을 넘으면 쓰기 전에 거절한다 — 넘는 채로 넣으면 22003 오류가 나 「잠시 뒤 다시」로 보인다.
+  const tooLarge =
+    plan.orders.some((o) => overNumericLimit(o.qty)) ||
+    plan.items.some(
+      (p) =>
+        overNumericLimit(p.available) ||
+        overNumericLimit(p.safety) ||
+        overNumericLimit(itemById.get(p.itemId)!.minLot) ||
+        overNumericLimit(itemById.get(p.itemId)!.multiple) ||
+        [...p.gross.values()].some(overNumericLimit),
+    );
+  if (tooLarge) return { ok: false, formError: OVER_QTY };
 
   const [{ last }] = await tx
     .select({ last: max(mrpRuns.seqEnd) })
     .from(mrpRuns)
     .where(eq(mrpRuns.runDate, today));
-  const first = (last ?? 0) + 1;
+  const firstSeq = (last ?? 0) + 1;
 
   // 지난 실행들의 결과를 지운다 — 실행 줄은 남긴다.
   await tx.delete(mrpGross);
@@ -235,13 +257,13 @@ export async function runMrpIn(tx: Db, now: Date, today: string = koreaToday(now
       ranAt: now,
       runDate: today,
       dueWeekday,
-      seqEnd: first - 1 + plan.orders.length,
+      seqEnd: firstSeq - 1 + plan.orders.length,
       orderCount: plan.orders.length,
     })
     .returning({ runId: mrpRuns.id });
 
   const itemOf = (id: number) => itemById.get(id)!;
-  const numbered = plan.orders.map((o, i) => ({ ...o, number: plannedNumber(today, first + i) }));
+  const numbered = plan.orders.map((o, i) => ({ ...o, number: plannedNumber(today, firstSeq + i) }));
   await insertInChunks(numbered, (part) =>
     tx.insert(mrpPlannedOrders).values(
       part.map((o) => ({
@@ -408,7 +430,7 @@ export async function openMrpOrders(
       .from(mrpPlannedOrders)
       .innerJoin(items, eq(items.id, mrpPlannedOrders.itemId))
       .where(where)
-      .orderBy(asc(mrpPlannedOrders.number))
+      .orderBy(asc(mrpPlannedOrders.id)) // 번호 차례로 넣었으므로 id 차례 = 번호의 수 차례(글자 차례는 1000 부터 어긋난다)
       .limit(PAGE_SIZE)
       .offset((p.page - 1) * PAGE_SIZE);
     return {

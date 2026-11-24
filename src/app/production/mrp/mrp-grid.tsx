@@ -16,14 +16,12 @@ type Grid = Awaited<ReturnType<typeof openMrpGrid>>;
 
 const PAGES = 4;
 const ZERO = BigInt(0);
-const NOT_RUN = "아직 MRP 를 실행하지 않았습니다 — [MRP 실행]을 누르세요";
 
 const shown = (qty: string | null) => (qty === null ? "" : shownQty(qty));
 
 export function MrpGrid({ grid, thisWeek }: { grid: Grid; thisWeek: string }) {
   const { run, runWeek, weeks, rows } = grid;
-  if (!run || !runWeek)
-    return <p className="mt-4 border border-dashed border-rule px-5 py-6 text-center text-sm text-muted">{NOT_RUN}</p>;
+  if (!run || !runWeek) return null; // 실행한 적이 없다는 안내는 실행 상자(MrpRun)에만 둔다
 
   // 쪽 — 실행 주에서 13주씩 넷, 앞 · 뒤 쪽이 있을 때만 링크.
   const starts = Array.from({ length: PAGES }, (_, k) => addWeeks(runWeek, PAGE_WEEKS * k));

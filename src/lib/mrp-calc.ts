@@ -75,7 +75,7 @@ export type NetItemInput = {
 /**
  * 품목 하나의 주별 넷팅(결정 1). 주마다 net = 지난주 예상재고 − 총소요 이고,
  * net 이 안전재고 밑이면 receipt = lotSize(안전재고 − net), projected = net + receipt.
- * 음수 예상재고도 그대로 다음 주로 넘긴다.
+ * 넷팅은 늘 안전재고(0 이상)까지 채우므로 예상재고는 음수가 되지 않고, 그 예상재고를 다음 주로 넘긴다.
  */
 export function netItem(input: NetItemInput): NetWeek[] {
   const { safety, minLot, multiple, decimals, gross } = input;

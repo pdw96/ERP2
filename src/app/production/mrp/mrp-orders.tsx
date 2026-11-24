@@ -14,7 +14,6 @@ import { MRP_PATH } from "./paths";
 type Orders = Awaited<ReturnType<typeof openMrpOrders>>;
 
 const KIND: Record<"MAKE" | "BUY", string> = { MAKE: "생산", BUY: "구매" };
-const NOT_RUN = "아직 MRP 를 실행하지 않았습니다 — [MRP 실행]을 누르세요";
 
 /** 「11-24(화)」 — 요일은 UTC 날짜로 센다(서버의 지역 시각에 기대지 않는다). */
 function shortDate(date: string): string {
@@ -28,8 +27,7 @@ function filtersOf(q: MrpOrderQuery): Filters {
 }
 
 export function MrpOrders({ orders, query }: { orders: Orders; query: MrpOrderQuery }) {
-  if (!orders.run)
-    return <p className="mt-4 border border-dashed border-rule px-5 py-6 text-center text-sm text-muted">{NOT_RUN}</p>;
+  if (!orders.run) return null; // 실행한 적이 없다는 안내는 실행 상자(MrpRun)에만 둔다
   const filters = filtersOf(query);
   const filtered = Object.values(filters).some((v) => v !== undefined);
   const select = "w-full min-w-0 rounded border border-rule px-3 py-2 text-base";

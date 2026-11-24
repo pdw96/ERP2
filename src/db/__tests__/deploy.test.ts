@@ -108,7 +108,7 @@ async function tableNames(h: Awaited<ReturnType<typeof emptyDb>>) {
 }
 
 describe("마이그레이션과 첫 샘플 데이터", () => {
-  it("빈 DB 에 적용하면 테이블 스물이 생기고 샘플 데이터(샘플 수불 · 실사 · BOM 까지)가 들어간다", async () => {
+  it("빈 DB 에 적용하면 테이블 서른넷이 생기고 샘플 데이터(샘플 수불 · 실사 · BOM 까지)가 들어간다", async () => {
     const h = await fresh();
     const log: string[] = [];
     await prepareDatabase(h.db, { migrate: () => h.migrate(), lock: true, log: (l) => log.push(l) });

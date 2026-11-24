@@ -114,9 +114,12 @@ describe("계획오더 목록", () => {
     );
   });
 
-  it("실행한 적이 없으면 「아직 MRP 를 실행하지 않았습니다」", () => {
-    render(<MrpOrders orders={{ run: null, total: 0, page: 1, pages: 1, rows: [] }} query={all} />);
-    expect(screen.getByText(/아직 MRP 를 실행하지 않았습니다/)).toBeInTheDocument();
+  it("실행한 적이 없으면 아무것도 그리지 않는다 — 안내는 실행 상자에만 있다", () => {
+    const { container } = render(
+      <MrpOrders orders={{ run: null, total: 0, page: 1, pages: 1, rows: [] }} query={all} />,
+    );
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText(/아직 MRP 를 실행하지 않았습니다/)).toBeNull();
     expect(screen.queryByRole("region", { name: "계획오더 표" })).toBeNull();
   });
 });

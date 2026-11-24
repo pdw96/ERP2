@@ -361,4 +361,20 @@ describe("planMrp", () => {
       [m(1000), "2026-12-07"],
     ]);
   });
+
+  it("BOM 에 순환이 있으면 던진다", () => {
+    expect(() =>
+      plan({
+        items: [item(1, "FG-0001"), item(2, "SF-0001")],
+        bomLines: [line(1, 2), line(2, 1)],
+        mps: [{ itemId: 1, week: "2026-12-21", qty: m(1) }],
+      }),
+    ).toThrow("순환");
+  });
+
+  it("MPS 에 없는 품목이 있으면 던진다", () => {
+    expect(() => plan({ items: [item(1, "FG-0001")], mps: [{ itemId: 99, week: "2026-12-21", qty: m(1) }] })).toThrow(
+      "MRP 에 없는 품목입니다",
+    );
+  });
 });

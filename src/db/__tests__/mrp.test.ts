@@ -11,6 +11,7 @@ import {
   mrpSettings,
   openMrpGrid,
   openMrpOrders,
+  overNumericLimit,
   overOrderLimit,
   parseMrpGridFrom,
   parseMrpOrderQuery,
@@ -316,6 +317,38 @@ describe("[MRP 실행]", () => {
     expect(await runMrp(db, NOW)).toEqual({ ok: false, formError: limitMessage("MRP 실행 기록", MRP_RUN_LIMIT) });
     expect(await orders()).toEqual(before);
     expect((await db.select({ n: count() }).from(mrpRuns))[0].n).toBe(MRP_RUN_LIMIT);
+  });
+
+  it("일련이 999 를 넘어 네 자리가 돼도 목록은 번호의 수 차례다", async () => {
+    // 그날 앞 실행이 995 까지 썼다고 하고 실행한다 — 번호가 996 부터 이어져 999 · 1000 을 지난다.
+    await db.execute(sql`update mrp_runs set seq_end = 995`);
+    await ran();
+    const list = await openMrpOrders(db, BASE_QUERY);
+    const seqOf = (n: string) => Number(n.slice(n.lastIndexOf("-") + 1));
+    const seqs = list.rows.map((r) => seqOf(r.number));
+    expect(seqs[0]).toBe(996);
+    expect(seqs).toContain(1000);
+    expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
+  });
+
+  it("수량이 numeric(15,3) 의 끝을 넘으면 경계 그대로 가린다", () => {
+    const max = BigInt("999999999999999"); // 999,999,999,999.999
+    expect(overNumericLimit(max)).toBe(false);
+    expect(overNumericLimit(max + BigInt(1))).toBe(true);
+    expect(overNumericLimit(-max - BigInt(1))).toBe(true);
+  });
+
+  it("계획량이 너무 크면 안내만 하고 아무것도 바꾸지 않는다", async () => {
+    // BOM 줄 소요량을 모두 열어 둔 끝까지 키운다 — 단계마다 곱해져 하위 품목의 총소요 · 계획량이 끝을 넘는다.
+    await db.execute(sql`update bom_lines set qty = 900000000`);
+    const before = await orders();
+    const runsBefore = await runs();
+    expect(await runMrp(db, NOW)).toEqual({
+      ok: false,
+      formError: "계획량이 너무 커서 실행하지 못했습니다 — BOM 의 소요량과 MPS 수량을 확인하세요",
+    });
+    expect(await orders()).toEqual(before);
+    expect(await runs()).toEqual(runsBefore);
   });
 
   it("완성일 기준 요일 5(금)로 저장하면 완제품의 완성일이 그 주 금요일이다", async () => {

@@ -129,9 +129,12 @@ describe("품목별 MRP 표", () => {
     expect(nav.queryByText(/▶/)).toBeNull();
   });
 
-  it("실행한 적이 없으면 「아직 MRP 를 실행하지 않았습니다」, 표와 쪽 넘기기가 없다", () => {
-    render(<MrpGrid grid={{ run: null, runWeek: null, weeks: pageWeeks(RUN_WEEK), rows: [] }} thisWeek={RUN_WEEK} />);
-    expect(screen.getByText(/아직 MRP 를 실행하지 않았습니다/)).toBeInTheDocument();
+  it("실행한 적이 없으면 아무것도 그리지 않는다 — 안내는 실행 상자에만 있고, 표와 쪽 넘기기가 없다", () => {
+    const { container } = render(
+      <MrpGrid grid={{ run: null, runWeek: null, weeks: pageWeeks(RUN_WEEK), rows: [] }} thisWeek={RUN_WEEK} />,
+    );
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText(/아직 MRP 를 실행하지 않았습니다/)).toBeNull();
     expect(screen.queryByRole("region", { name: "품목별 MRP 표" })).toBeNull();
     expect(screen.queryByRole("navigation", { name: "주 넘기기" })).toBeNull();
   });
