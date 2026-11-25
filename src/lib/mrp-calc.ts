@@ -127,11 +127,20 @@ export type MrpInput = {
   bomLines: MrpBomLine[];
   /** 품목 → 지금 가용재고(없으면 0) */
   available: ReadonlyMap<number, Milli>;
-  /** 완제품의 주별 MPS 수량 */
-  mps: { itemId: number; week: string; qty: Milli }[];
+  /** 완제품의 주별 MPS 수량 · 고정 여부 */
+  mps: { itemId: number; week: string; qty: Milli; fixed: boolean }[];
 };
 
-export type MrpOrder = Schedule & { itemId: number; kind: "MAKE" | "BUY"; qty: Milli; noBom: boolean };
+export type MrpOrder = Schedule & {
+  itemId: number;
+  kind: "MAKE" | "BUY";
+  qty: Milli;
+  noBom: boolean;
+  /** 완제품 계획오더를 낸 MPS 칸의 주(그 밖의 계획오더는 null) */
+  mpsWeek: string | null;
+  /** 그 MPS 칸이 고정인가(그 밖의 계획오더는 null) */
+  mpsFixed: boolean | null;
+};
 
 export type MrpItemPlan = {
   itemId: number;
@@ -144,9 +153,27 @@ export type MrpItemPlan = {
   gross: Map<string, Milli>;
 };
 
-export type MrpPlan = { orders: MrpOrder[]; items: MrpItemPlan[] };
+/** 페깅 줄의 구분 — 윗 계획오더의 소요 · 안전재고 · 가용 부족 메움 · 남는 수량. */
+export type MrpPegKind = "ORDER" | "SAFETY" | "SHORT" | "SURPLUS";
+
+/**
+ * 페깅 한 줄 — 소요 하나를 공급 하나가 얼마만큼 채우는가. demandOrder · supplyOrder 는 반환한 orders(정렬 뒤)의 자리 번호.
+ * ORDER 는 윗 계획오더의 소요(supplyOrder null = 재고, 끝수로 몫이 0 이면 qty 0 · supplyOrder null 한 줄).
+ * SAFETY · SHORT 는 계획오더가 채운 안전재고 · 가용 부족 메움, SURPLUS 는 소요를 다 채우고 계획오더에 남는 수량(최소량 · 배수).
+ */
+export type MrpPeg =
+  | { kind: "ORDER"; itemId: number; demandOrder: number; supplyOrder: number | null; needDate: string; qty: Milli }
+  | { kind: "SAFETY" | "SHORT" | "SURPLUS"; itemId: number; supplyOrder: number; qty: Milli };
+
+export type MrpPlan = { orders: MrpOrder[]; items: MrpItemPlan[]; pegs: MrpPeg[] };
 
 type GrossCell = { sum: Ratio; earliestNeed: string };
+
+/** 윗 계획오더 하나가 낸 자품목 소요 — 필요일은 윗 계획오더의 시작일, 수량은 끝수를 버리지 않은 분수. */
+type Demand = { parent: MrpOrder; ratio: Ratio; needDate: string };
+
+/** 넷팅한 품목 하나의 페깅 재료 — 넷팅에 쓴 가용재고 · 안전재고와 넷팅 주 차례로 낸 계획오더. */
+type PegSource = { item: MrpItem; available: Milli; safety: Milli; receipts: MrpOrder[] };
 
 /**
  * 모든 BOM 줄(적용일 무관)로 품목마다 가장 깊은 단계(저단계 코드)를 구한다 — 맨 위가 0.
@@ -190,18 +217,32 @@ export function planMrp(input: MrpInput): MrpPlan {
   }
 
   const gross = new Map<number, Map<string, GrossCell>>();
+  /** 품목 → 주 → 그 주의 소요들(윗 계획오더마다 하나) — 페깅이 쓴다. 합은 gross 의 sum 과 같다. */
+  const demands = new Map<number, Map<string, Demand[]>>();
   const orders: MrpOrder[] = [];
 
-  /** 계획오더 하나를 내고, 생산이면 그 시작일에 적용되는 바로 아래 줄로 자품목 총소요를 더한다. */
-  const place = (item: MrpItem, qty: Milli, schedule: Schedule) => {
-    let noBom = false;
+  /**
+   * 계획오더 하나를 내고, 생산이면 그 시작일에 적용되는 바로 아래 줄로 자품목 총소요를 더한다.
+   * 자품목마다 이 계획오더의 소요 하나를 따로 쌓는다(같은 자품목이 두 줄이면 합친다). 완제품이면 MPS 칸(주 · 고정)을 남긴다.
+   */
+  const place = (item: MrpItem, qty: Milli, schedule: Schedule, mps: { week: string; fixed: boolean } | null) => {
+    const order: MrpOrder = {
+      ...schedule,
+      itemId: item.id,
+      kind: item.procurement,
+      qty,
+      noBom: false,
+      mpsWeek: mps?.week ?? null,
+      mpsFixed: mps?.fixed ?? null,
+    };
     if (item.procurement === "MAKE") {
       const start = schedule.startDate;
       const applied = (linesByParent.get(item.id) ?? []).filter(
         (l) => l.validFrom <= start && (l.validTo === null || l.validTo >= start),
       );
-      noBom = applied.length === 0;
+      order.noBom = applied.length === 0;
       const week = mondayOf(start);
+      const mine = new Map<number, Demand>();
       for (const l of applied) {
         const childId = itemOf(l.childId).id;
         const need = requiredOf({ n: qty, d: THOUSAND }, l.qty, l.baseQty, l.lossHundredths);
@@ -214,9 +255,22 @@ export function planMrp(input: MrpInput): MrpPlan {
             ? { sum: addRatio(cell.sum, need), earliestNeed: start < cell.earliestNeed ? start : cell.earliestNeed }
             : { sum: need, earliestNeed: start },
         );
+        const same = mine.get(childId);
+        if (same) {
+          same.ratio = addRatio(same.ratio, need);
+          continue;
+        }
+        const demand: Demand = { parent: order, ratio: need, needDate: start };
+        mine.set(childId, demand);
+        const byWeek = demands.get(childId) ?? new Map<string, Demand[]>();
+        demands.set(childId, byWeek);
+        const list = byWeek.get(week);
+        if (list) list.push(demand);
+        else byWeek.set(week, [demand]);
       }
     }
-    orders.push({ ...schedule, itemId: item.id, kind: item.procurement, qty, noBom });
+    orders.push(order);
+    return order;
   };
 
   const safetyOf = (item: MrpItem) => (item.active ? item.safety : ZERO);
@@ -228,7 +282,10 @@ export function planMrp(input: MrpInput): MrpPlan {
   for (const r of mps) {
     if (r.qty <= ZERO) continue;
     const item = itemOf(r.itemId);
-    place(item, r.qty, scheduleOf(dueDateOf(r.week, dueWeekday), item.leadTimeDays, today));
+    place(item, r.qty, scheduleOf(dueDateOf(r.week, dueWeekday), item.leadTimeDays, today), {
+      week: r.week,
+      fixed: r.fixed,
+    });
     mpsOrdered.add(item.id);
   }
   for (const id of mpsOrdered) {
@@ -239,6 +296,7 @@ export function planMrp(input: MrpInput): MrpPlan {
 
   // 아래 품목 — 저단계 코드 차례로 넷팅. 완제품은 MPS 가 들므로(MPS 수량이 0 이라 줄이 없어도) 다시 넷팅하지 않는다.
   const level = lowLevelCodes(items, bomLines);
+  const pegSources: PegSource[] = [];
   const netted = items
     .filter((i) => i.itemType !== "FG" && !mpsItems.has(i.id))
     .sort((a, b) => level.get(a.id)! - level.get(b.id)! || byCode(a.code, b.code));
@@ -250,14 +308,15 @@ export function planMrp(input: MrpInput): MrpPlan {
     }
     const safety = safetyOf(item);
     const avail = available.get(item.id) ?? ZERO;
-    let placed = false;
+    const receipts: MrpOrder[] = [];
     const { minLot, multiple, decimals } = item;
     for (const w of netItem({ weeks, available: avail, safety, minLot, multiple, decimals, gross: rounded })) {
       if (w.receipt <= ZERO) continue;
       const due = w.earliestNeed ?? dueDateOf(w.week, dueWeekday);
-      place(item, w.receipt, scheduleOf(due, item.leadTimeDays, today));
-      placed = true;
+      receipts.push(place(item, w.receipt, scheduleOf(due, item.leadTimeDays, today), null));
     }
+    const placed = receipts.length > 0;
+    pegSources.push({ item, available: avail, safety, receipts });
     const grossShown = new Map([...rounded].filter(([, g]) => g.qty !== ZERO).map(([week, g]) => [week, g.qty]));
     if (placed || grossShown.size > 0) {
       plans.push({ itemId: item.id, fromMps: false, available: avail, safety, gross: grossShown });
@@ -270,5 +329,98 @@ export function planMrp(input: MrpInput): MrpPlan {
       byCode(a.startDate, b.startDate) || byCode(codeOf(a.itemId), codeOf(b.itemId)) || byCode(a.dueDate, b.dueDate),
   );
   plans.sort((a, b) => byCode(codeOf(a.itemId), codeOf(b.itemId)));
-  return { orders, items: plans };
+
+  // 페깅은 정렬 뒤에 한다 — 줄이 계획오더의 정렬 자리를 가리키고, 같은 필요일의 소요는 윗 계획오더의 정렬 차례로 맞춘다.
+  const position = new Map(orders.map((o, i) => [o, i]));
+  const pegs: MrpPeg[] = [];
+  for (const source of pegSources) {
+    for (const peg of pegItem(source, weeks, demands.get(source.item.id) ?? new Map(), position)) pegs.push(peg);
+  }
+  return { orders, items: plans, pegs };
+}
+
+type PegNeed =
+  { kind: "ORDER"; qty: Milli; demandOrder: number; needDate: string } | { kind: "SAFETY" | "SHORT"; qty: Milli };
+
+/**
+ * 넷팅한 품목 하나의 페깅 — 소요들을 공급들에 앞에서부터 맞춘다(그리디).
+ * 소요 차례: 가용 부족 메움(가용이 음수면) → 안전재고 → 주 차례 · 필요일 차례 · 윗 계획오더의 정렬 차례.
+ * 소요 하나의 수량은 주 안에서 위 차례로 분수를 누적해 올린 값의 차이 — 끝수가 쌓이지 않고 주의 합이 총소요(넷팅에 쓴 값)와 같다.
+ * 공급 차례: 재고(가용, 음수면 0) → 이 품목의 계획오더(넷팅 주 차례). 넷팅이 주마다 예상재고 ≥ 안전재고를 지키므로 공급이 모자라지 않는다.
+ */
+function pegItem(
+  source: PegSource,
+  weeks: string[],
+  byWeek: ReadonlyMap<string, Demand[]>,
+  position: ReadonlyMap<MrpOrder, number>,
+): MrpPeg[] {
+  const { item, available, safety, receipts } = source;
+  const positionOf = (o: MrpOrder) => position.get(o)!;
+
+  const needs: PegNeed[] = [];
+  if (available < ZERO) needs.push({ kind: "SHORT", qty: -available });
+  if (safety > ZERO) needs.push({ kind: "SAFETY", qty: safety });
+  // 넷팅(netItem)이 weeks 의 주만 보므로 소요도 weeks 차례로 꺼낸다.
+  for (const week of weeks) {
+    const list = byWeek.get(week);
+    if (!list) continue;
+    const sorted = [...list].sort(
+      (a, b) => byCode(a.needDate, b.needDate) || positionOf(a.parent) - positionOf(b.parent),
+    );
+    let sum: Ratio = { n: ZERO, d: BigInt(1) };
+    let before = ZERO;
+    for (const d of sorted) {
+      sum = addRatio(sum, d.ratio);
+      const upTo = ceilRatioToMilli(sum, item.decimals);
+      needs.push({ kind: "ORDER", qty: upTo - before, demandOrder: positionOf(d.parent), needDate: d.needDate });
+      before = upTo;
+    }
+  }
+
+  const supplies: { order: number | null; left: Milli }[] = [
+    { order: null, left: available > ZERO ? available : ZERO },
+    ...receipts.map((o) => ({ order: positionOf(o), left: o.qty })),
+  ];
+  const pegs: MrpPeg[] = [];
+  let s = 0;
+  for (const need of needs) {
+    if (need.kind === "ORDER" && need.qty === ZERO) {
+      pegs.push({
+        kind: "ORDER",
+        itemId: item.id,
+        demandOrder: need.demandOrder,
+        supplyOrder: null,
+        needDate: need.needDate,
+        qty: ZERO,
+      });
+      continue;
+    }
+    let rest = need.qty;
+    while (rest > ZERO) {
+      while (s < supplies.length && supplies[s].left === ZERO) s++;
+      if (s === supplies.length) throw new Error("페깅의 공급이 소요보다 적습니다");
+      const supply = supplies[s];
+      const qty = rest < supply.left ? rest : supply.left;
+      supply.left -= qty;
+      rest -= qty;
+      if (need.kind === "ORDER") {
+        pegs.push({
+          kind: "ORDER",
+          itemId: item.id,
+          demandOrder: need.demandOrder,
+          supplyOrder: supply.order,
+          needDate: need.needDate,
+          qty,
+        });
+      } else if (supply.order !== null) {
+        pegs.push({ kind: need.kind, itemId: item.id, supplyOrder: supply.order, qty });
+      }
+    }
+  }
+  for (const supply of supplies) {
+    if (supply.order !== null && supply.left > ZERO) {
+      pegs.push({ kind: "SURPLUS", itemId: item.id, supplyOrder: supply.order, qty: supply.left });
+    }
+  }
+  return pegs;
 }

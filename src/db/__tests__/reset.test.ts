@@ -211,11 +211,13 @@ describe("매일 밤 되돌림 — 성공 기준 6", () => {
     expect(clean.mpsFixed).toHaveLength(SAMPLE_MPS_FIXED.length);
     expect(clean.mpsChanges).toHaveLength(0);
     // 되돌림 끝에 MRP 를 한 번 실행한다 — 실행 줄 하나와 그 계획오더 · 품목 머리 · 총소요가 남는다.
-    const rowCount = async (t: typeof schema.mrpGross | typeof schema.mrpPlannedOrders | typeof schema.mrpRunItems) =>
-      (await db.select({ n: count() }).from(t))[0].n;
+    const rowCount = async (
+      t: typeof schema.mrpGross | typeof schema.mrpPegs | typeof schema.mrpPlannedOrders | typeof schema.mrpRunItems,
+    ) => (await db.select({ n: count() }).from(t))[0].n;
     expect(await rowCount(schema.mrpPlannedOrders)).toBeGreaterThan(0);
     expect(counts).toEqual({
       mrp_gross: await rowCount(schema.mrpGross),
+      mrp_pegs: await rowCount(schema.mrpPegs),
       mrp_planned_orders: await rowCount(schema.mrpPlannedOrders),
       mrp_run_items: await rowCount(schema.mrpRunItems),
       mrp_runs: 1,
@@ -353,7 +355,7 @@ describe("코드 번호 — 같은 머리의 가장 큰 번호 + 1", () => {
     expect(await nextCode(db, "CS")).toBe("CS-0003");
     await db.execute(
       sql.raw(
-        `truncate table "mrp_gross", "mrp_planned_orders", "mrp_run_items", "mrp_runs", "mrp_setting_changes", "mrp_settings", "mps_changes", "mps_fixed", "sales_plan_changes", "sales_plans", "routing_changes", "routing_materials", "routing_steps", "routings", "bom_changes", "bom_lines", "boms", "stock_count_lines", "stock_balances", "stock_move_lines", "items"`,
+        `truncate table "mrp_gross", "mrp_planned_orders", "mrp_run_items", "mrp_runs", "mrp_pegs", "mrp_setting_changes", "mrp_settings", "mps_changes", "mps_fixed", "sales_plan_changes", "sales_plans", "routing_changes", "routing_materials", "routing_steps", "routings", "bom_changes", "bom_lines", "boms", "stock_count_lines", "stock_balances", "stock_move_lines", "items"`,
       ),
     );
     expect(await nextCode(db, "RM")).toBe("RM-0001");

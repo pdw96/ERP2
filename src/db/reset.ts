@@ -34,6 +34,7 @@ import {
   mpsChanges,
   mpsFixed,
   mrpGross,
+  mrpPegs,
   mrpPlannedOrders,
   mrpRunItems,
   mrpRuns,
@@ -70,6 +71,7 @@ import type { Db } from "./types";
 export const RESET_TABLES = [
   // mrp_runs 를 맨 앞에 — 읽기가 mrp_runs 를 먼저 잠그므로 TRUNCATE 도 같은 차례로 잠가 서로 기다려 얽히지 않는다.
   "mrp_runs",
+  "mrp_pegs",
   "mrp_gross",
   "mrp_planned_orders",
   "mrp_run_items",
@@ -196,6 +198,7 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
         | typeof mpsFixed
         | typeof mpsChanges
         | typeof mrpGross
+        | typeof mrpPegs
         | typeof mrpPlannedOrders
         | typeof mrpRunItems
         | typeof mrpRuns
@@ -204,6 +207,7 @@ export async function resetToSample(db: Db, today: string = koreaToday()): Promi
     ) => (await tx.select({ n: count() }).from(t))[0].n;
     return {
       mrp_gross: await n(mrpGross),
+      mrp_pegs: await n(mrpPegs),
       mrp_planned_orders: await n(mrpPlannedOrders),
       mrp_run_items: await n(mrpRunItems),
       mrp_runs: await n(mrpRuns),

@@ -13,12 +13,14 @@ import { MRP_PATH } from "./paths";
 export type MrpActionState = { ok: false; formError: string } | null;
 
 /**
- * 서고 돌아갈 주소 — 경로는 상수이고, 보던 탭은 품목별 MRP 표(view=grid)일 때만 싣는다. 표일 때는 보던 쪽(from)도 월요일이면 싣는다
+ * 서고 돌아갈 주소 — 경로는 상수이고, 보던 탭은 품목별 MRP 표(view=grid) · 페깅(view=peg)일 때만 싣는다(페깅은 view 만 — 새 실행이 계획오더 번호를 다시 매긴다). 표일 때는 보던 쪽(from)도 월요일이면 싣는다
  * (아니면 버린다 — 화면이 parseMrpGridFrom 으로 다시 거르지만 주소에는 월요일 날짜만 오르게 한다). 끝에 결과.
  */
 function backHref(form: FormData, done: [string, string]): string {
   const query = new URLSearchParams();
-  if (form.get("view") === "grid") {
+  const view = form.get("view");
+  if (view === "peg") query.set("view", "peg");
+  if (view === "grid") {
     query.set("view", "grid");
     const from = form.get("from");
     if (typeof from === "string" && isMonday(from)) query.set("from", from);

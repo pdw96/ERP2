@@ -5,21 +5,30 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { LoadFailed } from "@/components/load-failed";
 import { first } from "@/db/master-shared";
-import { mrpSettings, openMrpGrid, openMrpOrders, parseMrpGridFrom, parseMrpOrderQuery } from "@/db/mrp";
+import {
+  mrpSettings,
+  openMrpGrid,
+  openMrpOrders,
+  openMrpPeg,
+  parseMrpGridFrom,
+  parseMrpOrderQuery,
+  parseMrpPegQuery,
+} from "@/db/mrp";
 import { withDb } from "@/db/request";
 import { koreaToday } from "@/lib/today";
 import { mondayOf } from "@/lib/weeks";
 import { MrpGrid } from "./mrp-grid";
 import { MrpOrders } from "./mrp-orders";
+import { MrpPeg } from "./mrp-peg";
 import { MrpRun } from "./mrp-run";
 import { koreaMinute, MrpSettingHistory } from "./mrp-setting-history";
 import { mrpNotice } from "./notice";
-import { MRP_PATH, mrpGridHref } from "./paths";
+import { MRP_PATH, mrpGridHref, mrpPegHref, type MrpView } from "./paths";
 
 export const metadata: Metadata = { title: "MRP — ERP2" };
 
-// 생산 › 생산계획 › MRP — [MRP 실행]으로 MPS 를 BOM 으로 펼쳐 낸 계획오더를 보는 화면. 탭 둘: 계획오더 목록(기본) · 품목별 MRP 표(?view=grid).
-// 목록은 ?kind= · ?type= · ?late= · ?page=, 표는 ?from=(실행 주에서 13주씩)을 읽는다. ?ran= · ?setting= 은 실행 · 기준 요일 저장 뒤의 알림이다.
+// 생산 › 생산계획 › MRP — [MRP 실행]으로 MPS 를 BOM 으로 펼쳐 낸 계획오더를 보는 화면. 탭 셋: 계획오더 목록(기본) · 품목별 MRP 표(?view=grid) · 페깅(?view=peg).
+// 목록은 ?kind= · ?type= · ?late= · ?page=, 표는 ?from=(실행 주에서 13주씩), 페깅은 ?item= · ?order= 를 읽는다. ?ran= · ?setting= 은 실행 · 기준 요일 저장 뒤의 알림이다.
 export default function MrpPage({ searchParams }: PageProps<"/production/mrp">) {
   return (
     <section>
@@ -45,7 +54,9 @@ async function Sheet({ searchParams }: Pick<PageProps<"/production/mrp">, "searc
   const params = await searchParams;
   // 실행 · 기준 요일 저장 뒤 주소에 실린 결과의 알림.
   const notice = mrpNotice(params);
-  const grid = first(params.view) === "grid";
+  const viewParam = first(params.view);
+  const view: MrpView = viewParam === "grid" || viewParam === "peg" ? viewParam : "list";
+  const grid = view === "grid";
   await connection();
   // 오늘은 한 번만 읽는다 — 표의 이번 주와 쪽의 첫 주가 자정 앞뒤로 갈리지 않게.
   const thisWeek = mondayOf(koreaToday());
@@ -53,6 +64,10 @@ async function Sheet({ searchParams }: Pick<PageProps<"/production/mrp">, "searc
   try {
     data = await withDb(async (db) => {
       const settings = await mrpSettings(db);
+      if (view === "peg") {
+        const peg = await openMrpPeg(db, parseMrpPegQuery(params));
+        return { settings, run: peg.run, shown: { view: "peg" as const, peg } };
+      }
       if (grid) {
         const param = first(params.from);
         let sheet = await openMrpGrid(db, parseMrpGridFrom(param, thisWeek));
@@ -61,16 +76,16 @@ async function Sheet({ searchParams }: Pick<PageProps<"/production/mrp">, "searc
           const from = parseMrpGridFrom(param, sheet.runWeek);
           if (from !== sheet.weeks[0]) sheet = await openMrpGrid(db, from);
         }
-        return { settings, run: sheet.run, view: { grid: true as const, sheet } };
+        return { settings, run: sheet.run, shown: { view: "grid" as const, sheet } };
       }
       const query = parseMrpOrderQuery(params);
       const orders = await openMrpOrders(db, query);
-      return { settings, run: orders.run, view: { grid: false as const, query, orders } };
+      return { settings, run: orders.run, shown: { view: "list" as const, query, orders } };
     });
   } catch (error) {
     return <LoadFailed error={error} what="MRP" />;
   }
-  const { settings, run, view } = data;
+  const { settings, run, shown } = data;
 
   return (
     <>
@@ -84,25 +99,28 @@ async function Sheet({ searchParams }: Pick<PageProps<"/production/mrp">, "searc
         key={randomUUID()}
         lastRun={run ? koreaMinute(run.ranAt) : null}
         dueWeekday={settings.dueWeekday}
-        grid={grid}
-        from={view.grid ? view.sheet.weeks[0] : undefined}
+        view={view}
+        from={shown.view === "grid" ? shown.sheet.weeks[0] : undefined}
       />
-      <MrpTabs grid={grid} />
-      {view.grid ? (
-        <MrpGrid grid={view.sheet} thisWeek={thisWeek} />
+      <MrpTabs view={view} />
+      {shown.view === "grid" ? (
+        <MrpGrid grid={shown.sheet} thisWeek={thisWeek} />
+      ) : shown.view === "peg" ? (
+        <MrpPeg peg={shown.peg} />
       ) : (
-        <MrpOrders orders={view.orders} query={view.query} />
+        <MrpOrders orders={shown.orders} query={shown.query} />
       )}
       <MrpSettingHistory changes={settings.changes} total={settings.total} />
     </>
   );
 }
 
-/** 탭 둘 — 주소의 view 만 바꾼다(거르기 · 쪽은 버린다). */
-function MrpTabs({ grid }: { grid: boolean }) {
+/** 탭 셋 — 주소의 view 만 바꾼다(거르기 · 쪽 · 고른 계획오더는 버린다). */
+function MrpTabs({ view }: { view: MrpView }) {
   const tabs = [
-    { href: MRP_PATH, label: "계획오더 목록", active: !grid },
-    { href: mrpGridHref(), label: "품목별 MRP 표", active: grid },
+    { href: MRP_PATH, label: "계획오더 목록", active: view === "list" },
+    { href: mrpGridHref(), label: "품목별 MRP 표", active: view === "grid" },
+    { href: mrpPegHref(), label: "페깅", active: view === "peg" },
   ];
   return (
     <nav aria-label="MRP 보기" className="mt-8 flex gap-1 overflow-x-auto border-b border-rule">

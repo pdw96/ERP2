@@ -1,0 +1,272 @@
+import { render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import type { MrpPegCover, MrpPegDown, MrpPegOrder, MrpPegUp, MrpPegView, MrpRunInfo } from "@/db/mrp";
+import { MrpPeg } from "../mrp-peg";
+import { mrpPegHref } from "../paths";
+
+// 페깅 탭 — 열을 맞춘 표 한 장: 고른 계획오더 줄 · 위로(이 계획오더가 채우는 소요) · 아래로(이 계획오더가 낳은 소요). 깊이는 품목 칸 들여쓰기.
+
+vi.mock("next/form", () => ({ default: (props: Record<string, unknown>) => <form {...props} /> }));
+
+const run: MrpRunInfo = { ranAt: new Date("2026-11-24T05:05:00Z"), runDate: "2026-11-24", dueWeekday: 1, orders: 3 };
+const info = (code: string, name: string, itemType = "FG") => ({ code, name, spec: "", itemType, active: true });
+const order = (over: Partial<MrpPegOrder>): MrpPegOrder => ({
+  number: "PL-20261124-001",
+  kind: "MAKE",
+  item: info("FG-0001", "전원 관리 IC"),
+  qty: "7000",
+  unit: "EA",
+  startDate: "2026-11-24",
+  dueDate: "2026-12-01",
+  lateDays: 0,
+  noBom: false,
+  mps: null,
+  ...over,
+});
+const view = (over: Partial<MrpPegView>): MrpPegView => ({
+  run,
+  hasPegs: true,
+  items: [
+    { code: "FG-0001", name: "전원 관리 IC" },
+    { code: "RM-0001", name: "솔더 페이스트" },
+  ],
+  item: "FG-0001",
+  orders: [{ number: "PL-20261124-001", qty: "7000", unit: "EA", dueDate: "2026-12-01" }],
+  notice: null,
+  selected: order({ mps: { week: "2026-12-01", fixed: true } }),
+  up: [],
+  down: [],
+  truncated: false,
+  ...over,
+});
+const rm007 = order({
+  number: "PL-20261124-007",
+  kind: "BUY",
+  item: info("RM-0001", "솔더 페이스트", "RM"),
+  qty: "50",
+  unit: "KG",
+  startDate: "2026-11-24",
+  dueDate: "2026-11-27",
+});
+const stock = (qty: string): MrpPegCover => ({ stock: true, qty });
+const up = () => within(screen.getByRole("rowgroup", { name: "위로" }));
+const down = () => within(screen.getByRole("rowgroup", { name: "아래로" }));
+/** 줄 하나의 칸 글자(몫 · 필요일 · 계획오더 · 품목 · 구분 · 수량 · 단위 · 시작 → 완성 · 늦음 차례). */
+const cells = (row: HTMLElement) =>
+  within(row)
+    .getAllByRole("cell")
+    .map((c) => (c.textContent ?? "").replace(/\s+/g, " ").trim());
+const rowOf = (scope: { getAllByRole: (r: "row") => HTMLElement[] }, text: string) => {
+  const row = scope.getAllByRole("row").find((r) => r.querySelector("td") && r.textContent?.includes(text));
+  if (!row) throw new Error(`줄 없음: ${text}`);
+  return row;
+};
+
+describe("페깅 탭", () => {
+  it("실행이 없으면 아무것도 그리지 않는다", () => {
+    const { container } = render(<MrpPeg peg={view({ run: null, hasPegs: false, items: [], selected: null })} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("표 한 장 — 열 머리 아홉 · 고른 계획오더 줄 · ▲ ▼ 구역 머리", () => {
+    render(<MrpPeg peg={view({})} />);
+    const heads = within(screen.getAllByRole("rowgroup")[0])
+      .getAllByRole("columnheader")
+      .map((h) => h.textContent);
+    expect(heads).toEqual(["품목", "몫", "필요일", "계획오더", "구분", "수량", "단위", "시작 → 완성", "늦음"]);
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+    expect(screen.getByText("▲ 위로 — 이 계획오더가 채우는 소요")).toBeInTheDocument();
+    expect(screen.getByText("▼ 아래로 — 이 계획오더가 낳은 소요")).toBeInTheDocument();
+    const sel = within(screen.getByRole("rowgroup", { name: "고른 계획오더" }));
+    expect(cells(sel.getAllByRole("row")[0])).toEqual([
+      "FG-0001 전원 관리 IC",
+      "",
+      "",
+      "PL-20261124-001",
+      "생산",
+      "7,000",
+      "EA",
+      "11-24(화) → 12-01(화)",
+      "",
+    ]);
+    expect(sel.getAllByRole("row")[0]).toHaveClass("bg-floor");
+  });
+
+  it("아래로 — 소요 줄 · 재고 줄 · 계획오더 줄(몫 · 전체 수량)", () => {
+    const downs: MrpPegDown[] = [
+      {
+        item: info("RM-0001", "솔더 페이스트", "RM"),
+        unit: "KG",
+        need: "82",
+        covers: [stock("37"), { stock: false, qty: "45", order: rm007, down: [] }],
+      },
+    ];
+    render(<MrpPeg peg={view({ down: downs })} />);
+    const lower = down();
+    const group = rowOf(lower, "소요 82");
+    expect(cells(group)).toEqual(["└RM-0001 솔더 페이스트", "소요 82", "", "", "", "", "KG", "", ""]);
+    expect(group).toHaveClass("bg-floor"); // 묶음 줄
+    expect(rowOf(lower, "└재고")).not.toHaveClass("bg-floor");
+    expect(cells(rowOf(lower, "└재고"))).toEqual(["└재고", "37", "", "", "", "", "KG", "", ""]);
+    expect(cells(rowOf(lower, "PL-20261124-007"))).toEqual([
+      "└RM-0001 솔더 페이스트",
+      "45",
+      "",
+      "PL-20261124-007",
+      "구매",
+      "50",
+      "KG",
+      "11-24(화) → 11-27(금)",
+      "",
+    ]);
+    expect(lower.getByRole("link", { name: "PL-20261124-007" })).toHaveAttribute(
+      "href",
+      "/production/mrp?view=peg&order=PL-20261124-007",
+    );
+  });
+
+  it("깊이는 품목 칸 들여쓰기로만 — 소요 줄 < 덮는 줄 < 그 계획오더의 아래", () => {
+    const inner: MrpPegDown[] = [
+      { item: info("RM-0001", "솔더 페이스트", "RM"), unit: "KG", need: "9", covers: [stock("9")] },
+    ];
+    const sf = order({ number: "PL-20261124-004", item: info("SF-0002", "보드 조립품", "SF"), qty: "20", unit: "EA" });
+    const downs: MrpPegDown[] = [
+      {
+        item: info("SF-0002", "보드 조립품", "SF"),
+        unit: "EA",
+        need: "20",
+        covers: [{ stock: false, qty: "20", order: sf, down: inner }],
+      },
+    ];
+    render(<MrpPeg peg={view({ down: downs })} />);
+    const pad = (text: string) => parseFloat((rowOf(down(), text).firstElementChild as HTMLElement).style.paddingLeft);
+    const top = pad("SF-0002 보드 조립품");
+    const mid = pad("PL-20261124-004");
+    const deep = pad("RM-0001 솔더 페이스트");
+    expect(mid).toBeGreaterThan(top);
+    expect(deep).toBeGreaterThan(mid);
+    expect(cells(rowOf(down(), "└재고"))[0]).toBe("└재고");
+  });
+
+  it("고르는 폼은 하나 — 품목 · 계획오더 · 보기 한 줄, 숨은 view=peg", () => {
+    render(<MrpPeg peg={view({})} />);
+    const form = screen.getByRole("search", { name: "페깅 고르기" });
+    expect(screen.getAllByRole("search")).toHaveLength(1);
+    expect(form).toHaveAttribute("action", "/production/mrp");
+    expect(form.querySelector('input[name="view"]')).toHaveValue("peg");
+    expect(within(form).getAllByRole("button", { name: "보기" })).toHaveLength(1);
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    expect(within(form).getByLabelText("품목")).toHaveValue("FG-0001");
+    expect(within(form).getByLabelText("계획오더")).toHaveValue("PL-20261124-001");
+  });
+
+  it("늦은 계획오더는 늦음 칸에 빨강 N일 · 같은 날이면 날짜 하나", () => {
+    render(<MrpPeg peg={view({ selected: order({ lateDays: 3, startDate: "2026-12-01" }) })} />);
+    const row = within(screen.getByRole("rowgroup", { name: "고른 계획오더" })).getAllByRole("row")[0];
+    const late = within(row).getByText("3일");
+    expect(late).toHaveClass("text-red-700");
+    expect(cells(row)[7]).toBe("12-01(화)");
+    expect(within(row).queryByText(/늦음/)).toBeNull();
+  });
+
+  it("MPS 줄 · 안전재고 보충 · 남는 수량 · 0(끝수) · 구매 · BOM 없음 문구", () => {
+    const ups: MrpPegUp[] = [
+      { kind: "ORDER", qty: "30", needDate: "2026-12-01", parent: order({ number: "PL-20261124-002" }), up: [] },
+      { kind: "SAFETY", qty: "5" },
+      { kind: "SURPLUS", qty: "2" },
+      { kind: "SHORT", qty: "1" },
+    ];
+    const downs: MrpPegDown[] = [{ item: info("RM-0002", "리드 프레임", "RM"), unit: "EA", need: "0", covers: [] }];
+    const { rerender } = render(<MrpPeg peg={view({ up: ups, down: downs })} />);
+    const mps = within(screen.getByRole("rowgroup", { name: "위로" })).getByRole("row", {
+      name: "MPS · FG-0001 · 12-01 주 · 7,000 · 고정",
+    });
+    expect(up().getAllByRole("row")[1]).toBe(mps); // 구역 머리 바로 밑 첫 줄
+    expect(cells(mps)).toEqual(["└MPS · 12-01 주 · 고정", "", "", "", "", "7,000", "EA", "", ""]);
+    expect(cells(rowOf(up(), "PL-20261124-002")).slice(0, 4)).toEqual([
+      "└FG-0001 전원 관리 IC",
+      "30",
+      "12-01(화)",
+      "PL-20261124-002",
+    ]);
+    expect(cells(rowOf(up(), "안전재고 보충")).slice(0, 4)).toEqual(["└안전재고 보충", "5", "", ""]);
+    expect(cells(rowOf(up(), "남는 수량(최소량 · 배수)")).slice(0, 2)).toEqual(["└남는 수량(최소량 · 배수)", "2"]);
+    expect(cells(rowOf(up(), "가용재고 음수 메움")).slice(0, 2)).toEqual(["└가용재고 음수 메움", "1"]);
+    expect(up().getByRole("link", { name: "PL-20261124-002" })).toBeInTheDocument();
+    expect(down().getByText("0(끝수)")).toBeInTheDocument();
+
+    rerender(<MrpPeg peg={view({ selected: order({ mps: { week: "2026-12-08", fixed: false } }) })} />);
+    expect(screen.getByRole("row", { name: "MPS · FG-0001 · 12-08 주 · 7,000 · 안" })).toBeInTheDocument();
+
+    rerender(<MrpPeg peg={view({ item: "RM-0001", selected: rm007 })} />);
+    expect(down().getByText("구매라 아래가 없습니다")).toBeInTheDocument();
+    expect(screen.queryByText("MPS")).toBeNull();
+
+    rerender(<MrpPeg peg={view({ selected: order({ noBom: true }) })} />);
+    expect(down().getByText("BOM 없음 — 펼칠 BOM 줄이 없습니다")).toBeInTheDocument();
+  });
+
+  it("위로의 윗 계획오더가 완제품이면 그 줄 밑에도 MPS 줄을 적는다", () => {
+    const fg = order({
+      number: "PL-20261124-002",
+      qty: "300",
+      mps: { week: "2026-12-08", fixed: false },
+    });
+    const ups: MrpPegUp[] = [
+      {
+        kind: "ORDER",
+        qty: "30",
+        needDate: "2026-12-01",
+        parent: order({ number: "PL-20261124-005", item: info("SF-0002", "보드 조립품", "SF") }),
+        up: [{ kind: "ORDER", qty: "30", needDate: "2026-12-08", parent: fg, up: [] }],
+      },
+    ];
+    render(<MrpPeg peg={view({ selected: order({ number: "PL-20261124-009", mps: null }), up: ups })} />);
+    const mps = up().getByRole("row", { name: "MPS · FG-0001 · 12-08 주 · 300 · 안" });
+    expect(cells(mps)[0]).toBe("└MPS · 12-08 주 · 안");
+    expect(up().queryByText(/고정/)).toBeNull();
+  });
+
+  it("페깅 없는 실행 · 지난 번호 · 찾지 못함 안내", () => {
+    const { rerender } = render(
+      <MrpPeg peg={view({ hasPegs: false, items: [], item: null, selected: null, orders: [] })} />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "이 실행에는 페깅이 없습니다 — [MRP 실행]을 다시 누르면 생깁니다",
+    );
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByText(/▲ 위로|▼ 아래로/)).toBeNull();
+
+    // 고른 계획오더가 있어도 페깅이 없으면 그 줄 하나뿐이다
+    rerender(<MrpPeg peg={view({ hasPegs: false })} />);
+    expect(screen.getAllByRole("row")).toHaveLength(2); // 열 머리 + 고른 줄
+    expect(screen.getByRole("status")).toHaveTextContent("이 실행에는 페깅이 없습니다");
+    expect(screen.queryByRole("rowgroup", { name: "위로" })).toBeNull();
+    expect(screen.queryByRole("rowgroup", { name: "아래로" })).toBeNull();
+    expect(screen.queryByText(/▲ 위로|▼ 아래로/)).toBeNull();
+    expect(screen.queryByRole("search")).toBeNull();
+
+    rerender(<MrpPeg peg={view({ notice: { kind: "stale", order: "PL-20261101-009" }, selected: null })} />);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "PL-20261101-009 는 지난 실행의 계획오더입니다 — 새 실행에서 다시 고르세요",
+    );
+
+    rerender(<MrpPeg peg={view({ notice: { kind: "notFound" }, selected: null })} />);
+    expect(screen.getByRole("status")).toHaveTextContent("고른 계획오더를 찾지 못했습니다 — 품목을 골라 다시 고르세요");
+  });
+
+  it("마디 상한 안내", () => {
+    const { rerender } = render(<MrpPeg peg={view({ truncated: true })} />);
+    expect(screen.getByText("마디가 500개를 넘어 나머지는 줄였습니다")).toBeInTheDocument();
+    rerender(<MrpPeg peg={view({})} />);
+    expect(screen.queryByText(/마디가 500개를 넘어/)).toBeNull();
+  });
+});
+
+describe("mrpPegHref", () => {
+  it("품목 · 계획오더가 있으면 싣는다", () => {
+    expect(mrpPegHref()).toBe("/production/mrp?view=peg");
+    expect(mrpPegHref("PL-20261124-003")).toBe("/production/mrp?view=peg&order=PL-20261124-003");
+    expect(mrpPegHref(undefined, "FG-0001")).toBe("/production/mrp?view=peg&item=FG-0001");
+  });
+});

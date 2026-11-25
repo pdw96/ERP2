@@ -1,25 +1,30 @@
 // @vitest-environment node
-import { asc, count, eq, sql } from "drizzle-orm";
+import { asc, count, eq, sql, type SQL } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { limitMessage } from "@/db/master-shared";
 import { mpsSupply } from "@/db/mps";
 import {
   MRP_ORDER_LIMIT,
+  MRP_PEG_LIMIT,
   MRP_RUN_LIMIT,
   MRP_SETTING_CHANGE_LIMIT,
   MRP_SETTING_HISTORY_SHOWN,
   mrpSettings,
   openMrpGrid,
   openMrpOrders,
+  openMrpPeg,
   overNumericLimit,
   overOrderLimit,
   parseMrpGridFrom,
   parseMrpOrderQuery,
+  parseMrpPegQuery,
+  type MrpPegDown,
+  type MrpPegUp,
   runMrp,
   saveMrpSettings,
 } from "@/db/mrp";
 import { resetToSample } from "@/db/reset";
-import { items, mrpPlannedOrders, mrpRuns } from "@/db/schema";
+import { items, mrpPegs, mrpPlannedOrders, mrpRuns } from "@/db/schema";
 import type { Db } from "@/db/types";
 import { addDays, WEEKDAY_NAMES } from "@/lib/mrp-calc";
 import { milliOf } from "@/db/stock";
@@ -212,7 +217,7 @@ async function ran(now: Date = NOW): Promise<number> {
 
 describe("[MRP 실행]", () => {
   it("상수", () => {
-    expect([MRP_ORDER_LIMIT, MRP_RUN_LIMIT]).toEqual([20000, 1000]);
+    expect([MRP_ORDER_LIMIT, MRP_RUN_LIMIT, MRP_PEG_LIMIT]).toEqual([20000, 1000, 200000]);
   });
 
   it("완제품의 계획오더는 그 순간의 MPS 공급량과 주 · 수량이 하나씩 같다", async () => {
@@ -488,3 +493,247 @@ describe("openMrp", () => {
 function rowsOf(result: unknown): { n: number }[] {
   return (Array.isArray(result) ? result : (result as { rows: { n: number }[] }).rows) as { n: number }[];
 }
+
+describe("[MRP 실행] 페깅 저장", () => {
+  const sqlRows = async <T>(q: SQL) => ((await db.execute(q)) as unknown as { rows: T[] }).rows;
+
+  it("실행은 페깅을 저장하고 has_pegs 를 켠다", async () => {
+    await ran();
+    const all = await runs();
+    expect(all[all.length - 1].hasPegs).toBe(true);
+    const [{ n }] = await db.select({ n: count() }).from(mrpPegs);
+    expect(n).toBeGreaterThan(0);
+  });
+
+  it("저장한 페깅의 합 — 계획오더마다 공급 줄 합 = 수량, 품목 × 주마다 ORDER 줄 합 = mrp_gross", async () => {
+    // 계획오더마다: 그 계획오더를 공급으로 하는 줄의 합 = 수량 (남는 수량은 SURPLUS 줄로 들어 있다).
+    const bySupply = await sqlRows<{ number: string; qty: string; pegged: string }>(sql`
+      select o.number, o.qty::text as qty, coalesce(sum(p.qty), 0)::text as pegged
+      from mrp_planned_orders o
+      left join mrp_pegs p on p.supply_order_id = o.id
+      where o.mps_week is null
+      group by o.id, o.number, o.qty
+      order by o.number`);
+    expect(bySupply.length).toBeGreaterThan(0);
+    for (const r of bySupply) expect(Number(r.pegged)).toBeCloseTo(Number(r.qty), 3);
+
+    // 품목 × 주마다: ORDER 줄(필요일이 속한 주)의 합 = 저장된 총소요.
+    const byWeek = await sqlRows<{ item_id: number; week: string; gross: string; pegged: string }>(sql`
+      select g.item_id, g.week_start::text as week, g.qty::text as gross,
+        coalesce((select sum(p.qty) from mrp_pegs p
+          where p.run_id = g.run_id and p.item_id = g.item_id and p.kind = 'ORDER'
+            and date_trunc('week', p.need_date)::date = g.week_start), 0)::text as pegged
+      from mrp_gross g
+      order by g.item_id, g.week_start`);
+    expect(byWeek.length).toBeGreaterThan(0);
+    for (const r of byWeek) expect(Number(r.pegged)).toBeCloseTo(Number(r.gross), 3);
+  });
+
+  it("완제품 계획오더에 MPS 주 · 고정이 남는다", async () => {
+    await ran();
+    const supply = (await mpsSupply(db, addWeeks(W0, 51), TODAY)).filter((s) => s.item === "FG-0001");
+    expect(supply.length).toBeGreaterThan(0);
+    const rows = await sqlRows<{ mps_week: string; mps_fixed: boolean; qty: string }>(sql`
+      select o.mps_week::text as mps_week, o.mps_fixed, o.qty::text as qty
+      from mrp_planned_orders o join items i on i.id = o.item_id
+      where i.code = 'FG-0001' order by o.due_date`);
+    expect(rows.map((r) => [r.mps_week, r.mps_fixed])).toEqual(supply.map((s) => [s.week, s.fixed]));
+  });
+
+  it("두 번 실행하면 앞 실행의 페깅 줄이 남지 않는다", async () => {
+    await ran();
+    await ran();
+    const all = await runs();
+    const latest = all[all.length - 1].id;
+    const ids = await db.selectDistinct({ runId: mrpPegs.runId }).from(mrpPegs);
+    expect(ids).toEqual([{ runId: latest }]);
+  });
+
+  it("되돌림이 페깅을 비우고 다시 만든다", async () => {
+    await ran();
+    await resetToSample(db, TODAY);
+    const all = await runs();
+    const latest = all[all.length - 1].id;
+    const ids = await db.selectDistinct({ runId: mrpPegs.runId }).from(mrpPegs);
+    expect(ids).toEqual([{ runId: latest }]);
+  });
+});
+
+describe("parseMrpPegQuery", () => {
+  it("값이 없으면 비어 있고 틀린 꼴이 아니다", () => {
+    expect(parseMrpPegQuery({})).toEqual({ item: null, order: null, badInput: false });
+  });
+
+  it("맞는 꼴은 받는다", () => {
+    expect(parseMrpPegQuery({ order: "PL-20261124-001" })).toEqual({
+      item: null,
+      order: "PL-20261124-001",
+      badInput: false,
+    });
+    expect(parseMrpPegQuery({ item: "FG-0001" })).toEqual({ item: "FG-0001", order: null, badInput: false });
+  });
+
+  it("틀린 꼴은 그 칸을 비우고 badInput", () => {
+    expect(parseMrpPegQuery({ order: "../x" })).toEqual({ item: null, order: null, badInput: true });
+    expect(parseMrpPegQuery({ order: "pl-20261124-001" })).toEqual({ item: null, order: null, badInput: true });
+    expect(parseMrpPegQuery({ item: "fg-0001" })).toEqual({ item: null, order: null, badInput: true });
+    expect(parseMrpPegQuery({ item: "A".repeat(31) })).toEqual({ item: null, order: null, badInput: true });
+  });
+
+  it("배열 값은 첫 값", () => {
+    expect(parseMrpPegQuery({ order: ["PL-20261124-002", "x"] }).order).toBe("PL-20261124-002");
+  });
+
+  it("번호의 차례 자릿수는 3 ~ 8 — 하루 2천만 건까지 받고 9자리는 틀린 꼴", () => {
+    expect(parseMrpPegQuery({ order: "PL-20261124-12345678" })).toEqual({
+      item: null,
+      order: "PL-20261124-12345678",
+      badInput: false,
+    });
+    expect(parseMrpPegQuery({ order: "PL-20261124-123456789" })).toEqual({ item: null, order: null, badInput: true });
+    expect(parseMrpPegQuery({ order: "PL-20261124-12" }).badInput).toBe(true);
+  });
+});
+
+describe("openMrpPeg", () => {
+  const BASE = { item: null, order: null, badInput: false };
+  const sumOf = (xs: string[]) => canonOf(xs.reduce((a, x) => a + milliOf(x), BigInt(0)));
+  const canonOf = (q: bigint) => String(Number(q) / 1000);
+  const deepest = (up: MrpPegUp[]): MrpPegUp[] => {
+    for (const u of up) if (u.kind === "ORDER" && u.up.length > 0) return deepest(u.up);
+    return up;
+  };
+  const countUp = (ups: MrpPegUp[]): number =>
+    ups.reduce((a, u) => a + (u.kind === "ORDER" ? 1 + countUp(u.up) : 0), 0);
+  const allDowns = (downs: MrpPegDown[]): MrpPegDown[] =>
+    downs.flatMap((d) => [d, ...d.covers.flatMap((c) => (c.stock ? [] : allDowns(c.down)))]);
+
+  it("처음 열면 첫 완제품 계획오더를 고른다", async () => {
+    const v = await openMrpPeg(db, BASE);
+    expect(v.hasPegs).toBe(true);
+    expect(v.selected!.item.itemType).toBe("FG");
+    expect(v.selected!.mps!.week >= W0).toBe(true);
+    expect(v.item).toBe(v.selected!.item.code);
+    expect(v.up).toEqual([]);
+    expect(v.orders.length).toBeGreaterThan(0);
+    expect(v.orders.map((o) => o.number)).toEqual(v.orders.map((o) => o.number).sort());
+    expect(v.items.map((i) => i.code)).toEqual(v.items.map((i) => i.code).sort());
+    expect(v.notice).toBeNull();
+    expect(v.truncated).toBe(false);
+  });
+
+  it("완제품을 고르면 아래로 자품목마다 소요 = 재고 + 계획오더", async () => {
+    const v = await openMrpPeg(db, BASE);
+    expect(v.down.length).toBeGreaterThan(0);
+    for (const d of allDowns(v.down)) expect(d.need).toBe(sumOf(d.covers.map((c) => c.qty)));
+    expect(v.down.map((d) => d.item.code)).toEqual(v.down.map((d) => d.item.code).sort());
+  });
+
+  it("원자재 계획오더를 고르면 위로 윗 계획오더를 거쳐 MPS 칸까지 간다", async () => {
+    const [rm] = (await openMrpOrders(db, { ...BASE_QUERY, itemType: "RM" })).rows;
+    const v = await openMrpPeg(db, { ...BASE, order: rm.number });
+    expect(v.selected!.number).toBe(rm.number);
+    expect(v.selected!.mps).toBeNull();
+    expect(v.up.length).toBeGreaterThan(0);
+    const top = deepest(v.up).filter((u) => u.kind === "ORDER");
+    expect(top.length).toBeGreaterThan(0);
+    for (const u of top) {
+      if (u.kind === "ORDER") {
+        expect(u.parent.item.itemType).toBe("FG");
+        expect(u.parent.mps).not.toBeNull();
+      }
+    }
+  });
+
+  it("지난 실행의 번호는 stale 안내", async () => {
+    const number = (await openMrpPeg(db, BASE)).selected!.number;
+    await ran();
+    const v = await openMrpPeg(db, { ...BASE, order: number });
+    expect(v.selected).toBeNull();
+    expect(v.notice).toEqual({ kind: "stale", order: number });
+    expect(v.up).toEqual([]);
+    expect(v.down).toEqual([]);
+  });
+
+  it("모르는 품목 · 틀린 꼴은 notFound", async () => {
+    const a = await openMrpPeg(db, { ...BASE, item: "ZZ-NONE" });
+    expect(a.notice).toEqual({ kind: "notFound" });
+    expect(a.selected).toBeNull();
+    const b = await openMrpPeg(db, { item: null, order: null, badInput: true });
+    expect(b.notice).toEqual({ kind: "notFound" });
+    expect(b.selected).toBeNull();
+  });
+
+  it("품목만 고르면 그 품목의 첫 계획오더", async () => {
+    const first = (await openMrpPeg(db, BASE)).items.find((i) => i.code !== "FG-0001")!;
+    const v = await openMrpPeg(db, { ...BASE, item: first.code });
+    expect(v.selected!.item.code).toBe(first.code);
+    expect(v.selected!.number).toBe(v.orders[0].number);
+  });
+
+  it("번호와 품목이 함께 오면 — 번호의 품목이 다르면 품목이 이긴다(그 품목의 첫 계획오더, 안내 없음)", async () => {
+    const fg = (await openMrpPeg(db, BASE)).selected!;
+    const other = (await openMrpPeg(db, BASE)).items.find((i) => i.code !== fg.item.code)!;
+    const v = await openMrpPeg(db, { ...BASE, item: other.code, order: fg.number });
+    expect(v.selected!.item.code).toBe(other.code);
+    expect(v.selected!.number).toBe(v.orders[0].number);
+    expect(v.item).toBe(other.code);
+    expect(v.notice).toBeNull();
+  });
+
+  it("번호와 품목이 함께 오는데 품목이 같으면 번호가 이긴다 · 번호만 와도 그 번호", async () => {
+    const [rm] = (await openMrpOrders(db, { ...BASE_QUERY, itemType: "RM" })).rows;
+    const both = await openMrpPeg(db, { ...BASE, item: rm.item.code, order: rm.number });
+    expect(both.selected!.number).toBe(rm.number);
+    const only = await openMrpPeg(db, { ...BASE, order: rm.number });
+    expect(only.selected!.number).toBe(rm.number);
+    expect(only.item).toBe(rm.item.code);
+  });
+
+  it("페깅 없는 실행이면 hasPegs false 이고 나무가 비어 있다", async () => {
+    await db.execute(sql`update mrp_runs set has_pegs = false`);
+    const v = await openMrpPeg(db, BASE);
+    expect(v.hasPegs).toBe(false);
+    expect(v.selected).not.toBeNull();
+    expect(v.up).toEqual([]);
+    expect(v.down).toEqual([]);
+  });
+
+  it("마디 상한은 위로 · 아래로가 따로 — 작은 상한이면 truncated 로 끝나고, 위로가 다 써도 아래로의 첫 단계는 남는다", async () => {
+    const [rm] = (await openMrpOrders(db, { ...BASE_QUERY, itemType: "RM" })).rows;
+    const full = await openMrpPeg(db, { ...BASE, order: rm.number });
+    expect(full.truncated).toBe(false);
+    expect(countUp(full.up)).toBeGreaterThan(1);
+
+    const small = await openMrpPeg(db, { ...BASE, order: rm.number }, 2);
+    expect(small.truncated).toBe(true);
+    expect(countUp(small.up)).toBe(2);
+    expect(small.selected!.number).toBe(rm.number);
+  });
+
+  it("위로가 상한을 다 써도 아래로의 첫 단계 공급은 남는다", async () => {
+    // 중간 단계(생산 계획오더 중 위로 · 아래로가 모두 있는 것)를 찾아 위로 상한을 소진시킨다.
+    const mids = (await openMrpOrders(db, { ...BASE_QUERY, itemType: "SF" })).rows;
+    expect(mids.length).toBeGreaterThan(0);
+    let checked = 0;
+    for (const m of mids) {
+      const full = await openMrpPeg(db, { ...BASE, order: m.number });
+      if (countUp(full.up) < 2 || !full.down.some((d) => d.covers.some((c) => !c.stock))) continue;
+      const small = await openMrpPeg(db, { ...BASE, order: m.number }, 1);
+      expect(small.truncated).toBe(true);
+      expect(countUp(small.up)).toBe(1); // 위로는 제 예산을 다 썼다
+      expect(small.down.some((d) => d.covers.some((c) => !c.stock))).toBe(true); // 아래로는 제 몫으로 첫 단계가 보인다
+      checked += 1;
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it("실행이 없으면 run null", async () => {
+    await db.execute(sql`delete from mrp_runs`);
+    const v = await openMrpPeg(db, BASE);
+    expect(v.run).toBeNull();
+    expect(v.selected).toBeNull();
+    expect(v.items).toEqual([]);
+    expect(v.orders).toEqual([]);
+  });
+});

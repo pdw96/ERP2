@@ -4,9 +4,8 @@ import { shownQty } from "@/app/sales/plans/plan-qty";
 import { Pager, type Filters } from "@/components/sort-pager";
 import type { MrpOrderQuery, openMrpOrders } from "@/db/mrp";
 import { ITEM_TYPES } from "@/lib/master-codes";
-import { WEEKDAY_NAMES } from "@/lib/mrp-calc";
-import { toMs } from "@/lib/weeks";
-import { MRP_PATH } from "./paths";
+import { shortDate } from "./dates";
+import { MRP_PATH, mrpPegHref } from "./paths";
 
 // 계획오더 목록(메뉴 「MRP」) — 가장 새 실행의 계획오더를 번호 차례로, 쪽당 100줄. 거르기는 구분 · 품목 유형 · 늦은 것만(GET 폼, 주소에 남는다).
 // 날짜는 「MM-DD(요일)」, 비고는 「N일 늦음」(빨강 — 시작일을 실행한 날로 당긴 날수)과 「BOM 없음」(생산인데 펼칠 BOM 줄이 없음). 읽기만 한다.
@@ -14,12 +13,6 @@ import { MRP_PATH } from "./paths";
 type Orders = Awaited<ReturnType<typeof openMrpOrders>>;
 
 const KIND: Record<"MAKE" | "BUY", string> = { MAKE: "생산", BUY: "구매" };
-
-/** 「11-24(화)」 — 요일은 UTC 날짜로 센다(서버의 지역 시각에 기대지 않는다). */
-function shortDate(date: string): string {
-  const weekday = WEEKDAY_NAMES[(new Date(toMs(date)).getUTCDay() + 6) % 7];
-  return `${date.slice(5, 7)}-${date.slice(8, 10)}(${weekday})`;
-}
 
 /** 주소에 남기는 거르기 — 기본값(전체 · 늦음 끔)은 싣지 않는다. */
 function filtersOf(q: MrpOrderQuery): Filters {
@@ -124,7 +117,11 @@ export function MrpOrders({ orders, query }: { orders: Orders; query: MrpOrderQu
             )}
             {orders.rows.map((r) => (
               <tr key={r.number} className="border-b border-rule align-top">
-                <td className={`${cell} font-mono`}>{r.number}</td>
+                <td className={`${cell} font-mono`}>
+                  <Link href={mrpPegHref(r.number)} className="underline underline-offset-4 hover:text-machine">
+                    {r.number}
+                  </Link>
+                </td>
                 <td className={cell}>{KIND[r.kind]}</td>
                 <td className="px-2 py-2">
                   <span className="font-mono">{r.item.code}</span> {r.item.name}
