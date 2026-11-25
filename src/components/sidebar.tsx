@@ -39,9 +39,10 @@ export function SidebarView({ pathname }: { pathname: string }) {
           메뉴
         </button>
       </div>
+      {/* 넓은 화면에서 메뉴가 창보다 길면 목록만 스크롤한다. 스크롤바와 아래 상자의 윗줄이 목록이 이어진다는 표시다. */}
       <ul
         id="area-menu"
-        className={`${open ? "block" : "hidden"} border-t border-machine-line pb-3 md:block md:min-h-0 md:overflow-y-auto md:border-t-0`}
+        className={`${open ? "block" : "hidden"} border-t border-machine-line pb-3 md:block md:min-h-0 md:overflow-y-auto md:border-t-0 md:[scrollbar-color:var(--color-machine-line)_transparent] md:[scrollbar-width:thin]`}
       >
         {AREAS.map((area) => {
           const current = isWithin(pathname, area.href);
@@ -88,7 +89,7 @@ export function SidebarView({ pathname }: { pathname: string }) {
       </ul>
       <div
         id="area-menu-foot"
-        className={`${open ? "block" : "hidden"} mt-auto border-t border-machine-line px-5 py-4 text-sm md:block md:border-t-0 md:px-6 md:pt-0 md:pb-6`}
+        className={`${open ? "block" : "hidden"} mt-auto border-t border-machine-line px-5 py-4 text-sm md:block md:px-6 md:pb-6`}
       >
         <ul className="flex gap-5">
           <li>
