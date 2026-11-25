@@ -6,7 +6,7 @@ import { shortDate } from "./dates";
 import { MRP_PATH, mrpPegHref } from "./paths";
 
 // 페깅 탭(메뉴 「MRP」) — 고른 계획오더가 어느 소요를 채우는지(위로 — 완제품이면 MPS 칸까지) · 어떤 소요를 낳았는지(아래로 — 맨 아래까지)를 열을 맞춘 표 한 장의 나무로 보인다(ADR 0038).
-// 계획오더 줄은 번호가 그 계획오더의 페깅 링크이고, 「몫」(이 줄이 잇는 수량)과 계획오더 전체 수량(수량 열)을 따로 적는다. 깊이는 첫 열의 들여쓰기로만 보인다. 읽기만 한다.
+// 계획오더 줄은 번호가 그 계획오더의 페깅 링크이고, 「몫」(이 줄이 잇는 수량)과 계획오더 전체 수량(수량 열)을 따로 적는다. 깊이는 첫 열(품목)의 들여쓰기로만 보인다. 읽기만 한다.
 
 const KIND: Record<"MAKE" | "BUY", string> = { MAKE: "생산", BUY: "구매" };
 const REASON: Record<"SAFETY" | "SURPLUS" | "SHORT", string> = {
@@ -16,14 +16,18 @@ const REASON: Record<"SAFETY" | "SURPLUS" | "SHORT", string> = {
 };
 
 const select = "w-full min-w-0 rounded border border-rule px-3 py-2 text-base";
-const cell = "px-2 py-2";
+const cell = "px-2 py-1.5";
 const num = `${cell} text-right tabular-nums`;
 const COLS = 9;
+const rowLine = "border-b border-rule align-top";
 
-/** 첫 열(몫) — 깊이만큼 들여 쓰고 └ 표시를 붙인다. 고른 계획오더 줄(depth null)은 들이지 않는다. */
-function ShareCell({ depth, children }: { depth: number | null; children?: React.ReactNode }) {
+/** 첫 열(품목) — 나무는 여기서 보인다: 깊이만큼 들여 쓰고 └ 표시를 붙인다. 고른 계획오더 줄(depth null)은 들이지 않는다. */
+function ItemCell({ depth, bold, children }: { depth: number | null; bold?: boolean; children?: React.ReactNode }) {
   return (
-    <td className={`${num}`} style={depth === null ? undefined : { paddingLeft: `${0.5 + depth * 1.25}rem` }}>
+    <td
+      className={`${cell} text-left ${bold ? "font-semibold" : ""}`}
+      style={{ paddingLeft: `${0.5 + (depth ?? 0) * 1.25}rem` }}
+    >
       {depth !== null && (
         <span aria-hidden className="mr-1 text-muted">
           └
@@ -34,6 +38,14 @@ function ShareCell({ depth, children }: { depth: number | null; children?: React
   );
 }
 
+const Blank = ({ n = 1 }: { n?: number }) => (
+  <>
+    {Array.from({ length: n }, (_, i) => (
+      <td key={i} className={cell} />
+    ))}
+  </>
+);
+
 /** 「시작 → 완성」 — 같은 날이면 한 날짜만. */
 function span(order: MrpPegOrder): string {
   return order.startDate === order.dueDate
@@ -41,7 +53,7 @@ function span(order: MrpPegOrder): string {
     : `${shortDate(order.startDate)} → ${shortDate(order.dueDate)}`;
 }
 
-/** 계획오더의 열들 — 계획오더(링크) · 품목 · 구분 · 수량 · 단위 · 시작 → 완성 · 늦음. */
+/** 계획오더 줄의 나머지 열들 — 계획오더(링크) · 구분 · 수량 · 단위 · 시작 → 완성 · 늦음. */
 function OrderCells({ order }: { order: MrpPegOrder }) {
   return (
     <>
@@ -49,9 +61,6 @@ function OrderCells({ order }: { order: MrpPegOrder }) {
         <Link href={mrpPegHref(order.number)} className="underline underline-offset-4 hover:text-machine">
           {order.number}
         </Link>
-      </td>
-      <td className={cell}>
-        <span className="font-mono">{order.item.code}</span> {order.item.name}
       </td>
       <td className={cell}>{KIND[order.kind]}</td>
       <td className={num}>{shownQty(order.qty)}</td>
@@ -62,9 +71,7 @@ function OrderCells({ order }: { order: MrpPegOrder }) {
   );
 }
 
-const rowLine = "border-b border-rule align-top";
-
-/** 계획오더 한 줄 — 몫(없으면 빈 칸) · 필요일(없으면 빈 칸) 뒤에 계획오더의 열들. */
+/** 계획오더 한 줄 — 품목(들여쓰기) · 몫 · 필요일(없으면 빈 칸) 뒤에 계획오더의 열들. */
 function OrderRow({
   order,
   depth,
@@ -83,32 +90,29 @@ function OrderRow({
       className={`${rowLine} ${selected ? "bg-floor font-semibold" : ""}`}
       aria-current={selected ? "true" : undefined}
     >
-      <ShareCell depth={depth}>
-        {share !== undefined && <span className="font-semibold">{shownQty(share)}</span>}
-      </ShareCell>
+      <ItemCell depth={depth}>
+        <span className="font-mono">{order.item.code}</span> {order.item.name}
+      </ItemCell>
+      <td className={num}>{share !== undefined ? <span className="font-semibold">{shownQty(share)}</span> : null}</td>
       <td className={`${cell} whitespace-nowrap tabular-nums`}>{needDate ? shortDate(needDate) : null}</td>
       <OrderCells order={order} />
     </tr>
   );
 }
 
-/** MPS 칸 줄 — MPS 수량은 그 계획오더의 수량이다. */
+/** MPS 칸 줄 — MPS 수량은 그 계획오더의 수량이다. 라벨은 품목 칸 자리에 둔다. */
 function MpsRow({ order, depth }: { order: MrpPegOrder & { mps: NonNullable<MrpPegOrder["mps"]> }; depth: number }) {
   const week = order.mps.week.slice(5, 10);
   const fixed = order.mps.fixed ? "고정" : "안";
   return (
     <tr className={rowLine} aria-label={`MPS · ${order.item.code} · ${week} 주 · ${shownQty(order.qty)} · ${fixed}`}>
-      <ShareCell depth={depth} />
-      <td className={cell} />
-      <td className={`${cell} font-mono`}>MPS</td>
-      <td className={cell}>
-        {week} 주 · {fixed}
-      </td>
-      <td className={cell} />
+      <ItemCell depth={depth}>
+        MPS · {week} 주 · {fixed}
+      </ItemCell>
+      <Blank n={4} />
       <td className={num}>{shownQty(order.qty)}</td>
       <td className={cell}>{order.unit}</td>
-      <td className={cell} />
-      <td className={cell} />
+      <Blank n={2} />
     </tr>
   );
 }
@@ -124,12 +128,11 @@ function upRows(nodes: MrpPegUp[], depth: number, key: string): React.ReactNode[
     if (node.kind !== "ORDER") {
       return [
         <tr key={k} className={rowLine}>
-          <ShareCell depth={depth}>
+          <ItemCell depth={depth}>{REASON[node.kind]}</ItemCell>
+          <td className={num}>
             <span className="font-semibold">{shownQty(node.qty)}</span>
-          </ShareCell>
-          <td colSpan={COLS - 1} className={cell}>
-            {REASON[node.kind]}
           </td>
+          <Blank n={7} />
         </tr>,
       ];
     }
@@ -141,25 +144,23 @@ function upRows(nodes: MrpPegUp[], depth: number, key: string): React.ReactNode[
   });
 }
 
-/** 아래로 — 자품목 소요 줄 → 덮는 재고 · 계획오더 줄(한 칸 더) → 그 계획오더의 아래(또 한 칸 더). */
+/** 아래로 — 자품목 소요 줄(묶음 줄) → 덮는 재고 · 계획오더 줄(한 칸 더) → 그 계획오더의 아래(또 한 칸 더). */
 function downRows(downs: MrpPegDown[], depth: number, key: string): React.ReactNode[] {
   return downs.flatMap((d, i) => {
     const k = `${key}-${i}`;
     const rows: React.ReactNode[] = [
-      <tr key={k} className={rowLine}>
-        <ShareCell depth={depth}>
-          <span className="text-muted">소요</span> <span className="font-semibold">{shownQty(d.need)}</span>
-        </ShareCell>
-        <td className={cell} />
-        <td className={cell}>{d.covers.length === 0 && d.need === "0" ? "0(끝수)" : null}</td>
-        <td className={cell}>
+      <tr key={k} className={`${rowLine} bg-floor`}>
+        <ItemCell depth={depth} bold>
           <span className="font-mono">{d.item.code}</span> {d.item.name}
+        </ItemCell>
+        <td className={num}>
+          <span className="text-muted">소요</span> <span className="font-semibold">{shownQty(d.need)}</span>
         </td>
-        <td className={cell} />
-        <td className={cell} />
+        <Blank />
+        <td className={cell}>{d.covers.length === 0 && d.need === "0" ? "0(끝수)" : null}</td>
+        <Blank n={2} />
         <td className={cell}>{d.unit}</td>
-        <td className={cell} />
-        <td className={cell} />
+        <Blank n={2} />
       </tr>,
     ];
     d.covers.forEach((c, j) => {
@@ -167,17 +168,13 @@ function downRows(downs: MrpPegDown[], depth: number, key: string): React.ReactN
       if (c.stock) {
         rows.push(
           <tr key={ck} className={rowLine}>
-            <ShareCell depth={depth + 1}>
+            <ItemCell depth={depth + 1}>재고</ItemCell>
+            <td className={num}>
               <span className="font-semibold">{shownQty(c.qty)}</span>
-            </ShareCell>
-            <td className={cell} />
-            <td className={cell}>재고</td>
-            <td className={cell} />
-            <td className={cell} />
-            <td className={cell} />
+            </td>
+            <Blank n={4} />
             <td className={cell}>{d.unit}</td>
-            <td className={cell} />
-            <td className={cell} />
+            <Blank n={2} />
           </tr>,
         );
       } else {
@@ -195,7 +192,7 @@ function downRows(downs: MrpPegDown[], depth: number, key: string): React.ReactN
 function SectionHead({ children }: { children: React.ReactNode }) {
   return (
     <tr className="border-b border-rule bg-floor">
-      <th scope="colgroup" colSpan={COLS} className="px-2 py-2 text-left font-semibold">
+      <th scope="colgroup" colSpan={COLS} className="px-2 py-1.5 text-left font-semibold">
         {children}
       </th>
     </tr>
@@ -284,33 +281,33 @@ export function MrpPeg({ peg }: { peg: MrpPegView }) {
           >
             <table className="w-max min-w-full border-collapse text-left text-sm">
               <caption className="sr-only">
-                페깅 — 몫 · 필요일 · 계획오더 · 품목 · 구분 · 수량 · 단위 · 시작 → 완성 · 늦음. 첫 줄이 고른
+                페깅 — 품목 · 몫 · 필요일 · 계획오더 · 구분 · 수량 · 단위 · 시작 → 완성 · 늦음. 첫 줄이 고른
                 계획오더이고 위로 · 아래로가 들여쓴 나무로 이어집니다
               </caption>
               <thead>
                 <tr className="border-b-2 border-machine">
+                  <th scope="col" className={`${cell}`}>
+                    품목
+                  </th>
                   <th scope="col" className={`${cell} text-right`}>
                     몫
                   </th>
-                  <th scope="col" className={cell}>
+                  <th scope="col" className={`${cell}`}>
                     필요일
                   </th>
-                  <th scope="col" className={cell}>
+                  <th scope="col" className={`${cell}`}>
                     계획오더
                   </th>
-                  <th scope="col" className={cell}>
-                    품목
-                  </th>
-                  <th scope="col" className={cell}>
+                  <th scope="col" className={`${cell}`}>
                     구분
                   </th>
                   <th scope="col" className={`${cell} text-right`}>
                     수량
                   </th>
-                  <th scope="col" className={cell}>
+                  <th scope="col" className={`${cell}`}>
                     단위
                   </th>
-                  <th scope="col" className={cell}>
+                  <th scope="col" className={`${cell}`}>
                     시작 → 완성
                   </th>
                   <th scope="col" className={`${cell} text-right`}>

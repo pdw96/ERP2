@@ -4,7 +4,7 @@ import type { MrpPegCover, MrpPegDown, MrpPegOrder, MrpPegUp, MrpPegView, MrpRun
 import { MrpPeg } from "../mrp-peg";
 import { mrpPegHref } from "../paths";
 
-// 페깅 탭 — 열을 맞춘 표 한 장: 고른 계획오더 줄 · 위로(이 계획오더가 채우는 소요) · 아래로(이 계획오더가 낳은 소요). 깊이는 첫 칸 들여쓰기.
+// 페깅 탭 — 열을 맞춘 표 한 장: 고른 계획오더 줄 · 위로(이 계획오더가 채우는 소요) · 아래로(이 계획오더가 낳은 소요). 깊이는 품목 칸 들여쓰기.
 
 vi.mock("next/form", () => ({ default: (props: Record<string, unknown>) => <form {...props} /> }));
 
@@ -73,16 +73,16 @@ describe("페깅 탭", () => {
     const heads = within(screen.getAllByRole("rowgroup")[0])
       .getAllByRole("columnheader")
       .map((h) => h.textContent);
-    expect(heads).toEqual(["몫", "필요일", "계획오더", "품목", "구분", "수량", "단위", "시작 → 완성", "늦음"]);
+    expect(heads).toEqual(["품목", "몫", "필요일", "계획오더", "구분", "수량", "단위", "시작 → 완성", "늦음"]);
     expect(screen.getAllByRole("table")).toHaveLength(1);
     expect(screen.getByText("▲ 위로 — 이 계획오더가 채우는 소요")).toBeInTheDocument();
     expect(screen.getByText("▼ 아래로 — 이 계획오더가 낳은 소요")).toBeInTheDocument();
     const sel = within(screen.getByRole("rowgroup", { name: "고른 계획오더" }));
     expect(cells(sel.getAllByRole("row")[0])).toEqual([
+      "FG-0001 전원 관리 IC",
       "",
       "",
       "PL-20261124-001",
-      "FG-0001 전원 관리 IC",
       "생산",
       "7,000",
       "EA",
@@ -103,13 +103,16 @@ describe("페깅 탭", () => {
     ];
     render(<MrpPeg peg={view({ down: downs })} />);
     const lower = down();
-    expect(cells(rowOf(lower, "소요"))).toEqual(["└소요 82", "", "", "RM-0001 솔더 페이스트", "", "", "KG", "", ""]);
-    expect(cells(rowOf(lower, "재고"))).toEqual(["└37", "", "재고", "", "", "", "KG", "", ""]);
+    const group = rowOf(lower, "소요 82");
+    expect(cells(group)).toEqual(["└RM-0001 솔더 페이스트", "소요 82", "", "", "", "", "KG", "", ""]);
+    expect(group).toHaveClass("bg-floor"); // 묶음 줄
+    expect(rowOf(lower, "└재고")).not.toHaveClass("bg-floor");
+    expect(cells(rowOf(lower, "└재고"))).toEqual(["└재고", "37", "", "", "", "", "KG", "", ""]);
     expect(cells(rowOf(lower, "PL-20261124-007"))).toEqual([
-      "└45",
+      "└RM-0001 솔더 페이스트",
+      "45",
       "",
       "PL-20261124-007",
-      "RM-0001 솔더 페이스트",
       "구매",
       "50",
       "KG",
@@ -122,7 +125,7 @@ describe("페깅 탭", () => {
     );
   });
 
-  it("깊이는 첫 칸 들여쓰기로만 — 소요 줄 < 덮는 줄 < 그 계획오더의 아래", () => {
+  it("깊이는 품목 칸 들여쓰기로만 — 소요 줄 < 덮는 줄 < 그 계획오더의 아래", () => {
     const inner: MrpPegDown[] = [
       { item: info("RM-0001", "솔더 페이스트", "RM"), unit: "KG", need: "9", covers: [stock("9")] },
     ];
@@ -142,7 +145,7 @@ describe("페깅 탭", () => {
     const deep = pad("RM-0001 솔더 페이스트");
     expect(mid).toBeGreaterThan(top);
     expect(deep).toBeGreaterThan(mid);
-    expect(cells(rowOf(down(), "재고"))[0]).toBe("└9");
+    expect(cells(rowOf(down(), "└재고"))[0]).toBe("└재고");
   });
 
   it("고르는 폼은 하나 — 품목 · 계획오더 · 보기 한 줄, 숨은 view=peg", () => {
@@ -179,12 +182,16 @@ describe("페깅 탭", () => {
       name: "MPS · FG-0001 · 12-01 주 · 7,000 · 고정",
     });
     expect(up().getAllByRole("row")[1]).toBe(mps); // 구역 머리 바로 밑 첫 줄
-    expect(cells(mps)).toEqual(["└", "", "MPS", "12-01 주 · 고정", "", "7,000", "EA", "", ""]);
-    expect(cells(rowOf(up(), "PL-20261124-002"))[0]).toBe("└30");
-    expect(cells(rowOf(up(), "PL-20261124-002"))[1]).toBe("12-01(화)");
-    expect(cells(rowOf(up(), "안전재고 보충"))).toEqual(["└5", "안전재고 보충"]);
-    expect(cells(rowOf(up(), "남는 수량(최소량 · 배수)"))).toEqual(["└2", "남는 수량(최소량 · 배수)"]);
-    expect(cells(rowOf(up(), "가용재고 음수 메움"))[0]).toBe("└1");
+    expect(cells(mps)).toEqual(["└MPS · 12-01 주 · 고정", "", "", "", "", "7,000", "EA", "", ""]);
+    expect(cells(rowOf(up(), "PL-20261124-002")).slice(0, 4)).toEqual([
+      "└FG-0001 전원 관리 IC",
+      "30",
+      "12-01(화)",
+      "PL-20261124-002",
+    ]);
+    expect(cells(rowOf(up(), "안전재고 보충")).slice(0, 4)).toEqual(["└안전재고 보충", "5", "", ""]);
+    expect(cells(rowOf(up(), "남는 수량(최소량 · 배수)")).slice(0, 2)).toEqual(["└남는 수량(최소량 · 배수)", "2"]);
+    expect(cells(rowOf(up(), "가용재고 음수 메움")).slice(0, 2)).toEqual(["└가용재고 음수 메움", "1"]);
     expect(up().getByRole("link", { name: "PL-20261124-002" })).toBeInTheDocument();
     expect(down().getByText("0(끝수)")).toBeInTheDocument();
 
@@ -216,7 +223,7 @@ describe("페깅 탭", () => {
     ];
     render(<MrpPeg peg={view({ selected: order({ number: "PL-20261124-009", mps: null }), up: ups })} />);
     const mps = up().getByRole("row", { name: "MPS · FG-0001 · 12-08 주 · 300 · 안" });
-    expect(cells(mps)[3]).toBe("12-08 주 · 안");
+    expect(cells(mps)[0]).toBe("└MPS · 12-08 주 · 안");
     expect(up().queryByText(/고정/)).toBeNull();
   });
 
