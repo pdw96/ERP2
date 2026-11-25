@@ -882,7 +882,8 @@ async function pegDown(tx: Db, runId: number, startId: number, take: () => boole
 
 /**
  * [페깅] 화면 — 가장 새 실행에서 고른 계획오더의 위(그 계획오더가 덮는 소요를 거쳐 MPS 칸까지) · 아래(그 소요를 채우는 재고 · 계획오더, 맨 아래까지).
- * 고르기: 번호가 있으면 그것(품목은 그 계획오더의 품목), 없으면 품목의 첫 계획오더, 둘 다 없으면 첫 완제품 계획오더. 읽기 전용 한 트랜잭션.
+ * 고르기: 번호가 있으면 그것(품목은 그 계획오더의 품목), 없으면 품목의 첫 계획오더, 둘 다 없으면 첫 완제품 계획오더.
+ * 번호와 품목이 함께 오는데 그 번호의 품목이 다르면 품목이 이긴다(그 품목의 첫 계획오더). 읽기 전용 한 트랜잭션.
  */
 export async function openMrpPeg(db: Db, q: MrpPegQuery, nodeLimit: number = MRP_PEG_NODE_LIMIT): Promise<MrpPegView> {
   return db.transaction(async (tx) => {
@@ -914,17 +915,23 @@ export async function openMrpPeg(db: Db, q: MrpPegQuery, nodeLimit: number = MRP
     let notice: MrpPegView["notice"] = null;
     let item: string | null = known(q.item) ? q.item : null;
 
-    if (q.badInput) {
-      notice = { kind: "notFound" };
-    } else if (q.order) {
-      const [o] = await tx
+    // 번호와 품목이 함께 오면 품목이 이긴다 — 번호가 이 실행에 있고 그 품목이 고른 품목과 다르면(품목을 바꿨는데 옛 번호가 남은 것) 번호를 버린다.
+    let byOrder: { id: number; code: string } | undefined;
+    if (!q.badInput && q.order) {
+      [byOrder] = await tx
         .select({ id: mrpPlannedOrders.id, code: items.code })
         .from(mrpPlannedOrders)
         .innerJoin(items, eq(items.id, mrpPlannedOrders.itemId))
         .where(and(eq(mrpPlannedOrders.runId, run.id), eq(mrpPlannedOrders.number, q.order)));
-      if (o) {
-        selectedId = o.id;
-        item = o.code;
+    }
+    const orderWins = byOrder !== undefined && (!q.item || q.item === byOrder.code);
+
+    if (q.badInput) {
+      notice = { kind: "notFound" };
+    } else if (q.order && (!byOrder || orderWins)) {
+      if (byOrder) {
+        selectedId = byOrder.id;
+        item = byOrder.code;
       } else {
         notice = { kind: "stale", order: q.order };
       }

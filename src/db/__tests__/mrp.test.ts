@@ -671,6 +671,25 @@ describe("openMrpPeg", () => {
     expect(v.selected!.number).toBe(v.orders[0].number);
   });
 
+  it("번호와 품목이 함께 오면 — 번호의 품목이 다르면 품목이 이긴다(그 품목의 첫 계획오더, 안내 없음)", async () => {
+    const fg = (await openMrpPeg(db, BASE)).selected!;
+    const other = (await openMrpPeg(db, BASE)).items.find((i) => i.code !== fg.item.code)!;
+    const v = await openMrpPeg(db, { ...BASE, item: other.code, order: fg.number });
+    expect(v.selected!.item.code).toBe(other.code);
+    expect(v.selected!.number).toBe(v.orders[0].number);
+    expect(v.item).toBe(other.code);
+    expect(v.notice).toBeNull();
+  });
+
+  it("번호와 품목이 함께 오는데 품목이 같으면 번호가 이긴다 · 번호만 와도 그 번호", async () => {
+    const [rm] = (await openMrpOrders(db, { ...BASE_QUERY, itemType: "RM" })).rows;
+    const both = await openMrpPeg(db, { ...BASE, item: rm.item.code, order: rm.number });
+    expect(both.selected!.number).toBe(rm.number);
+    const only = await openMrpPeg(db, { ...BASE, order: rm.number });
+    expect(only.selected!.number).toBe(rm.number);
+    expect(only.item).toBe(rm.item.code);
+  });
+
   it("페깅 없는 실행이면 hasPegs false 이고 나무가 비어 있다", async () => {
     await db.execute(sql`update mrp_runs set has_pegs = false`);
     const v = await openMrpPeg(db, BASE);
