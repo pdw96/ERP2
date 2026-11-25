@@ -320,12 +320,12 @@ export function MrpPeg({ peg }: { peg: MrpPegView }) {
               </thead>
               <tbody aria-label="고른 계획오더">
                 <OrderRow order={selected} depth={null} selected />
-                {peg.hasPegs && <MpsAfter order={selected} depth={1} />}
               </tbody>
               {peg.hasPegs && (
                 <>
                   <tbody aria-label="위로">
                     <SectionHead>▲ 위로 — 이 계획오더가 채우는 소요</SectionHead>
+                    <MpsAfter order={selected} depth={0} />
                     {upRows(peg.up, 0, "u")}
                   </tbody>
                   <tbody aria-label="아래로">

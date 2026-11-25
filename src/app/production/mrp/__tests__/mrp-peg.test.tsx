@@ -175,7 +175,10 @@ describe("페깅 탭", () => {
     ];
     const downs: MrpPegDown[] = [{ item: info("RM-0002", "리드 프레임", "RM"), unit: "EA", need: "0", covers: [] }];
     const { rerender } = render(<MrpPeg peg={view({ up: ups, down: downs })} />);
-    const mps = screen.getByRole("row", { name: "MPS · FG-0001 · 12-01 주 · 7,000 · 고정" });
+    const mps = within(screen.getByRole("rowgroup", { name: "위로" })).getByRole("row", {
+      name: "MPS · FG-0001 · 12-01 주 · 7,000 · 고정",
+    });
+    expect(up().getAllByRole("row")[1]).toBe(mps); // 구역 머리 바로 밑 첫 줄
     expect(cells(mps)).toEqual(["└", "", "MPS", "12-01 주 · 고정", "", "7,000", "EA", "", ""]);
     expect(cells(rowOf(up(), "PL-20261124-002"))[0]).toBe("└30");
     expect(cells(rowOf(up(), "PL-20261124-002"))[1]).toBe("12-01(화)");
