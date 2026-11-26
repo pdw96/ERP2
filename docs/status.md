@@ -51,10 +51,12 @@
 - **Codex 리뷰** — PR 을 열 때(초안 아님) · 초안을 풀 때 · `@codex review` 댓글에 돈다. 결과는 `chatgpt-codex-connector[bot]` 의 요약 댓글(ADR 0030 의 2).
 - **클라우드 세션의 플러그인** — Security Guidance 는 레포의 `.claude/settings.json` 에서 켠다. superpowers 는 저자 계정의 플러그인이라 저자가 연
   세션에만 있다.
+- **main 보호** — 2026-11-26 에 저자가 룰셋 「main 보호」를 켰다. 검사 「형식 · 린트 · 타입 · 시험」이 지나지 않은 PR 은 GitHub 가 머지를 막고,
+  강제 푸시 · main 지우기도 막는다. 우회 목록은 비어 있다(관리자도 막힘).
 - **덮은 기록** — 감사 기록 · 브리핑 · 대장(옛 `.claude/audits/` · `.claude/briefs/` · `docs/audit/`)은 main 에서 뺐다. 커밋 `61a9885` 에 그대로 있다 —
   <https://github.com/pdw96/ERP2/tree/61a9885/docs/audit> 처럼 연다(ADR 0039).
 - **비판 검토** — 2026-11-25 에 6개 축으로 검토한 결과와 고칠 일은 이슈 #66 에 있다. 고친 PR 은 그 이슈에 댓글로 잇는다.
 
 ## 남은 확인
 
-- **main 보호** — 저자가 GitHub 설정에서 켠다(이슈 #66 ⑦). 켜면 CLAUDE.md 「머지」의 「CI 가 다 지나고」를 GitHub 가 막으니 그 말을 덜어낼 수 있다.
+- 없음.
