@@ -9,6 +9,7 @@
 | 의도 — Why · What · Not | `INTENT.md` |
 | 시스템 구조 — 폴더 지도 · 흐름 | `docs/architecture.md` |
 | DB 규칙 — 표 · 칸은 `src/db/schema.ts` | `docs/schema.md` |
+| 지금 업무 규칙 — 모듈마다 한 줄, 근거 ADR | `docs/rules.md` |
 | 작업 규칙과 앵커볼트 | `CLAUDE.md` |
 | 절차 | `CLAUDE.md` 「작업 방식」 — 일 하나는 메뉴 하나 · PR 본문 · 공식 리뷰 · 머지(ADR 0029) |
 | 닫힌 조각의 요구사항 · 설계 | `docs/slices/` |
